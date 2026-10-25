@@ -78,7 +78,19 @@ void main() {
     await tester.tap(find.byTooltip('Inspiration Library'));
     await tester.pumpAndSettle();
     expect(find.text('Inspiration Library'), findsWidgets);
+    // rootBundle.loadString completes asynchronously outside the immediate
+    // first frame; wait for the actual library card rather than assuming
+    // pumpAndSettle also waits for unrelated asset loading futures.
+    for (var tries = 0;
+        tries < 20 && find.text('Use this prompt').evaluate().isEmpty;
+        tries++) {
+      await tester.runAsync(() => Future<void>.delayed(
+            const Duration(milliseconds: 20),
+          ));
+      await tester.pump(const Duration(milliseconds: 80));
+    }
     final use = find.text('Use this prompt').first;
+    expect(use, findsOneWidget);
     await tester.ensureVisible(use);
     await tester.tap(use);
     await tester.pumpAndSettle();
