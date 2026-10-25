@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'state.dart';
 import 'video_models.dart';
+import 'avatar_identity.dart';
 import 'design.dart';
 
 class ProjectsPage extends StatelessWidget {
@@ -193,7 +194,11 @@ class _GenerationPageState extends State<GenerationPage> {
       modelId: profile.id,
       avatarName: avatarName,
       project: selected.title,
-      prompt: prompt.text.trim(),
+      prompt: AvatarPromptComposer.compose(
+        scenePrompt: prompt.text,
+        avatar: widget.store.avatars.where((a) => a.name == avatarName).firstOrNull,
+        model: profile,
+      ),
       model: profile.label,
       aspectRatio: ratio,
       durationSeconds: seconds,
@@ -294,6 +299,11 @@ class _GenerationPageState extends State<GenerationPage> {
             onChanged: (v) {
               if (v != null) setState(() => avatarName = v);
             },
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'Selecting a character adds its reusable appearance notes to the saved scene prompt. True face locking requires future image/3D model integrations.',
+            style: TextStyle(fontSize: 12),
           ),
           const SizedBox(height: 17),
           Text('Aspect ratio', style: Theme.of(context).textTheme.titleSmall),

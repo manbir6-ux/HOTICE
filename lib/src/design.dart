@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 class HotIceDesign {
-  static ThemeData theme(Brightness brightness, Color seed) {
+  static ThemeData theme(Brightness brightness, Color seed, {String? fontFamily}) {
     final dark = brightness == Brightness.dark;
     final scheme = ColorScheme.fromSeed(
       seedColor: seed,
@@ -11,6 +11,7 @@ class HotIceDesign {
       useMaterial3: true,
       colorScheme: scheme,
       brightness: brightness,
+      fontFamily: fontFamily,
       scaffoldBackgroundColor:
           dark ? const Color(0xFF0A0D16) : const Color(0xFFF5F7FB),
       textTheme: const TextTheme(

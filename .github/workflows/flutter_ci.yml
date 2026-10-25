@@ -1,24 +1,63 @@
-name: Flutter checks
+name: Flutter validation and Android preview
 
 on:
   push:
-    branches: [main]
+    branches:
+      - main
+      - feat/android-preview-music-studio
   pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   validate:
+    name: Flutter analysis and tests
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
           cache: true
-      - name: Create missing platform scaffolds
+      - name: Prepare Flutter platform scaffolds
         run: flutter create . --project-name hotice --platforms=android,ios
-      - name: Resolve Flutter dependencies
+      - name: Resolve dependencies
         run: flutter pub get
       - name: Static analysis
         run: flutter analyze --no-fatal-infos
       - name: Widget tests
         run: flutter test
+
+  android-preview:
+    name: Build test APK (unsigned debug)
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Prepare Android project
+        run: flutter create . --project-name hotice --platforms=android
+      - name: Generate HOTICE preview launcher branding
+        run: python3 tools/brand_android.py
+      - name: Resolve Flutter packages
+        run: flutter pub get
+      - name: Compile Android debug APK
+        run: flutter build apk --debug
+      - name: Upload Android testing APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: HOTICE-Android-Preview-APK
+          path: build/app/outputs/flutter-apk/app-debug.apk
+          retention-days: 14
+          if-no-files-found: error

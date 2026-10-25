@@ -21,7 +21,33 @@ class HotProject {
 class StudioAvatar {
   final String name;
   final String style;
-  const StudioAvatar(this.name, this.style);
+  final String identityNotes;
+  const StudioAvatar(this.name, this.style, {this.identityNotes = ''});
+}
+
+class StoryboardShot {
+  final String title;
+  final String description;
+  final int estimatedSeconds;
+  const StoryboardShot(this.title, this.description, this.estimatedSeconds);
+}
+
+/// A text-only offline planning draft. There is no audio or AI analysis.
+class MusicVideoPlan {
+  final String projectId;
+  final String storyBrief;
+  final String visualStyle;
+  final String avatarName;
+  final List<StoryboardShot> shots;
+  final DateTime createdAt;
+  const MusicVideoPlan({
+    required this.projectId,
+    required this.storyBrief,
+    required this.visualStyle,
+    required this.avatarName,
+    required this.shots,
+    required this.createdAt,
+  });
 }
 
 class GenerationDraft {
@@ -62,6 +88,16 @@ enum StudioAccent {
   final Color color;
 }
 
+enum StudioFont {
+  modern('Modern', null),
+  editorial('Editorial', 'serif'),
+  technical('Technical', 'monospace');
+
+  const StudioFont(this.label, this.family);
+  final String label;
+  final String? family;
+}
+
 /// Ephemeral demo data for one profile. Never treat this as cloud security.
 class _DemoWorkspace {
   _DemoWorkspace({bool seed = false}) {
@@ -79,6 +115,7 @@ class _DemoWorkspace {
   final List<HotProject> projects = [];
   final List<StudioAvatar> avatars = [];
   final List<GenerationDraft> drafts = [];
+  final List<MusicVideoPlan> musicPlans = [];
   int demoCredits = 1000;
 }
 
@@ -86,6 +123,7 @@ class HotIceStore extends ChangeNotifier {
   bool signedIn = false;
   ThemeMode themeMode = ThemeMode.dark;
   StudioAccent accent = StudioAccent.electric;
+  StudioFont font = StudioFont.modern;
   String selectedAccount = 'creator@hotice.demo';
   final List<String> accounts = ['creator@hotice.demo'];
 
@@ -102,6 +140,7 @@ class HotIceStore extends ChangeNotifier {
   List<HotProject> get projects => _workspace.projects;
   List<StudioAvatar> get avatars => _workspace.avatars;
   List<GenerationDraft> get drafts => _workspace.drafts;
+  List<MusicVideoPlan> get musicPlans => _workspace.musicPlans;
 
   void signInDemo(String email) {
     final normalized = email.trim().toLowerCase();
@@ -146,14 +185,37 @@ class HotIceStore extends ChangeNotifier {
   }
 
   /// Avoid duplicate values in the avatar dropdown.
-  bool addAvatar(String name, String style) {
+  bool addAvatar(String name, String style, {String identityNotes = ''}) {
     final trimmed = name.trim();
     if (trimmed.isEmpty ||
         trimmed.toLowerCase() == 'none' ||
         avatars.any((a) => a.name.toLowerCase() == trimmed.toLowerCase())) {
       return false;
     }
-    avatars.insert(0, StudioAvatar(trimmed, style));
+    avatars.insert(0, StudioAvatar(trimmed, style, identityNotes: identityNotes.trim()));
+    notifyListeners();
+    return true;
+  }
+
+  bool editAvatar(String originalName, String newName, String style,
+      {String identityNotes = ''}) {
+    final index = avatars.indexWhere((a) => a.name == originalName);
+    final name = newName.trim();
+    if (index < 0 || name.isEmpty || name.toLowerCase() == 'none' ||
+        avatars.any((a) => a.name != originalName &&
+            a.name.toLowerCase() == name.toLowerCase())) {
+      return false;
+    }
+    avatars[index] = StudioAvatar(name, style, identityNotes: identityNotes.trim());
+    notifyListeners();
+    return true;
+  }
+
+  bool removeAvatar(String name) {
+    final oldLength = avatars.length;
+    avatars.removeWhere((a) => a.name == name);
+    if (avatars.length == oldLength) return false;
+    // Existing scene drafts remain historical snapshots of their creation.
     notifyListeners();
     return true;
   }
@@ -179,6 +241,21 @@ class HotIceStore extends ChangeNotifier {
     notifyListeners();
   }
 
+  void saveMusicPlan(MusicVideoPlan plan) {
+    if (!projects.any((p) => p.id == plan.projectId)) {
+      throw StateError('The selected project is not in this demo workspace.');
+    }
+    if (plan.storyBrief.trim().isEmpty || plan.shots.isEmpty) {
+      throw StateError('A story and storyboard shots are required.');
+    }
+    if (plan.avatarName != 'None' &&
+        !avatars.any((avatar) => avatar.name == plan.avatarName)) {
+      throw StateError('Avatar belongs to a different workspace.');
+    }
+    musicPlans.insert(0, plan);
+    notifyListeners();
+  }
+
   void updateTheme(ThemeMode value) {
     themeMode = value;
     notifyListeners();
@@ -186,6 +263,11 @@ class HotIceStore extends ChangeNotifier {
 
   void updateAccent(StudioAccent value) {
     accent = value;
+    notifyListeners();
+  }
+
+  void updateFont(StudioFont value) {
+    font = value;
     notifyListeners();
   }
 }

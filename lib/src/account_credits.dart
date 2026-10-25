@@ -2,111 +2,7 @@ import 'package:flutter/material.dart';
 import 'state.dart';
 import 'design.dart';
 
-class AvatarsPage extends StatefulWidget {
-  final HotIceStore store;
-  const AvatarsPage({super.key, required this.store});
-  @override
-  State<AvatarsPage> createState() => _AvatarsPageState();
-}
-
-class _AvatarsPageState extends State<AvatarsPage> {
-  final name = TextEditingController();
-  String style = 'Cinematic';
-
-  @override
-  void dispose() {
-    name.dispose();
-    super.dispose();
-  }
-
-  void add() {
-    if (name.text.trim().isEmpty) return;
-    final added = widget.store.addAvatar(name.text.trim(), style);
-    if (added) name.clear();
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(added
-          ? 'Demo avatar preset added.'
-          : 'Use a unique, non-empty avatar name.')),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) => PageFrame(
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const PageTitle(
-          eyebrow: 'Character workshop',
-          title: 'Avatar Lab',
-          subtitle: 'Design reusable characters for every cinematic story.',
-        ),
-        const DemoNotice(
-          'Avatar name and style are saved locally in memory. Reference images, persistent identity and rendering are planned.',
-        ),
-        const SizedBox(height: 18),
-        StudioPanel(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('Create an avatar preset',
-                  style: Theme.of(context).textTheme.titleLarge),
-              const SizedBox(height: 16),
-              TextField(
-                controller: name,
-                decoration: const InputDecoration(
-                  labelText: 'Avatar name',
-                  prefixIcon: Icon(Icons.person_outline),
-                ),
-              ),
-              const SizedBox(height: 14),
-              DropdownButtonFormField<String>(
-                value: style,
-                decoration: const InputDecoration(labelText: 'Visual style'),
-                items: const [
-                  DropdownMenuItem(value: 'Cinematic',
-                      child: Text('Cinematic')),
-                  DropdownMenuItem(value: 'Photorealistic',
-                      child: Text('Photorealistic')),
-                  DropdownMenuItem(value: 'Animated',
-                      child: Text('Animated')),
-                  DropdownMenuItem(value: 'Stylized',
-                      child: Text('Stylized')),
-                ],
-                onChanged: (v) {
-                  if (v != null) setState(() => style = v);
-                },
-              ),
-              const SizedBox(height: 17),
-              PrimaryButton(
-                label: 'Create avatar preset',
-                icon: Icons.person_add_alt,
-                onPressed: add,
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 23),
-        Text('Your characters',
-            style: Theme.of(context).textTheme.titleLarge),
-        const SizedBox(height: 10),
-        for (final avatar in widget.store.avatars)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 10),
-            child: StudioPanel(
-              padding: const EdgeInsets.all(10),
-              child: ListTile(
-                leading: CircleAvatar(
-                    child: Text(avatar.name.isEmpty ? '?' : avatar.name[0].toUpperCase())),
-                title: Text(avatar.name),
-                subtitle: Text(avatar.style + ' • Demo preset'),
-                trailing: const Icon(Icons.chevron_right),
-              ),
-            ),
-          ),
-      ],
-    ),
-  );
-}
+export 'avatar_studio.dart' show AvatarsPage;
 
 class CreditsPage extends StatefulWidget {
   final HotIceStore store;
@@ -299,6 +195,21 @@ class SettingsPage extends StatelessWidget {
                       label: Text(option.label),
                       selected: store.accent == option,
                       onSelected: (_) => store.updateAccent(option),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 23),
+              Text('Typography', style: Theme.of(context).textTheme.titleLarge),
+              const SizedBox(height: 10),
+              Wrap(
+                spacing: 9,
+                runSpacing: 9,
+                children: [
+                  for (final option in StudioFont.values)
+                    ChoiceChip(
+                      label: Text(option.label),
+                      selected: store.font == option,
+                      onSelected: (_) => store.updateFont(option),
                     ),
                 ],
               ),
