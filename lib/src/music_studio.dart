@@ -6,7 +6,7 @@ import 'state.dart';
 /// Offline storyboard templates are deliberately NOT AI outputs or transcriptions.
 class MusicStoryboardTemplates {
   static List<StoryboardShot> fromBrief(String brief) {
-    final story = brief.trim().replaceAll(RegExp(r'\\s+'), ' ');
+    final story = brief.trim().replaceAll(RegExp(r'\s+'), ' ');
     if (story.isEmpty) return const [];
     return [
       StoryboardShot('Opening', 'Establish the world and mood of: ' + story, 6),
