@@ -34,8 +34,8 @@ class _HotIceAppState extends State<HotIceApp> {
         title: 'HOTICE',
         debugShowCheckedModeBanner: false,
         themeMode: store.themeMode,
-        theme: HotIceDesign.theme(Brightness.light, store.accent.color),
-        darkTheme: HotIceDesign.theme(Brightness.dark, store.accent.color),
+        theme: HotIceDesign.theme(Brightness.light, store.accent.color, fontFamily: store.font.family),
+        darkTheme: HotIceDesign.theme(Brightness.dark, store.accent.color, fontFamily: store.font.family),
         home: store.signedIn
             ? StudioShell(key: ValueKey(store.selectedAccount), store: store)
             : showLogin
