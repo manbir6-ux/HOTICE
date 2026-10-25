@@ -356,12 +356,13 @@ class _GenerationPageState extends State<GenerationPage> {
           children: [
             Text('Saved drafts',
                 style: Theme.of(context).textTheme.titleMedium),
-            if (widget.store.drafts.isEmpty)
+            if (!widget.store.drafts.any((item) => item.projectId == project))
               const Padding(
                 padding: EdgeInsets.only(top: 12),
                 child: Text('Your draft history will appear here.'),
               ),
-            for (final draft in widget.store.drafts.take(4))
+            for (final draft in widget.store.drafts
+                .where((item) => item.projectId == project).take(4))
               ListTile(
                 contentPadding: EdgeInsets.zero,
                 leading: const Icon(Icons.movie_creation_outlined),
