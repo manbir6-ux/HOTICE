@@ -227,6 +227,7 @@ class _GenerationPageState extends State<GenerationPage> {
               style: Theme.of(context).textTheme.titleLarge),
           const SizedBox(height: 15),
           DropdownButtonFormField<String>(
+            key: ValueKey(project),
             value: project,
             decoration: const InputDecoration(labelText: 'Project'),
             isExpanded: true,
