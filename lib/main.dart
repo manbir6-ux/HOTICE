@@ -158,11 +158,18 @@ class _StudioShellState extends State<StudioShell> {
                             style: Theme.of(context).textTheme.titleLarge,
                           ),
                         const Spacer(),
-                        TextButton.icon(
-                          onPressed: () => navigate(3),
-                          icon: const Icon(Icons.bolt_rounded, size: 19),
-                          label: Text(store.demoCredits.toString() + ' demo credits'),
-                        ),
+                        if (wide || MediaQuery.sizeOf(context).width >= 410)
+                          TextButton.icon(
+                            onPressed: () => navigate(3),
+                            icon: const Icon(Icons.bolt_rounded, size: 19),
+                            label: Text('${store.demoCredits} demo credits'),
+                          )
+                        else
+                          IconButton(
+                            tooltip: 'Demo credits: ${store.demoCredits}',
+                            onPressed: () => navigate(3),
+                            icon: const Icon(Icons.bolt_rounded),
+                          ),
                         IconButton(
                           tooltip: 'Switch account',
                           onPressed: () => navigate(5),
@@ -188,12 +195,17 @@ class _StudioShellState extends State<StudioShell> {
               labelBehavior:
                   NavigationDestinationLabelBehavior.onlyShowSelected,
               onDestinationSelected: navigate,
-              destinations: _nav.take(5).map((option) {
-                return NavigationDestination(
-                  icon: Icon(option.icon),
-                  label: option.label,
-                );
-              }).toList(),
+              destinations: [
+                for (final option in _nav.take(4))
+                  NavigationDestination(
+                    icon: Icon(option.icon),
+                    label: option.label,
+                  ),
+                const NavigationDestination(
+                  icon: Icon(Icons.more_horiz_rounded),
+                  label: 'More',
+                ),
+              ],
             ),
     );
   }
