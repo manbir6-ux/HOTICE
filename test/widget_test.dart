@@ -166,6 +166,21 @@ void main() {
   });
 
 
+  test('avatar rename preserves identity and safely rejects duplicate names', () {
+    final store = HotIceStore();
+    expect(store.addAvatar('Explorer', 'Cinematic',
+        identityNotes: 'Short curly hair'), isTrue);
+    expect(store.editAvatar('Explorer', 'Nova', 'Cinematic'), isFalse);
+    expect(store.editAvatar('Explorer', 'Explorer One', 'Animated',
+        identityNotes: 'Curly hair and a green jacket'), isTrue);
+    expect(store.avatars.any((a) =>
+        a.name == 'Explorer One' &&
+        a.identityNotes.contains('green jacket')), isTrue);
+    expect(store.removeAvatar('Explorer One'), isTrue);
+    expect(store.removeAvatar('Explorer One'), isFalse);
+    store.dispose();
+  });
+
   test('reusable avatar identity notes are added across demo video models', () {
     const avatar = StudioAvatar('Explorer', 'Cinematic',
         identityNotes: '  long  dark hair   and a blue jacket ');
