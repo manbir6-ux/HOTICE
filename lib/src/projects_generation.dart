@@ -16,6 +16,7 @@ class ProjectsPage extends StatelessWidget {
         content: TextField(
           controller: controller,
           autofocus: true,
+          maxLength: 60,
           decoration: const InputDecoration(labelText: 'Project title'),
         ),
         actions: [
@@ -31,6 +32,7 @@ class ProjectsPage extends StatelessWidget {
       ),
     );
     controller.dispose();
+    if (!context.mounted) return;
     if (title != null && title.trim().isNotEmpty) {
       onOpen(store.addProject(title));
     }
@@ -80,6 +82,8 @@ class ProjectsPage extends StatelessWidget {
                             FilmPreview(title: project.title),
                             const SizedBox(height: 12),
                             Text(project.title,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
                                 style: Theme.of(context).textTheme.titleMedium),
                             const SizedBox(height: 5),
                             const Text('Open project →',
@@ -121,7 +125,8 @@ class _GenerationPageState extends State<GenerationPage> {
   @override
   void initState() {
     super.initState();
-    project = widget.initialProjectId ?? widget.store.projects.first.id;
+    project = widget.initialProjectId ??
+        (widget.store.projects.isEmpty ? null : widget.store.projects.first.id);
   }
 
   @override
@@ -146,8 +151,17 @@ class _GenerationPageState extends State<GenerationPage> {
       );
       return;
     }
-    final selected = widget.store.projects.firstWhere((p) => p.id == project);
+    final matches = widget.store.projects.where((p) => p.id == project);
+    if (matches.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Project no longer exists. Choose another.')),
+      );
+      return;
+    }
+    final selected = matches.first;
     widget.store.queueDraft(GenerationDraft(
+      projectId: selected.id,
+      avatarName: avatarName,
       project: selected.title,
       prompt: prompt.text.trim(),
       model: model,
@@ -179,7 +193,10 @@ class _GenerationPageState extends State<GenerationPage> {
             decoration: const InputDecoration(labelText: 'Project'),
             isExpanded: true,
             items: widget.store.projects.map((item) =>
-              DropdownMenuItem(value: item.id, child: Text(item.title))
+              DropdownMenuItem(
+                value: item.id,
+                child: Text(item.title, overflow: TextOverflow.ellipsis),
+              )
             ).toList(),
             onChanged: (v) => setState(() => project = v),
           ),
@@ -281,8 +298,13 @@ class _GenerationPageState extends State<GenerationPage> {
                 contentPadding: EdgeInsets.zero,
                 leading: const Icon(Icons.movie_creation_outlined),
                 title: Text(draft.project),
-                subtitle: Text(draft.prompt,
-                    maxLines: 2, overflow: TextOverflow.ellipsis),
+                subtitle: Text(
+                  draft.avatarName == 'None'
+                      ? draft.prompt
+                      : '${draft.prompt}\nAvatar: ${draft.avatarName}',
+                  maxLines: 3,
+                  overflow: TextOverflow.ellipsis,
+                ),
                 trailing: Text(draft.durationSeconds.toString() + 's'),
               ),
           ],
