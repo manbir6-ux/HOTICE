@@ -108,6 +108,8 @@ class _AvatarsPageState extends State<AvatarsPage> {
   );
 }
 
+export 'avatar_studio.dart' show AvatarsPage;
+
 class CreditsPage extends StatefulWidget {
   final HotIceStore store;
   const CreditsPage({super.key, required this.store});
