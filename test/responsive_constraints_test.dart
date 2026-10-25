@@ -44,7 +44,9 @@ void main() {
             child: SizedBox(
               width: width,
               height: 780,
-              child: ProjectsPage(store: store, onOpen: (_) {}),
+              child: Material(
+                child: ProjectsPage(store: store, onOpen: (_) {}),
+              ),
             ),
           ),
         ),
