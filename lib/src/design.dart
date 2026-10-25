@@ -91,23 +91,24 @@ class StudioPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final dark = Theme.of(context).brightness == Brightness.dark;
-    return Container(
-      padding: padding,
-      decoration: BoxDecoration(
-        color: dark ? const Color(0xFF151A29) : Colors.white,
+    // ListTile, InkWell and popup menu splashes need the nearest Material
+    // surface to sit ABOVE the panel's background colour. A decorated
+    // Container between them and Material triggers an assertion on recent
+    // Flutter versions and can hide touch feedback on real devices.
+    return Material(
+      color: dark ? const Color(0xFF151A29) : Colors.white,
+      elevation: dark ? 6 : 3,
+      shadowColor: Colors.black.withValues(alpha: dark ? .20 : .07),
+      clipBehavior: Clip.antiAlias,
+      shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(
-          color: dark ? Colors.white.withOpacity(.075) : const Color(0xFFE4E8F2),
+        side: BorderSide(
+          color: dark
+              ? Colors.white.withValues(alpha: .075)
+              : const Color(0xFFE4E8F2),
         ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(dark ? .14 : .04),
-            blurRadius: 26,
-            offset: const Offset(0, 12),
-          ),
-        ],
       ),
-      child: child,
+      child: Padding(padding: padding, child: child),
     );
   }
 }
