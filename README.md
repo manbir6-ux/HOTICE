@@ -70,10 +70,10 @@ The platform scaffolds (Android/iOS) are intentionally not committed at this UI-
 See docs/BLUEPRINT.md and docs/PROGRESS.md.
 
 ## Current verification (26 Oct 2026)
-- Flutter static analysis and widget tests passed on the development branch. See [verified CI run 40201075329](https://github.com/parmtech/HOTICE/actions/runs/40201075329).
-- An **Android debug APK** was successfully compiled and uploaded as the GitHub Actions artifact `HOTICE-Android-Preview-APK` in that run. It is a testing build, not a signed Play Store release.
-- Additional avatar editing changes landed after that first build; consult [Actions](https://github.com/parmtech/HOTICE/actions) for the latest complete validation and APK artifact.
-- No on-device usability test has been reported yet. No real camera/depth scan, face matching, AI generation, audio sync, checkout, live authentication, or cloud persistence is connected.
+- Flutter static analysis, unit/widget tests, web validation, Android emulator smoke test, and debug APK build passed on [CI run 40246311392](https://github.com/parmtech/HOTICE/actions/runs/40246311392).
+- The **Android debug APK** artifact `HOTICE-Android-v0.2.0-run85` was uploaded in that run. It is a testing build, not a signed Play Store release.
+- Emulator smoke test passed for the tested journey; manual Android portrait/landscape and accessibility QA remain outstanding.
+- No manual on-device usability QA has been reported yet. No real camera/depth scan, face matching, AI generation, audio sync, checkout, live authentication, or cloud persistence is connected.
 - The Android and iOS native scaffolds are generated in CI/on demand; they are not committed to this repository.
 
 For continuation, see [docs/CONTINUE_HERE.md](docs/CONTINUE_HERE.md).

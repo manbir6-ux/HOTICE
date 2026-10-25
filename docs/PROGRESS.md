@@ -3,8 +3,8 @@
 > **Continuing HOTICE on another model?** First read [CONTINUE_HERE.md](CONTINUE_HERE.md) for the verified repo state, product decisions, blockers, and ordered next steps. Refresh the current branch and Actions status; this checklist may lag behind newer commits.
 
 ## Current verified snapshot — 26 October 2026
-- [x] **Flutter static analysis and widget tests passed** on the preview code branch: [Actions run 40201075329](https://github.com/parmtech/HOTICE/actions/runs/40201075329).
-- [x] A real Android **debug** APK was compiled and uploaded as artifact `HOTICE-Android-Preview-APK` in the same run. This does **not** mean a production-signed APK or device QA pass.
+- [x] **Flutter static analysis, unit/widget tests, static web validation, Android emulator smoke test, and Android debug APK build passed** on [Actions run 40246311392](https://github.com/parmtech/HOTICE/actions/runs/40246311392).
+- [x] Android **debug** APK artifact `HOTICE-Android-v0.2.0-run85` was compiled and uploaded in that run. It is not a production-signed APK. Emulator smoke passed; manual device QA remains open.
 - [x] Clear Normal Video / Music Video Studio mode switch with one freeform scene/story prompt in each mode.
 - [x] Music Video Studio text-only local storyboard with selectable styles and edit/reorder/save controls. **No song upload, lyric timing, beats, live AI planning or rendering.**
 - [x] One-tap demo entry without a fake password. All accounts/workspaces remain in-memory demos.
@@ -13,8 +13,8 @@
 - [x] Searchable Inspiration Library prototype in Flutter and static web; approved HOTICE-written prompts prefill a demo model and accept named Actor assignments.
 - [x] Public prompt entries require provenance, prompt reuse scope, attribution, media-license/embed and last-verified metadata; no third-party videos are included without item-level rights checks.
 - [x] Namecheap-compatible static website base plus documented PHP/MySQL admin, narrow API proxy and approved-feed/manual-review ingestion plan. These server components are not implemented.
-- [ ] Resolve current Android CI build failure caused by the pinned file picker package and reverify the newest APK/emulator jobs.
-- [ ] Final Android APK artifact of every later edit confirmed successful (check the newest [Actions runs](https://github.com/parmtech/HOTICE/actions)).
+- [x] Resolve the Android file picker build incompatibility and narrow-screen Studio header overflows; latest Android APK and emulator smoke checks passed on run 40246311392.
+- [x] Latest Android APK artifact confirmed for this revision; check [Actions](https://github.com/parmtech/HOTICE/actions) for future edits.
 - [ ] Manual Android portrait/landscape screen-reader and device UX QA.
 - [ ] Real camera capture / depth scan with informed consent, secure biometric deletion and provider-specific identity-reference testing.
 - [ ] Server-side auth, cloud persistence, secure uploads, real AI rendering and verified real provider costs.
@@ -30,7 +30,7 @@
 - [M4 — Stripe/PayPal/cards and credit ledger](https://github.com/parmtech/HOTICE/issues/4)
 - [M5 — Professional QA and release](https://github.com/parmtech/HOTICE/issues/5)
 
-**Verification note:** The early failing Actions run has been superseded. On 26 October 2026 Flutter static analysis/tests and the Android debug build passed on run 40201075329. Later editing commits need the latest Actions run checked separately.
+**Verification note:** Run 40246311392 passed Flutter analysis/tests, static web validation, the Android emulator smoke journey, and debug APK compilation/upload on 26 October 2026. The APK is a preview build; manual device QA remains outstanding.
 
 This checklist tracks source-level implementation separately from integration and release verification. A checked box means the specified source/UI task was written, **not** that it is production-ready.
 
