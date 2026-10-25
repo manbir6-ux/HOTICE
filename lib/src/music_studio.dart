@@ -159,6 +159,10 @@ class _MusicVideoStudioPageState extends State<MusicVideoStudioPage> {
       shots: List.unmodifiable(shots),
       createdAt: DateTime.now(),
     ));
+    // The editor can be embedded on its own during testing or future routing.
+    // Do not rely solely on an AnimatedBuilder in the parent to refresh the
+    // saved-storyboards list.
+    if (mounted) setState(() {});
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Story draft saved locally. No render job or credits used.')),
     );
