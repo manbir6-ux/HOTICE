@@ -149,6 +149,14 @@ class _InspirationPageState extends State<InspirationPage> {
                                           .textTheme
                                           .bodySmall,
                                     ),
+                                    if (item.attributionRequired) ...[
+                                      const SizedBox(height: 8),
+                                      Text('${item.creator} · ${item.promptLicense} · '
+                                          '${item.attributionText}',
+                                          style: Theme.of(context)
+                                              .textTheme
+                                              .bodySmall),
+                                    ],
                                     const SizedBox(height: 14),
                                     FilledButton.icon(
                                       onPressed: () => widget.onUse(item),

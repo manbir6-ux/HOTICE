@@ -61,12 +61,28 @@ def main():
         assert entry["modelId"] in valid_models
         assert entry["promptStatus"] == "editorial_original"
         assert entry["previewUrl"] is None, "External videos must be rights-cleared first"
+        provenance = entry["provenance"]
+        assert provenance["creator"]
+        assert provenance["promptOrigin"]
+        assert provenance["promptLicense"]
+        assert provenance["licenseEvidence"]
+        assert provenance["attributionRequired"] is True
+        assert provenance["attributionText"]
+        assert provenance["mediaLicense"] is None
+        assert provenance["embedAllowed"] is False
+        assert provenance["lastVerified"]
+        assert provenance["sourceUrl"] is None
         assert len(entry["prompt"]) >= 20
         assert len(set(entry["actorSlots"])) == len(entry["actorSlots"])
         for role in entry["actorSlots"]:
             assert re.fullmatch(r"Actor[0-9]+", role)
             assert "{{" + role + "}}" in entry["prompt"]
     assert len(ids) >= 5, "Catalog needs a meaningful collection"
+    assert "actorNameInput" in html and "actorAssignments" in html
+    script = (PUBLIC / "assets" / "site.js").read_text(encoding="utf-8")
+    assert "actorStorageKey" in script
+    assert "Assign your Actors to this prompt" in script
+    assert "prompt.replaceAll('{{' + role + '}}', actors[index])" in script
     assert (PUBLIC / ".htaccess").is_file()
     print(f"HOTICE static web verification successful: {len(ids)} templates, "
           f"{len(scanner.assets)} assets, no uncleared remote media.")

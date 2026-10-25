@@ -15,6 +15,19 @@
   let serial = 0;
   let sequence = false;
   let sceneDrafts = [];
+  const actorStorageKey = 'hotice.preview.actors.v1';
+  let actorNames = [];
+  try {
+    const saved = JSON.parse(localStorage.getItem(actorStorageKey) || '[]');
+    if (Array.isArray(saved)) {
+      actorNames = [...new Map(saved.filter((name) =>
+        typeof name === 'string' && name.trim() && name.trim().length <= 60)
+        .map((name) => name.trim())
+        .map((name) => [name.toLowerCase(), name])).values()];
+    }
+  } catch (_) {
+    // Browser storage can be disabled; Actors remain available for this session.
+  }
 
   function make(tag, className, label) {
     const node = document.createElement(tag);
@@ -26,6 +39,86 @@
   const search = get('librarySearch');
   const category = get('libraryCategory');
   const gallery = get('libraryCards');
+  function saveActorNames() {
+    try {
+      localStorage.setItem(actorStorageKey, JSON.stringify(actorNames));
+    } catch (_) {
+      status('sceneStatus', 'Actor list is available for this session only.');
+    }
+  }
+
+  function renderActors() {
+    const list = get('actorList');
+    if (!list) return;
+    list.replaceChildren();
+    if (!actorNames.length) list.append(make('span', 'editor-note', 'No Actors saved yet.'));
+    actorNames.forEach((name, index) => {
+      const row = make('span', 'actor-chip');
+      row.append(make('span', '', name));
+      const remove = make('button', 'actor-remove', 'Remove');
+      remove.type = 'button';
+      remove.setAttribute('aria-label', 'Remove Actor ' + name);
+      remove.addEventListener('click', () => {
+        actorNames.splice(index, 1);
+        saveActorNames();
+        renderActors();
+        renderActorAssignments();
+      });
+      row.append(remove);
+      list.append(row);
+    });
+  }
+
+  function renderActorAssignments() {
+    const root = get('actorAssignments');
+    if (!root) return;
+    root.replaceChildren();
+    const roles = selectedTemplate?.actorSlots || [];
+    if (!roles.length) return;
+    root.append(make('strong', '', 'Assign your Actors to this prompt'));
+    if (!actorNames.length) {
+      root.append(make('p', 'editor-note', 'Add named Actors above to fill the template roles.'));
+    }
+    roles.forEach((role, index) => {
+      const label = make('label', 'actor-role', 'Actor role ' + (index + 1));
+      const select = document.createElement('select');
+      select.dataset.role = role;
+      const empty = make('option', '', 'Choose a saved Actor');
+      empty.value = '';
+      select.append(empty);
+      actorNames.forEach((name) => {
+        const option = make('option', '', name);
+        option.value = name;
+        select.append(option);
+      });
+      label.append(select);
+      root.append(label);
+    });
+  }
+
+  get('addActor')?.addEventListener('click', () => {
+    const input = get('actorNameInput');
+    const name = input.value.trim();
+    if (!name) return status('sceneStatus', 'Enter an Actor name first.');
+    if (actorNames.some((item) => item.toLowerCase() === name.toLowerCase())) {
+      return status('sceneStatus', 'That Actor name is already saved.');
+    }
+    actorNames.push(name);
+    input.value = '';
+    saveActorNames();
+    renderActors();
+    renderActorAssignments();
+    status('sceneStatus', 'Actor saved on this device only.');
+  });
+
+  get('actorNameInput')?.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      get('addActor').click();
+    }
+  });
+  renderActors();
+
   function libraryFilter() {
     if (!gallery) return;
     gallery.replaceChildren();
@@ -45,16 +138,20 @@
       const description = make('p', '', item.prompt);
       const footer = make('p', 'editor-note',
         'Illustrative model: ' + item.modelId.replaceAll('_', ' ') +
-        ' · Actor roles: ' + item.actorSlots.length);
+        ' · Actor roles: ' + item.actorSlots.length +
+        ' · ' + item.provenance.creator + ' · ' + item.provenance.promptLicense +
+        (item.provenance.attributionRequired
+          ? ' · ' + item.provenance.attributionText
+          : ''));
       const button = make('button', 'button tiny', 'Use this prompt');
       button.type = 'button';
       button.addEventListener('click', () => {
         selectedTemplate = item;
         get('scenePrompt').value = item.prompt;
         get('sceneModel').value = item.modelId;
-        get('sceneActors').value = '';
+        renderActorAssignments();
         status('sceneStatus', item.actorSlots.length
-          ? 'Add ' + item.actorSlots.length + ' scene actor name(s) to replace template roles.'
+          ? 'Choose ' + item.actorSlots.length + ' saved Actor(s) for this scene.'
           : 'Prompt and model filled. Edit freely before saving.');
         get('studio').scrollIntoView({behavior: 'smooth', block: 'start'});
         get('scenePrompt').focus({preventScroll: true});
@@ -63,6 +160,15 @@
       gallery.append(card);
     }
   }
+
+  get('sceneModel')?.addEventListener('change', () => {
+    const limit = modelLimits[get('sceneModel').value];
+    if (selectedTemplate && selectedTemplate.actorSlots.length > limit) {
+      status('sceneStatus', 'This model preview has too few Actor slots for that prompt.');
+    } else {
+      status('sceneStatus', 'Model preview selected. No AI request is sent.');
+    }
+  });
 
   async function loadCatalog() {
     if (!gallery) return;
@@ -81,6 +187,22 @@
         typeof item.id === 'string' &&
         typeof item.prompt === 'string' &&
         item.prompt.length > 0 &&
+        item.provenance &&
+        typeof item.provenance.creator === 'string' &&
+        typeof item.provenance.promptOrigin === 'string' &&
+        typeof item.provenance.promptLicense === 'string' &&
+        typeof item.provenance.licenseEvidence === 'string' &&
+        typeof item.provenance.attributionRequired === 'boolean' &&
+        (!item.provenance.attributionRequired ||
+          typeof item.provenance.attributionText === 'string') &&
+        typeof item.provenance.embedAllowed === 'boolean' &&
+        typeof item.provenance.lastVerified === 'string' &&
+        (!item.provenance.sourceUrl ||
+          item.provenance.sourceUrl.startsWith('https://')) &&
+        (item.previewUrl === null ||
+          (item.origin === 'licensed' && item.provenance.embedAllowed &&
+            typeof item.provenance.mediaLicense === 'string' &&
+            Boolean(item.provenance.sourceUrl))) &&
         Object.hasOwn(modelLimits, item.modelId) &&
         Array.isArray(item.actorSlots));
       const categories = [...new Set(catalog.map((item) => item.category))];
@@ -104,33 +226,38 @@
   get('saveSceneDraft')?.addEventListener('click', () => {
     let prompt = get('scenePrompt').value.trim();
     const model = get('sceneModel').value;
-    const actors = get('sceneActors').value.split(',').map((x) => x.trim())
-      .filter(Boolean);
-    const unique = new Set(actors.map((name) => name.toLowerCase()));
+    const actors = [...get('actorAssignments').querySelectorAll('select[data-role]')]
+      .map((select) => select.value);
     if (!prompt) return status('sceneStatus', 'Describe your scene first.');
-    if (unique.size !== actors.length) {
-      return status('sceneStatus', 'Actor names must be unique.');
+    if (actors.some((name) => !name)) {
+      return status('sceneStatus', 'Choose a saved Actor for each template role.');
     }
     if (actors.length > modelLimits[model]) {
       return status('sceneStatus',
         'Selected model preview allows only ' + modelLimits[model] + ' actors.');
     }
-    const matches = [...prompt.matchAll(/\{\{Actor(\d+)\}\}/g)];
-    const required = Math.max(0, ...matches.map((m) => Number(m[1])));
-    if (required > actors.length || required > modelLimits[model]) {
-      return status('sceneStatus',
-        'Add ' + required + ' actor name(s) or remove unused actor placeholders.');
+    if (selectedTemplate && selectedTemplate.modelId !== model) {
+      return status('sceneStatus', 'Choose the template model preview to continue.');
     }
-    prompt = prompt.replace(/\{\{Actor(\d+)\}\}/g,
-      (_, number) => actors[Number(number) - 1]);
+    if (selectedTemplate && selectedTemplate.prompt === prompt) {
+      selectedTemplate.actorSlots.forEach((role, index) => {
+        prompt = prompt.replaceAll('{{' + role + '}}', actors[index]);
+      });
+    }
+    if (/\{\{Actor\d+\}\}/.test(prompt)) {
+      return status('sceneStatus', 'Choose a prompt template or remove unresolved Actor roles.');
+    }
     sceneDrafts.unshift({
       prompt, model, actors, sourceId: selectedTemplate?.id || null,
       createdAt: new Date().toISOString(),
     });
     selectedTemplate = null;
+    renderActorAssignments();
     status('sceneStatus', 'Saved in this browser session (' +
       sceneDrafts.length + ' ideas). No video was generated.');
   });
+
+  renderActorAssignments();
 
   // Local media timeline: imports, selection, preview, trims and ordering.
   // Not a production render/export encoder.

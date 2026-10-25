@@ -20,7 +20,19 @@
       "previewUrl": null,
       "origin": "hotice_original",
       "promptStatus": "editorial_original",
-      "publicationStatus": "approved"
+      "publicationStatus": "approved",
+      "provenance": {
+        "creator": "HOTICE Editorial",
+        "sourceUrl": null,
+        "promptOrigin": "HOTICE-written editorial original",
+        "promptLicense": "HOTICE prompt; remix within the HOTICE composer",
+        "licenseEvidence": "First-party editorial text; no third-party prompt or media copied",
+        "attributionRequired": true,
+        "attributionText": "HOTICE original prompt · no video attached",
+        "mediaLicense": null,
+        "embedAllowed": false,
+        "lastVerified": "2026-10-26"
+      }
     },
     {
       "id": "forest-chase",
@@ -40,7 +52,19 @@
       "previewUrl": null,
       "origin": "hotice_original",
       "promptStatus": "editorial_original",
-      "publicationStatus": "approved"
+      "publicationStatus": "approved",
+      "provenance": {
+        "creator": "HOTICE Editorial",
+        "sourceUrl": null,
+        "promptOrigin": "HOTICE-written editorial original",
+        "promptLicense": "HOTICE prompt; remix within the HOTICE composer",
+        "licenseEvidence": "First-party editorial text; no third-party prompt or media copied",
+        "attributionRequired": true,
+        "attributionText": "HOTICE original prompt · no video attached",
+        "mediaLicense": null,
+        "embedAllowed": false,
+        "lastVerified": "2026-10-26"
+      }
     },
     {
       "id": "rooftop-music",
@@ -59,7 +83,19 @@
       "previewUrl": null,
       "origin": "hotice_original",
       "promptStatus": "editorial_original",
-      "publicationStatus": "approved"
+      "publicationStatus": "approved",
+      "provenance": {
+        "creator": "HOTICE Editorial",
+        "sourceUrl": null,
+        "promptOrigin": "HOTICE-written editorial original",
+        "promptLicense": "HOTICE prompt; remix within the HOTICE composer",
+        "licenseEvidence": "First-party editorial text; no third-party prompt or media copied",
+        "attributionRequired": true,
+        "attributionText": "HOTICE original prompt · no video attached",
+        "mediaLicense": null,
+        "embedAllowed": false,
+        "lastVerified": "2026-10-26"
+      }
     },
     {
       "id": "fantasy-portal",
@@ -78,7 +114,19 @@
       "previewUrl": null,
       "origin": "hotice_original",
       "promptStatus": "editorial_original",
-      "publicationStatus": "approved"
+      "publicationStatus": "approved",
+      "provenance": {
+        "creator": "HOTICE Editorial",
+        "sourceUrl": null,
+        "promptOrigin": "HOTICE-written editorial original",
+        "promptLicense": "HOTICE prompt; remix within the HOTICE composer",
+        "licenseEvidence": "First-party editorial text; no third-party prompt or media copied",
+        "attributionRequired": true,
+        "attributionText": "HOTICE original prompt · no video attached",
+        "mediaLicense": null,
+        "embedAllowed": false,
+        "lastVerified": "2026-10-26"
+      }
     },
     {
       "id": "product-orbit",
@@ -95,7 +143,19 @@
       "previewUrl": null,
       "origin": "hotice_original",
       "promptStatus": "editorial_original",
-      "publicationStatus": "approved"
+      "publicationStatus": "approved",
+      "provenance": {
+        "creator": "HOTICE Editorial",
+        "sourceUrl": null,
+        "promptOrigin": "HOTICE-written editorial original",
+        "promptLicense": "HOTICE prompt; remix within the HOTICE composer",
+        "licenseEvidence": "First-party editorial text; no third-party prompt or media copied",
+        "attributionRequired": true,
+        "attributionText": "HOTICE original prompt · no video attached",
+        "mediaLicense": null,
+        "embedAllowed": false,
+        "lastVerified": "2026-10-26"
+      }
     },
     {
       "id": "clay-character",
@@ -114,7 +174,19 @@
       "previewUrl": null,
       "origin": "hotice_original",
       "promptStatus": "editorial_original",
-      "publicationStatus": "approved"
+      "publicationStatus": "approved",
+      "provenance": {
+        "creator": "HOTICE Editorial",
+        "sourceUrl": null,
+        "promptOrigin": "HOTICE-written editorial original",
+        "promptLicense": "HOTICE prompt; remix within the HOTICE composer",
+        "licenseEvidence": "First-party editorial text; no third-party prompt or media copied",
+        "attributionRequired": true,
+        "attributionText": "HOTICE original prompt · no video attached",
+        "mediaLicense": null,
+        "embedAllowed": false,
+        "lastVerified": "2026-10-26"
+      }
     }
   ]
 }

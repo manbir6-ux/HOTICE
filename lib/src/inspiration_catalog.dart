@@ -17,6 +17,16 @@ class InspirationTemplate {
     required this.prompt,
     required this.actorSlots,
     required this.promptStatus,
+    required this.creator,
+    required this.promptOrigin,
+    required this.promptLicense,
+    required this.licenseEvidence,
+    required this.attributionRequired,
+    required this.attributionText,
+    required this.embedAllowed,
+    required this.lastVerified,
+    this.sourceUrl,
+    this.mediaLicense,
     this.previewUrl,
   });
 
@@ -28,9 +38,24 @@ class InspirationTemplate {
   final String prompt;
   final List<String> actorSlots;
   final String promptStatus;
+  final String creator;
+  final String promptOrigin;
+  final String promptLicense;
+  final String licenseEvidence;
+  final bool attributionRequired;
+  final String attributionText;
+  final bool embedAllowed;
+  final String lastVerified;
+  final String? sourceUrl;
+  final String? mediaLicense;
   final String? previewUrl;
 
   static InspirationTemplate fromJson(Map<String, dynamic> json) {
+    final rawProvenance = json['provenance'];
+    if (rawProvenance is! Map<String, dynamic>) {
+      throw const FormatException('Template is missing provenance metadata.');
+    }
+    final provenance = rawProvenance;
     final entry = InspirationTemplate(
       id: json['id'] as String,
       title: json['title'] as String,
@@ -41,6 +66,16 @@ class InspirationTemplate {
       actorSlots:
           List<String>.unmodifiable((json['actorSlots'] as List).cast<String>()),
       promptStatus: json['promptStatus'] as String,
+      creator: provenance['creator'] as String,
+      promptOrigin: provenance['promptOrigin'] as String,
+      promptLicense: provenance['promptLicense'] as String,
+      licenseEvidence: provenance['licenseEvidence'] as String,
+      attributionRequired: provenance['attributionRequired'] as bool,
+      attributionText: provenance['attributionText'] as String,
+      embedAllowed: provenance['embedAllowed'] as bool,
+      lastVerified: provenance['lastVerified'] as String,
+      sourceUrl: provenance['sourceUrl'] as String?,
+      mediaLicense: provenance['mediaLicense'] as String?,
       previewUrl: json['previewUrl'] as String?,
     );
     if (entry.id.trim().isEmpty ||
@@ -49,6 +84,18 @@ class InspirationTemplate {
         entry.actorSlots.toSet().length != entry.actorSlots.length ||
         entry.actorSlots.any((slot) => !RegExp(r'^Actor[0-9]+$').hasMatch(slot)) ||
         entry.actorSlots.any((slot) => !entry.prompt.contains('{{$slot}}')) ||
+        entry.creator.trim().isEmpty ||
+        entry.promptOrigin.trim().isEmpty ||
+        entry.promptLicense.trim().isEmpty ||
+        entry.licenseEvidence.trim().isEmpty ||
+        (entry.attributionRequired && entry.attributionText.trim().isEmpty) ||
+        entry.lastVerified.trim().isEmpty ||
+        (entry.sourceUrl != null && !entry.sourceUrl!.startsWith('https://')) ||
+        (entry.previewUrl != null &&
+            (entry.mediaLicense == null ||
+                entry.mediaLicense!.trim().isEmpty ||
+                !entry.embedAllowed ||
+                entry.sourceUrl == null)) ||
         !demoVideoModels.any((m) => m.id == entry.modelId)) {
       throw const FormatException('Invalid HOTICE inspiration template.');
     }

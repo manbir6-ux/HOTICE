@@ -10,6 +10,10 @@
 - [x] One-tap demo entry without a fake password. All accounts/workspaces remain in-memory demos.
 - [x] Avatar Studio editing/deleting, identity descriptions reused in demo model prompts, and guided 3D capture **preparation** UI. **No real scan or likeness lock.**
 - [x] Additional font choices and corrected mobile More navigation.
+- [x] Searchable Inspiration Library prototype in Flutter and static web; approved HOTICE-written prompts prefill a demo model and accept named Actor assignments.
+- [x] Public prompt entries require provenance, prompt reuse scope, attribution, media-license/embed and last-verified metadata; no third-party videos are included without item-level rights checks.
+- [x] Namecheap-compatible static website base plus documented PHP/MySQL admin, narrow API proxy and approved-feed/manual-review ingestion plan. These server components are not implemented.
+- [ ] Resolve current Android CI build failure caused by the pinned file picker package and reverify the newest APK/emulator jobs.
 - [ ] Final Android APK artifact of every later edit confirmed successful (check the newest [Actions runs](https://github.com/parmtech/HOTICE/actions)).
 - [ ] Manual Android portrait/landscape screen-reader and device UX QA.
 - [ ] Real camera capture / depth scan with informed consent, secure biometric deletion and provider-specific identity-reference testing.

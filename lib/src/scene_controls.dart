@@ -86,20 +86,28 @@ class _SceneCastAndReferencesState extends State<SceneCastAndReferences> {
     };
     setState(() => _selecting = true);
     try {
-      final picked = await FilePicker.pickFiles(
-        type: FileType.custom,
-        allowedExtensions: allowed,
-        allowMultiple: remaining > 1,
-        withData: false,
-      );
-      if (!mounted || picked == null) return;
-      if (picked.files.length > remaining) {
+      final List<PlatformFile> pickedFiles;
+      if (remaining == 1) {
+        final selected = await FilePicker.pickFile(
+          type: FileType.custom,
+          allowedExtensions: allowed,
+        );
+        pickedFiles = selected == null ? <PlatformFile>[] : [selected];
+      } else {
+        pickedFiles = await FilePicker.pickFiles(
+          type: FileType.custom,
+          allowedExtensions: allowed,
+        );
+      }
+      if (!mounted || pickedFiles.isEmpty) return;
+      if (pickedFiles.length > remaining) {
         _notify('Select only $remaining more file(s) for this model.');
         return;
       }
       final accepted = <SceneReference>[];
-      for (final file in picked.files) {
-        if (file.size < 1 || file.size > 150 * 1024 * 1024) {
+      for (final file in pickedFiles) {
+        final size = file.lengthSync();
+        if (size == null || size < 1 || size > 150 * 1024 * 1024) {
           _notify('File must be nonempty and at most 150 MB in this demo.');
           return;
         }
@@ -111,7 +119,7 @@ class _SceneCastAndReferencesState extends State<SceneCastAndReferences> {
         accepted.add(SceneReference(
           type: type,
           fileName: file.name,
-          bytes: file.size,
+          bytes: size,
         ));
       }
       final updated = [...widget.references, ...accepted];

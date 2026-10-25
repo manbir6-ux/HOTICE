@@ -15,6 +15,14 @@ void main() {
     for (final item in all) {
       expect(item.prompt, isNotEmpty);
       expect(demoVideoModels.any((m) => m.id == item.modelId), isTrue);
+      expect(item.creator, isNotEmpty);
+      expect(item.promptOrigin, isNotEmpty);
+      expect(item.promptLicense, isNotEmpty);
+      expect(item.licenseEvidence, isNotEmpty);
+      expect(item.attributionRequired, isTrue);
+      expect(item.attributionText, contains('HOTICE'));
+      expect(item.embedAllowed, isFalse);
+      expect(item.lastVerified, '2026-10-26');
       expect(item.previewUrl, isNull,
           reason: 'Seed media must not masquerade as cleared videos.');
     }
@@ -39,6 +47,18 @@ void main() {
       ...entry,
       'publicationStatus': 'approved',
       'origin': 'hotice_original',
+      'provenance': <String, Object?>{
+        'creator': 'HOTICE Editorial',
+        'sourceUrl': null,
+        'promptOrigin': 'HOTICE-written editorial original',
+        'promptLicense': 'HOTICE prompt; remix within the HOTICE composer',
+        'licenseEvidence': 'First-party editorial text',
+        'attributionRequired': true,
+        'attributionText': 'HOTICE original prompt',
+        'mediaLicense': null,
+        'embedAllowed': false,
+        'lastVerified': '2026-10-26',
+      },
     };
     // Construct JSON by encoding so no source strings are interpolated as JSON.
     expect(InspirationCatalog.decode(
@@ -46,6 +66,17 @@ void main() {
     ), isEmpty);
     expect(() => InspirationCatalog.decode(
       '{"schemaVersion":1,"templates":[${_json(approved)},${_json(approved)}]}',
+    ), throwsFormatException);
+    expect(() => InspirationCatalog.decode(
+      '{"schemaVersion":1,"templates":[${_json({...approved}..remove('provenance'))}]}',
+    ), throwsFormatException);
+    final unlicensedPreview = {
+      ...approved,
+      'origin': 'licensed',
+      'previewUrl': 'https://example.test/video.mp4',
+    };
+    expect(() => InspirationCatalog.decode(
+      '{"schemaVersion":1,"templates":[${_json(unlicensedPreview)}]}',
     ), throwsFormatException);
   });
 
@@ -91,6 +122,8 @@ void main() {
     }
     final use = find.text('Use this prompt').first;
     expect(use, findsOneWidget);
+    expect(find.textContaining('HOTICE original prompt · no video attached'),
+        findsWidgets);
     await tester.ensureVisible(use);
     await tester.tap(use);
     await tester.pumpAndSettle();
@@ -102,7 +135,7 @@ void main() {
   });
 }
 
-String _json(Map<String, Object> source) {
+String _json(Map<String, Object?> source) {
   // Plain Flutter foundation JSON encoding, no platform dependencies.
   return const JsonEncoder().convert(source);
 }
