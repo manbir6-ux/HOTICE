@@ -22,7 +22,7 @@ void main() {
 
   test('catalog skips unapproved source and rejects duplicate IDs', () {
     const prefix = '{"schemaVersion":1,"templates":';
-    expect(InspirationCatalog.decode('$prefix[]'), isEmpty);
+    expect(InspirationCatalog.decode('$prefix[]}'), isEmpty);
     final entry = {
       'id': 'x',
       'title': 'Test',
