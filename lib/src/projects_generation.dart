@@ -4,6 +4,8 @@ import 'video_models.dart';
 import 'avatar_identity.dart';
 import 'design.dart';
 import 'dialogs.dart';
+import 'inspiration_catalog.dart';
+import 'scene_controls.dart';
 
 class ProjectsPage extends StatelessWidget {
   final HotIceStore store;
@@ -97,10 +99,14 @@ class ProjectsPage extends StatelessWidget {
 class GenerationPage extends StatefulWidget {
   final HotIceStore store;
   final String? initialProjectId;
+  final InspirationTemplate? initialTemplate;
+  final int templateRevision;
   const GenerationPage({
     super.key,
     required this.store,
     this.initialProjectId,
+    this.initialTemplate,
+    this.templateRevision = 0,
   });
   @override
   State<GenerationPage> createState() => _GenerationPageState();
@@ -116,13 +122,40 @@ class _GenerationPageState extends State<GenerationPage> {
   VideoModelProfile get profile => demoModelById(model);
   String ratio = '16:9';
   int seconds = 8;
-  String avatarName = 'None';
+  final List<SceneActor> sceneActors = [];
+  final List<SceneReference> references = [];
+  final negativePrompt = TextEditingController();
+  final seedText = TextEditingController();
+  bool soundEnabled = false;
+  bool advancedOpen = false;
+  InspirationTemplate? selectedTemplate;
 
   @override
   void initState() {
     super.initState();
     project = widget.initialProjectId ??
         (widget.store.projects.isEmpty ? null : widget.store.projects.first.id);
+    if (widget.initialTemplate != null) _applyTemplate(widget.initialTemplate!);
+  }
+
+  void _applyTemplate(InspirationTemplate entry) {
+    selectedTemplate = entry;
+    prompt.text = entry.prompt;
+    model = entry.modelId;
+    // Switching template replaces the previous cast/settings rather than
+    // silently carrying unsupported references to the next model.
+    sceneActors.clear();
+    references.clear();
+    negativePrompt.clear();
+    seedText.clear();
+    soundEnabled = false;
+    final capabilities = demoModelById(model);
+    if (!capabilities.durations.contains(seconds)) {
+      seconds = capabilities.durations.first;
+    }
+    if (!capabilities.ratiosFor(seconds).contains(ratio)) {
+      ratio = capabilities.ratiosFor(seconds).first;
+    }
   }
 
   void _selectProject(String? next) {
@@ -139,11 +172,17 @@ class _GenerationPageState extends State<GenerationPage> {
         widget.initialProjectId != oldWidget.initialProjectId) {
       _selectProject(widget.initialProjectId);
     }
+    if (widget.initialTemplate != null &&
+        widget.templateRevision != oldWidget.templateRevision) {
+      _applyTemplate(widget.initialTemplate!);
+    }
   }
 
   @override
   void dispose() {
     prompt.dispose();
+    negativePrompt.dispose();
+    seedText.dispose();
     super.dispose();
   }
 
@@ -155,6 +194,22 @@ class _GenerationPageState extends State<GenerationPage> {
       if (!next.ratiosFor(seconds).contains(ratio)) {
         ratio = next.ratiosFor(seconds).first;
       }
+      sceneActors.removeRange(
+        sceneActors.length > next.maxActors ? next.maxActors : sceneActors.length,
+        sceneActors.length,
+      );
+      references.removeWhere((ref) => next.maximumFor(ref.type) == 0);
+      for (final type in VideoAttachment.values) {
+        var used = 0;
+        references.removeWhere((ref) {
+          if (ref.type != type) return false;
+          used++;
+          return used > next.maximumFor(type);
+        });
+      }
+      if (!next.supportsNegativePrompt) negativePrompt.clear();
+      if (!next.supportsSeed) seedText.clear();
+      if (!next.supportsSound) soundEnabled = false;
     });
   }
 
@@ -170,42 +225,103 @@ class _GenerationPageState extends State<GenerationPage> {
   void save() {
     if (prompt.text.trim().isEmpty || project == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Choose a project and enter a prompt.')),
+        const SnackBar(content: Text('Choose a project and describe your scene.')),
       );
       return;
     }
     final matches = widget.store.projects.where((p) => p.id == project);
     if (matches.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Project no longer exists. Choose another.')),
+        const SnackBar(content: Text('Project not found. Choose another.')),
       );
       return;
     }
-    if (!profile.accepts(seconds: seconds, ratio: ratio)) {
+    final types = references.map((f) => f.type);
+    if (!profile.accepts(seconds: seconds, ratio: ratio, inputs: types) ||
+        sceneActors.length > profile.maxActors) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Unsupported output for this model.')),
+        const SnackBar(content: Text('Your actors or reference files exceed this model limit.')),
       );
       return;
     }
-    final selected = matches.first;
-    widget.store.queueDraft(GenerationDraft(
-      projectId: selected.id,
-      modelId: profile.id,
-      avatarName: avatarName,
-      project: selected.title,
-      prompt: AvatarPromptComposer.compose(
-        scenePrompt: prompt.text,
-        avatar: widget.store.avatars.where((a) => a.name == avatarName).firstOrNull,
-        model: profile,
-      ),
-      model: profile.label,
-      aspectRatio: ratio,
-      durationSeconds: seconds,
-      createdAt: DateTime.now(),
-    ));
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Scene draft saved. No AI request sent.')),
-    );
+    int? seed;
+    if (seedText.text.trim().isNotEmpty) {
+      seed = int.tryParse(seedText.text.trim());
+      if (seed == null || seed < 0 || !profile.supportsSeed) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Enter a valid non-negative seed for this model.')),
+        );
+        return;
+      }
+    }
+    if (negativePrompt.text.trim().isNotEmpty && !profile.supportsNegativePrompt) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Negative prompting is unavailable for this model.')),
+      );
+      return;
+    }
+    if (selectedTemplate != null &&
+        selectedTemplate!.prompt == prompt.text &&
+        sceneActors.length < selectedTemplate!.actorSlots.length) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(
+          'Assign ${selectedTemplate!.actorSlots.length} named actors to use this template.',
+        )),
+      );
+      return;
+    }
+    try {
+      var source = prompt.text.trim();
+      if (selectedTemplate != null && selectedTemplate!.prompt == source) {
+        source = InspirationPromptBuilder.compile(selectedTemplate!, sceneActors);
+      }
+      // Detect unresolved placeholders even when the user has edited the text.
+      final roleTokens = RegExp(r'\{\{Actor[0-9]+\}\}').allMatches(source).toList();
+      if (roleTokens.isNotEmpty) {
+        if (sceneActors.length < roleTokens.length) {
+          throw StateError('Assign the named actors before saving.');
+        }
+        final seen = <String>{};
+        var position = 0;
+        source = source.replaceAllMapped(RegExp(r'\{\{Actor[0-9]+\}\}'), (match) {
+          final token = match.group(0)!;
+          if (!seen.contains(token)) {
+            seen.add(token);
+          }
+          final index = seen.toList().indexOf(token);
+          position++;
+          return sceneActors[index].sceneName;
+        });
+      }
+      final selected = matches.first;
+      widget.store.queueDraft(GenerationDraft(
+        projectId: selected.id,
+        modelId: profile.id,
+        project: selected.title,
+        prompt: AvatarPromptComposer.composeActors(
+          scenePrompt: source,
+          cast: List<SceneActor>.unmodifiable(sceneActors),
+          library: widget.store.avatars,
+          model: profile,
+        ),
+        model: profile.label,
+        aspectRatio: ratio,
+        durationSeconds: seconds,
+        actors: List<SceneActor>.unmodifiable(sceneActors),
+        referenceFiles: List<SceneReference>.unmodifiable(references),
+        negativePrompt: negativePrompt.text.trim(),
+        seed: seed,
+        soundEnabled: soundEnabled,
+        createdAt: DateTime.now(),
+      ));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Scene draft saved. No AI request sent.')),
+      );
+    } on StateError catch (error) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error.message)),
+      );
+    }
   }
 
   @override
@@ -269,41 +385,31 @@ class _GenerationPageState extends State<GenerationPage> {
             style: TextStyle(fontSize: 12),
           ),
           const SizedBox(height: 13),
-          Text('Accepted reference attachments',
-              style: Theme.of(context).textTheme.titleSmall),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              if (profile.attachments.isEmpty)
-                const Chip(label: Text('Prompt only')),
-              for (final input in profile.attachments)
-                Chip(
-                  avatar: const Icon(Icons.attach_file, size: 17),
-                  label: Text(input.label),
-                ),
-            ],
-          ),
-          const SizedBox(height: 7),
-          const Text(
-            'Capability preview only. No attachment picker or upload is connected.',
-            style: TextStyle(fontSize: 12),
-          ),
-          const SizedBox(height: 13),
-          DropdownButtonFormField<String>(
-            value: avatarName,
-            decoration: const InputDecoration(labelText: 'Avatar'),
-            items: avatars.map((name) =>
-                DropdownMenuItem(value: name, child: Text(name))).toList(),
-            onChanged: (v) {
-              if (v != null) setState(() => avatarName = v);
-            },
-          ),
-          const SizedBox(height: 8),
-          const Text(
-            'Selecting a character adds its reusable appearance notes to the saved scene prompt. True face locking requires future image/3D model integrations.',
-            style: TextStyle(fontSize: 12),
+          if (selectedTemplate != null) ...[
+            const SizedBox(height: 9),
+            Text('Template selected: ${selectedTemplate!.title}',
+                style: Theme.of(context).textTheme.bodySmall),
+            if (selectedTemplate!.actorSlots.isNotEmpty)
+              Text('Add ${selectedTemplate!.actorSlots.length} named actors in order '
+                  'to replace template role placeholders.',
+                  style: Theme.of(context).textTheme.bodySmall),
+          ],
+          const SizedBox(height: 16),
+          SceneCastAndReferences(
+            profile: profile,
+            actors: widget.store.avatars,
+            cast: sceneActors,
+            references: references,
+            onCastChanged: (items) => setState(() {
+              sceneActors
+                ..clear()
+                ..addAll(items);
+            }),
+            onReferencesChanged: (items) => setState(() {
+              references
+                ..clear()
+                ..addAll(items);
+            }),
           ),
           const SizedBox(height: 17),
           Text('Aspect ratio', style: Theme.of(context).textTheme.titleSmall),
@@ -325,6 +431,45 @@ class _GenerationPageState extends State<GenerationPage> {
                 onSelected: (_) => changeDuration(item),
               ),
           ]),
+          const SizedBox(height: 15),
+          ExpansionTile(
+            initiallyExpanded: false,
+            title: const Text('Advanced settings'),
+            subtitle: Text('${profile.label} · ${profile.priceBand}'),
+            childrenPadding: const EdgeInsets.only(bottom: 15),
+            children: [
+              Text('Model selection is currently illustrative. Real provider '
+                  'capabilities and actual prices will come from the secure admin catalog.',
+                  style: Theme.of(context).textTheme.bodySmall),
+              const SizedBox(height: 11),
+              if (profile.supportsNegativePrompt)
+                TextField(
+                  controller: negativePrompt,
+                  maxLength: 350,
+                  maxLines: 2,
+                  decoration: const InputDecoration(
+                    labelText: 'Negative prompt (optional)',
+                  ),
+                ),
+              if (profile.supportsSeed)
+                TextField(
+                  controller: seedText,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(labelText: 'Seed (optional)'),
+                ),
+              if (profile.supportsSound)
+                SwitchListTile(
+                  title: const Text('Sound generation preview'),
+                  subtitle: const Text('No audio will be generated yet.'),
+                  value: soundEnabled,
+                  onChanged: (value) => setState(() => soundEnabled = value),
+                ),
+              const SizedBox(height: 9),
+              Text('Supports ${profile.maxActors} actors; '
+                  '${profile.attachments.length} reference media types.',
+                  style: Theme.of(context).textTheme.bodySmall),
+            ],
+          ),
           const SizedBox(height: 14),
           Builder(builder: (context) {
             final quote = profile.quoteCredits(seconds, ratio);
