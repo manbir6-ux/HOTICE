@@ -304,6 +304,21 @@ class SettingsPage extends StatelessWidget {
                     ),
                 ],
               ),
+              const SizedBox(height: 23),
+              Text('Typography', style: Theme.of(context).textTheme.titleLarge),
+              const SizedBox(height: 10),
+              Wrap(
+                spacing: 9,
+                runSpacing: 9,
+                children: [
+                  for (final option in StudioFont.values)
+                    ChoiceChip(
+                      label: Text(option.label),
+                      selected: store.font == option,
+                      onSelected: (_) => store.updateFont(option),
+                    ),
+                ],
+              ),
               const SizedBox(height: 21),
               const DemoNotice(
                 'Theme preferences are held in memory. Persistence and cloud synchronisation come later.',
