@@ -120,11 +120,15 @@ class WelcomePage extends StatelessWidget {
                                   onPressed: onDemoStart,
                                 ),
                                 const SizedBox(height: 8),
-                                TextButton.icon(
-                                  onPressed: onStart,
-                                  icon: const Icon(Icons.alternate_email),
-                                  label: const Text('Continue with a demo email',
-                                      style: TextStyle(color: Colors.white)),
+                                FittedBox(
+                                  alignment: Alignment.centerLeft,
+                                  fit: BoxFit.scaleDown,
+                                  child: TextButton.icon(
+                                    onPressed: onStart,
+                                    icon: const Icon(Icons.alternate_email),
+                                    label: const Text('Continue with a demo email',
+                                        style: TextStyle(color: Colors.white)),
+                                  ),
                                 ),
                                 const SizedBox(height: 17),
                                 const Text(
