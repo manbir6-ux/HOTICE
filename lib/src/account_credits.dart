@@ -21,10 +21,12 @@ class _AvatarsPageState extends State<AvatarsPage> {
 
   void add() {
     if (name.text.trim().isEmpty) return;
-    widget.store.addAvatar(name.text.trim(), style);
-    name.clear();
+    final added = widget.store.addAvatar(name.text.trim(), style);
+    if (added) name.clear();
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Demo avatar preset added.')),
+      SnackBar(content: Text(added
+          ? 'Demo avatar preset added.'
+          : 'Use a unique, non-empty avatar name.')),
     );
   }
 
@@ -94,7 +96,7 @@ class _AvatarsPageState extends State<AvatarsPage> {
               padding: const EdgeInsets.all(10),
               child: ListTile(
                 leading: CircleAvatar(
-                    child: Text(avatar.name[0].toUpperCase())),
+                    child: Text(avatar.name.isEmpty ? '?' : avatar.name[0].toUpperCase())),
                 title: Text(avatar.name),
                 subtitle: Text(avatar.style + ' • Demo preset'),
                 trailing: const Icon(Icons.chevron_right),
@@ -338,7 +340,12 @@ class _AccountsPageState extends State<AccountsPage> {
   }
 
   void add() {
-    if (!email.text.contains('@')) return;
+    if (!isValidDemoEmail(email.text)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Enter a valid demo email address.')),
+      );
+      return;
+    }
     widget.store.addAccount(email.text);
     email.clear();
     ScaffoldMessenger.of(context).showSnackBar(
@@ -357,7 +364,7 @@ class _AccountsPageState extends State<AccountsPage> {
           subtitle: 'Add and switch between studio profiles.',
         ),
         const DemoNotice(
-          'Profiles are local UI examples; no real registration, identity verification or separate account storage exists yet.',
+          'Profiles are local UI examples with separate in-memory projects and avatars; no real registration, identity verification or cloud storage exists yet.',
         ),
         const SizedBox(height: 19),
         StudioPanel(
