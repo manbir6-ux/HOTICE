@@ -104,6 +104,9 @@ class _StudioShellState extends State<StudioShell> {
   String? openedProjectId;
 
   void navigate(int index) {
+    // IndexedStack deliberately keeps form inputs alive; never leave a
+    // hidden editor focused or its Android keyboard covering the next tab.
+    FocusManager.instance.primaryFocus?.unfocus();
     setState(() {
       selected = index;
       if (index == 0) openedProjectId = null;
