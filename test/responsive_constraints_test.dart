@@ -95,7 +95,7 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    final field = find.widgetWithText(TextField, 'Describe your music video');
+    final field = find.byType(TextField).first;
     await tester.enterText(field, 'Original forest music video');
     final preview = find.text('Preview storyboard');
     await tester.ensureVisible(preview);
@@ -108,7 +108,10 @@ void main() {
     expect(store.musicPlans, hasLength(1));
 
     await tester.enterText(field, 'Changed draft text');
-    final original = find.text('Original forest music video');
+    final original = find.descendant(
+      of: find.byType(ListTile),
+      matching: find.text('Original forest music video'),
+    ).first;
     await tester.ensureVisible(original);
     await tester.tap(original);
     await tester.pumpAndSettle();
