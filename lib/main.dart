@@ -4,6 +4,8 @@ import 'src/design.dart';
 import 'src/pages.dart';
 import 'src/generation_hub.dart';
 import 'src/diagnostics.dart';
+import 'src/inspiration_catalog.dart';
+import 'src/inspiration_page.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -102,6 +104,17 @@ class StudioShell extends StatefulWidget {
 class _StudioShellState extends State<StudioShell> {
   int selected = 0;
   String? openedProjectId;
+  InspirationTemplate? selectedTemplate;
+  int templateRevision = 0;
+
+  void useInspiration(InspirationTemplate item) {
+    FocusManager.instance.primaryFocus?.unfocus();
+    setState(() {
+      selectedTemplate = item;
+      templateRevision++;
+      selected = 1;
+    });
+  }
 
   void navigate(int index) {
     // IndexedStack deliberately keeps form inputs alive; never leave a
@@ -208,6 +221,11 @@ class _StudioShellState extends State<StudioShell> {
                             icon: const Icon(Icons.bolt_rounded),
                           ),
                         IconButton(
+                          tooltip: 'Inspiration Library',
+                          onPressed: () => navigate(6),
+                          icon: const Icon(Icons.auto_stories_rounded),
+                        ),
+                        IconButton(
                           tooltip: 'Switch account',
                           onPressed: () => navigate(5),
                           icon: const CircleAvatar(
@@ -236,11 +254,14 @@ class _StudioShellState extends State<StudioShell> {
                         GenerationHubPage(
                           store: store,
                           initialProjectId: openedProjectId,
+                          initialTemplate: selectedTemplate,
+                          templateRevision: templateRevision,
                         ),
                         AvatarsPage(store: store),
                         CreditsPage(store: store),
                         SettingsPage(store: store),
                         AccountsPage(store: store),
+                        InspirationPage(onUse: useInspiration),
                       ],
                     ),
                   ),
@@ -253,7 +274,7 @@ class _StudioShellState extends State<StudioShell> {
       bottomNavigationBar: wide
           ? null
           : NavigationBar(
-              selectedIndex: selected <= 4 ? selected : 4,
+              selectedIndex: selected <= 3 ? selected : 4,
               labelBehavior:
                   NavigationDestinationLabelBehavior.onlyShowSelected,
               onDestinationSelected: (index) {
@@ -267,6 +288,11 @@ class _StudioShellState extends State<StudioShell> {
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
+                          ListTile(
+                            leading: const Icon(Icons.auto_stories_rounded),
+                            title: const Text('Inspiration Library'),
+                            onTap: () { Navigator.pop(ctx); navigate(6); },
+                          ),
                           ListTile(
                             leading: const Icon(Icons.tune_rounded),
                             title: const Text('Settings & appearance'),
@@ -310,8 +336,9 @@ class _Destination {
 const _nav = <_Destination>[
   _Destination(0, 'Projects', Icons.grid_view_rounded),
   _Destination(1, 'Generate', Icons.movie_creation_outlined),
-  _Destination(2, 'Avatars', Icons.face_retouching_natural_outlined),
+  _Destination(2, 'Actors', Icons.face_retouching_natural_outlined),
   _Destination(3, 'Credits', Icons.toll_outlined),
   _Destination(4, 'Settings', Icons.tune_rounded),
   _Destination(5, 'Accounts', Icons.people_outline_rounded),
+  _Destination(6, 'Inspiration', Icons.auto_stories_outlined),
 ];
