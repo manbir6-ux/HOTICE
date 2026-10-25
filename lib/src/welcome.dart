@@ -28,7 +28,7 @@ class WelcomePage extends StatelessWidget {
               if (constraints.maxWidth < 120) {
                 return const SizedBox.shrink();
               }
-              if (constraints.maxWidth < 280) {
+              if (constraints.maxWidth < 400) {
                 return SingleChildScrollView(
                   padding: const EdgeInsets.all(10),
                   child: Column(
@@ -40,6 +40,12 @@ class WelcomePage extends StatelessWidget {
                         child: Text('Create without limits.',
                             style: TextStyle(color: Colors.white,
                                 fontSize: 32, fontWeight: FontWeight.w800)),
+                      ),
+                      const SizedBox(height: 12),
+                      const Text(
+                        'Cinematic video, recurring characters and your creative studio.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: Color(0xFFCAD3E7), fontSize: 14),
                       ),
                       const SizedBox(height: 12),
                       FittedBox(
@@ -55,6 +61,10 @@ class WelcomePage extends StatelessWidget {
                           child: const Text('Continue with demo email'),
                         ),
                       ),
+                      if (constraints.maxWidth >= 280) ...[
+                        const SizedBox(height: 18),
+                        const FilmPreview(title: 'YOUR STORY. YOUR UNIVERSE.'),
+                      ],
                     ],
                   ),
                 );
