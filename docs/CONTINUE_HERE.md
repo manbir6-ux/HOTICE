@@ -1,0 +1,91 @@
+# HOTICE — CONTINUE HERE / NEXT MODEL HANDOFF
+**Last reviewed:** 2026-10-26 (Australia/Sydney)  
+**Repository:** https://github.com/manbir6-ux/HOTICE  
+**Branch:** `main`  
+**Verified baseline before this handoff:** `70608d76b4eca33ca7c1149e84af93361eae8784`  
+**Project name / product credit:** HOTICE (not ParmTech)  
+**GitHub account:** `manbir6-ux`
+
+> **For any future ChatGPT model or developer:** Read THIS file first, then `README.md`, `docs/BLUEPRINT.md`, `docs/PROGRESS.md`, GitHub Issues and the latest commits/Actions. This is a dated handoff, NOT a guarantee of the current state forever. Re-fetch `main` and workflow results before making claims, and update this file after meaningful completed work. Continue existing code; don't restart the project.
+
+## 1. What HOTICE is
+HOTICE is a premium Flutter-based AI filmmaking application. Its target product includes a **Normal Video generator** and a separate **Music Video Studio**, accounts, projects, avatar/character library, several AI models/providers, and HOTICE Credits. The user wants striking, premium, professional UI (not cheap or generic), multiple themes, a proper app logo/icon, and an **Android APK for testing the UI before production integrations**. Branding within the product should be HOTICE. Do not add ParmTech product branding.
+
+**Important scope distinction:** The currently committed application is a **local UI prototype**. It is not a working AI renderer or music editor, and is not production secure. The user previously requested no APK while developing screens, but later explicitly **requested a testable Android build**. That later instruction supersedes the earlier one.
+
+## 2. Verified implementation committed to GitHub (baseline)
+- `lib/main.dart`: Flutter entry point, responsive navigation shell, welcome/sign-in routing, projects/generation/avatars/credits/settings/account navigation. Small-screen header work has been committed.
+- `lib/src/welcome.dart`: premium welcome, demo sign-in and register forms. No real authentication. Email validation improved.
+- `lib/src/projects_generation.dart`: projects grid and create-project dialog; single free-text scene prompt, project selection, demo workflow/model chooser, duration, ratio, avatar and scene-draft saving with placeholder previews. No live video.
+- `lib/src/account_credits.dart`: avatar presets, credits purchase **preview**, settings/themes, local demo accounts.
+- `lib/src/state.dart`: ChangeNotifier in-memory app state; model draft data; demo workspace separation per account, guards for stale project selections, duplicate avatar rejection, email validation.
+- `lib/src/video_models.dart`: **demo-only** model capability records and validation for selected model -> allowed duration/aspect combinations -> attachment types -> generation quote. The names/limits in this file are invented UI demo profiles, NOT verified vendor models. No real provider pricing is configured.
+- `lib/src/design.dart`: reusable HOTICE theme and styling elements.
+- `test/widget_test.dart`: approximately **12 declared tests** (unit and widgets), including credits conversion, account separation, avatar uniqueness, missing projects, and model capabilities. Their presence in source does NOT mean tests passed.
+- `pubspec.yaml`: Flutter-only base dependencies and lint/test dependencies.
+- `.github/workflows/flutter_ci.yml`: Flutter analysis and widget test workflow (NOT an APK build workflow).
+- `docs/BLUEPRINT.md`, `docs/PROGRESS.md`, `docs/CREDITS.md`: architecture, roadmap, state and branding.
+
+### Bug fixes already written to source
+Account-switching demo data previously mixed between profiles; state was isolated in memory by profile. Duplicate avatar names could break the dropdown and are now rejected. Empty project lists could break the generator and are now guarded. Selected avatar is saved on scene drafts, email validation improved, and the mobile header/navigation was adjusted. **These fixes were code-reviewed/committed, but not yet proven with successful Flutter execution or device QA.** Do not call them verified bug-free.
+
+## 3. Verified blocking issues as of this handoff
+- GitHub Actions had **13 runs in the checked history, all with `conclusion: failure`** as of the baseline above. Latest observed: https://github.com/manbir6-ux/HOTICE/actions/runs/40197914603
+- GitHub connector returned a failed `validate` job without steps; prior attempts to obtain job logs returned 404/not found. **Do not infer this is a Flutter compilation failure** without evidence: investigate repository Actions permissions/runner provisioning first, then rerun.
+- No `flutter analyze` or `flutter test` has been confirmed passing. No real-device responsive QA has been confirmed.
+- The repo has **no checked-in `android/` or `ios/` platform scaffold** at the verified baseline. The README instructs `flutter create . --project-name hotice --platforms=android,ios`.
+- No Android APK artifact or verified download link exists in the checked GitHub repository. No dedicated APK build workflow existed at baseline. Do not claim otherwise.
+- No backend, database, live auth, AI video generation, audio transcription, file upload, production credit ledger, Stripe or PayPal checkout are implemented.
+- A HOTICE visual concept/logo mockup was generated during conversation, but its assets have NOT been confirmed committed or installed as an application icon. A real scalable brand asset and platform icons still need implementation.
+
+## 4. User decisions to PRESERVE
+### One prompt box
+The user **rejected multiple separate advanced prompt detail boxes**. Keep **one main free-text prompt field**, so users can describe location, action, camera angle, characters, background and lighting in one place. There may be concise settings for model, duration, ratio, attachments, etc. Do not reintroduce unnecessary location/character-placement subforms.
+
+### Two creative modes
+**A. Normal Video**: generate from text prompt, optionally with a user-selected photo/reference when the chosen provider supports that input; allow model, compatible aspect ratio/duration and supported attachments; show accurate credit quote once verified.
+
+**B. Music Video Studio** (separate workflow; mostly NOT implemented):
+1. User uploads a song and/or gives a brief story / creative description of the intended music video.
+2. Choose an actual text/script-planning AI provider (ChatGPT/OpenAI, Gemini/Google, Claude/Anthropic or another *supported* integration; do not present any as connected until implemented).
+3. Audio analysis/transcription should derive lyrics with accurate **word timings**, musical sections, mood and beats. Transcriptions, timing and mood are not guaranteed accurate without an actual tested audio pipeline; allow user corrections.
+4. AI creates a cohesive narrative, full scene-by-scene script and timestamps, proposing shots synced to audio. User can review/edit/reorder/regenerate individual scenes.
+5. Allow a choice among **roughly 7–8 visual directions**, for instance realistic, cinematic, anime, cartoon/animation, stylized 3D, fantasy, animals/creatures, illustrative; exact list may be refined. Animal is a content category rather than a universal visual rendering style: clarify gently in UI.
+6. Scene duration often 4–10 seconds when supported by the selected rendering model; preserve beat/lyric sync, character facial consistency and optional lip-sync.
+7. Use a timeline for scenes, transitions and final synchronized music video rendering; keep editing flexible enough to extend later.
+
+**Music Video Studio is a product requirement, not a completed feature.** Do not label the current app as already supporting song upload or lyric extraction.
+
+### Dynamic model rules and credits
+- **1 HOTICE Credit = USD $0.01**. USD $10 minimum purchase = **1,000 Credits**, USD $20 = 2,000, USD $50 = 5,000. These are purchase values, not video-rendering charges.
+- **Every actual AI video model has its own allowed durations, aspect ratios, reference attachment types, provider limitations and generation credit cost.** Update controls immediately when a model changes; check valid *duration + aspect ratio pairs*, not each dimension in isolation. Reject unsupported input combinations before submitting jobs.
+- Current `video_models.dart` includes only sample/demo capability profiles. Do not invent/advertise official model specs or per-generation credit prices. For production verify **up-to-date official API docs** for each provider and model version, then control the capability/pricing catalog from the backend and validate requests server-side. Unconfigured price = **unavailable**, not free.
+- The model used to analyze a song and write a music video script is separate from the model that renders video clips; the user can select each as supported.
+- Payment UI offers Stripe, PayPal and credit/debit cards but **does not process real payments**. Never credit user wallets from unverified client actions; use server-side verified webhooks and an immutable ledger.
+- User expects multiple accounts with safe switching, attractive themes, useful avatar creation, and consistent faces across scenes. Real auth and storage are still pending.
+
+## 5. Immediate next tasks — in order
+1. **Reverify the repository** after this handoff, because the owner may edit it externally. Read existing files and open GitHub Actions run details.
+2. **Unblock CI**. Inspect why `validate` jobs are failing with no observable steps (repo Actions policy, permissions, runners, account limitations, YAML; avoid speculative diagnosis). Run `flutter pub get`, `flutter analyze`, and `flutter test` in a real Flutter environment. Fix confirmed compile, lint, test, overflow and lifecycle bugs; commit changes with evidence. Do not equate adding tests with passing tests.
+3. **Prepare a genuine testable Android APK** as now requested: establish Android scaffold and build workflow; include HOTICE branding/app icon; run build, check for a successfully uploaded artifact, share the **actual** GitHub Actions artifact or release link only after confirmed success. No fabricated APK link. Ideally test on narrow Android sizes.
+4. **Add explicit mode selection** for Normal Video and Music Video Studio. Implement a high-quality **demo-only** Music Video Studio UI: song selector (only if a file picker is actually wired), story brief, planning-model picker, visual-style options, transcript/timing placeholder, scene storyboard/timeline and status. Clearly distinguish placeholders from working features.
+5. Verify behavior of model-dependent duration, ratio, reference attachments and generation credit display. For models with no price quote, state price unavailable and do not enable billable generation.
+6. Then design and implement real server-side auth, per-account persistent data, uploads/storage, song transcription and alignment, script-generation AI, model/provider adapters, video render jobs, payment systems and cost controls. Put secrets on server, never in the Flutter client.
+7. Update this handoff, `docs/PROGRESS.md`, GitHub Issues and README as each stage is **actually** tested/finished. Share meaningful commits, exact run IDs and build links.
+
+## 6. GitHub tracking
+- [Issue #1 — Flutter CI + responsive QA](https://github.com/manbir6-ux/HOTICE/issues/1)
+- [Issue #2 — Auth and persistent workspace](https://github.com/manbir6-ux/HOTICE/issues/2)
+- [Issue #3 — Real video models, avatars, uploads](https://github.com/manbir6-ux/HOTICE/issues/3)
+- [Issue #4 — Stripe, PayPal, HOTICE Credits ledger](https://github.com/manbir6-ux/HOTICE/issues/4)
+- [Issue #5 — QA and app release](https://github.com/manbir6-ux/HOTICE/issues/5)
+- [Latest Actions runs](https://github.com/manbir6-ux/HOTICE/actions)
+- [Full blueprint](BLUEPRINT.md)
+- [Existing progress checklist](PROGRESS.md)
+
+**Status labels:** `Implemented in source` != `CI passed` != `running on Android` != `production ready`. Do not calculate a misleading completion percentage while feature scope is growing.
+
+## 7. Prompt to start the NEXT model (copy verbatim or paraphrase)
+> Continue the existing HOTICE Flutter application in https://github.com/manbir6-ux/HOTICE. Start by reading docs/CONTINUE_HERE.md and docs/PROGRESS.md, and inspect the latest commits, issues and GitHub Actions. Don't recreate the project or assume old status is current. First diagnose and fix failed Flutter CI/tests, then prepare a real debug/test Android APK with HOTICE icon, then add separate Normal Video and Music Video Studio UI according to the handoff. Respect one free-form prompt box, model-specific valid durations/aspects/attachments, no invented provider fees, 1 HOTICE Credit = US$0.01, USD $10 minimum purchase, HOTICE-only branding, no live AI/payments claims. Commit tested fixes, link actual results and keep GitHub handoff/progress updated.
+
+_This file records the verified state at the moment of writing and the user's explicit future requirements. If later commits conflict, verify those changes first._
