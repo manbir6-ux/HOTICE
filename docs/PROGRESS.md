@@ -1,5 +1,14 @@
 # HOTICE — Development Progress
 
+## GitHub task threads
+- [M1 — Flutter CI and responsive QA](https://github.com/manbir6-ux/HOTICE/issues/1)
+- [M2 — Secure accounts and persistence](https://github.com/manbir6-ux/HOTICE/issues/2)
+- [M3 — AI video generation and avatars](https://github.com/manbir6-ux/HOTICE/issues/3)
+- [M4 — Stripe/PayPal/cards and credit ledger](https://github.com/manbir6-ux/HOTICE/issues/4)
+- [M5 — Professional QA and release](https://github.com/manbir6-ux/HOTICE/issues/5)
+
+**Verification note:** The first GitHub Actions run on the initial Flutter UI commit reported failure without job logs being available through the connector. Code is committed but analysis and widget tests are **not yet verified passing**. Track root cause in M1.
+
 This checklist tracks source-level implementation separately from integration and release verification. A checked box means the specified source/UI task was written, **not** that it is production-ready.
 
 ## M1 — UI foundation
