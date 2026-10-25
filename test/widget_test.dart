@@ -229,6 +229,78 @@ void main() {
     store.dispose();
   });
 
+  testWidgets('unsaved scene prompts stay with their own projects',
+      (tester) async {
+    final store = HotIceStore();
+    final second = store.addProject('Second film');
+    addTearDown(store.dispose);
+
+    Future<void> openProject(String id) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: GenerationPage(
+              store: store,
+              initialProjectId: id,
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+    }
+
+    await openProject('demo-film');
+    final field = find.widgetWithText(TextField, 'Describe your shot');
+    await tester.enterText(field, 'FIRST film scene, not for second film');
+    await openProject(second);
+    expect(tester.widget<TextField>(field).controller!.text, isEmpty);
+    await tester.enterText(field, 'SECOND film separate scene');
+    await openProject('demo-film');
+    expect(tester.widget<TextField>(field).controller!.text,
+        'FIRST film scene, not for second film');
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('music project changes retain independent story and shots',
+      (tester) async {
+    final store = HotIceStore();
+    final second = store.addProject('Second music film');
+    addTearDown(store.dispose);
+
+    Future<void> openProject(String id) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: MusicVideoStudioPage(
+              store: store,
+              initialProjectId: id,
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+    }
+
+    await openProject('demo-film');
+    final field = find.widgetWithText(TextField, 'Describe your music video');
+    await tester.enterText(field, 'First music story');
+    final preview = find.text('Preview storyboard');
+    await tester.ensureVisible(preview);
+    await tester.tap(preview);
+    await tester.pumpAndSettle();
+    expect(find.text('Opening'), findsOneWidget);
+
+    await openProject(second);
+    expect(tester.widget<TextField>(field).controller!.text, isEmpty);
+    expect(find.text('Opening'), findsNothing);
+    await tester.enterText(field, 'Second music story');
+    await openProject('demo-film');
+    expect(tester.widget<TextField>(field).controller!.text,
+        'First music story');
+    expect(find.text('Opening'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('guest demo enters projects without a fake password', (tester) async {
     await tester.pumpWidget(const HotIceApp());
     await tester.tap(find.text('Explore demo studio'));

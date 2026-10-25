@@ -104,6 +104,9 @@ class _StudioShellState extends State<StudioShell> {
   String? openedProjectId;
 
   void navigate(int index) {
+    // IndexedStack deliberately keeps form inputs alive; never leave a
+    // hidden editor focused or its Android keyboard covering the next tab.
+    FocusManager.instance.primaryFocus?.unfocus();
     setState(() {
       selected = index;
       if (index == 0) openedProjectId = null;
@@ -114,20 +117,7 @@ class _StudioShellState extends State<StudioShell> {
   Widget build(BuildContext context) {
     final store = widget.store;
     final wide = MediaQuery.sizeOf(context).width >= 850;
-    final destination = switch (selected) {
-      0 => ProjectsPage(
-          store: store,
-          onOpen: (id) => setState(() {
-            openedProjectId = id;
-            selected = 1;
-          }),
-        ),
-      1 => GenerationHubPage(store: store, initialProjectId: openedProjectId),
-      2 => AvatarsPage(store: store),
-      3 => CreditsPage(store: store),
-      4 => SettingsPage(store: store),
-      _ => AccountsPage(store: store),
-    };
+
 
     return Scaffold(
       body: SafeArea(
@@ -154,7 +144,7 @@ class _StudioShellState extends State<StudioShell> {
                           child: ListTile(
                             selected: selected == option.index,
                             selectedTileColor:
-                                store.accent.color.withOpacity(.13),
+                                store.accent.color.withValues(alpha: .13),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(14),
                             ),
@@ -228,7 +218,32 @@ class _StudioShellState extends State<StudioShell> {
                       ],
                     ),
                   ),
-                  Expanded(child: destination),
+                  Expanded(
+                    // Switching tabs must not dispose text editors. Keep each
+                    // page mounted within this account's keyed StudioShell.
+                    // Only the selected page is painted/interactable.
+                    child: IndexedStack(
+                      index: selected,
+                      sizing: StackFit.expand,
+                      children: [
+                        ProjectsPage(
+                          store: store,
+                          onOpen: (id) => setState(() {
+                            openedProjectId = id;
+                            selected = 1;
+                          }),
+                        ),
+                        GenerationHubPage(
+                          store: store,
+                          initialProjectId: openedProjectId,
+                        ),
+                        AvatarsPage(store: store),
+                        CreditsPage(store: store),
+                        SettingsPage(store: store),
+                        AccountsPage(store: store),
+                      ],
+                    ),
+                  ),
                 ],
               ),
             ),

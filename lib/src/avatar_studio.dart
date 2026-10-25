@@ -333,8 +333,15 @@ class _AvatarsPageState extends State<AvatarsPage> {
             children: [
               Icon(Icons.collections_bookmark_outlined, color: accent),
               const SizedBox(width: 8),
-              Text('Character library',
-                  style: Theme.of(context).textTheme.titleLarge),
+              Expanded(
+                child: Text(
+                  'Character library',
+                  maxLines: 2,
+                  softWrap: true,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.titleLarge,
+                ),
+              ),
             ],
           ),
           const SizedBox(height: 12),
