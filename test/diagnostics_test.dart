@@ -14,7 +14,8 @@ void main() {
 
     final report = HoticeDiagnostics.report();
     expect(report, contains('PRIMARY render failure'));
-    expect(report, contains('framework.dart:6281'));
+    expect(report, contains('hotice/dummy.dart:12'));
+    expect(report, contains('_dependents.isEmpty secondary failure'));
     expect(report, contains('HOTICE 0.2.0'));
     expect(HoticeDiagnostics.firstException, contains('PRIMARY'));
   });
