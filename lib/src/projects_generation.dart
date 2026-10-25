@@ -49,7 +49,8 @@ class ProjectsPage extends StatelessWidget {
                 : box.maxWidth > 520
                     ? 2
                     : 1;
-            final width = (box.maxWidth - (columns - 1) * 14) / columns;
+            final width = ((box.maxWidth - (columns - 1) * 14) /
+                    columns).clamp(0.0, 1160.0);
             return Wrap(
               spacing: 14,
               runSpacing: 14,
@@ -57,12 +58,16 @@ class ProjectsPage extends StatelessWidget {
                 for (final project in store.projects)
                   SizedBox(
                     width: width,
-                    child: InkWell(
-                      onTap: () => onOpen(project.id),
-                      borderRadius: BorderRadius.circular(23),
-                      child: StudioPanel(
-                        padding: const EdgeInsets.all(12),
-                        child: Column(
+                    child: StudioPanel(
+                      padding: EdgeInsets.zero,
+                      // InkWell must be INSIDE the StudioPanel Material surface
+                      // for visible feedback and correct Material ancestry.
+                      child: InkWell(
+                        onTap: () => onOpen(project.id),
+                        borderRadius: BorderRadius.circular(23),
+                        child: Padding(
+                          padding: const EdgeInsets.all(12),
+                          child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             FilmPreview(title: project.title),
@@ -75,6 +80,7 @@ class ProjectsPage extends StatelessWidget {
                             const Text('Open project →',
                                 style: TextStyle(fontSize: 12)),
                           ],
+                          ),
                         ),
                       ),
                     ),
