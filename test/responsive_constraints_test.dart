@@ -16,7 +16,7 @@ void main() {
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetDevicePixelRatio);
     addTearDown(tester.view.resetPhysicalSize);
-    for (final width in <double>[360, 393, 411, 432, 480]) {
+    for (final width in <double>[360, 393, 411, 432, 480, 600, 849]) {
       tester.view.physicalSize = Size(width, 820);
       await tester.pumpWidget(MaterialApp(home: StudioShell(store: store)));
       await tester.pumpAndSettle();

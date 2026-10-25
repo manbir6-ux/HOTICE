@@ -208,7 +208,7 @@ class _StudioShellState extends State<StudioShell> {
                             child: Text('TEST $hoticeAppVersion · $hoticeBuildId',
                               style: const TextStyle(fontSize: 10)),
                           ),
-                        if (wide || MediaQuery.sizeOf(context).width >= 480)
+                        if (wide || MediaQuery.sizeOf(context).width >= 600)
                           TextButton.icon(
                             onPressed: () => navigate(3),
                             icon: const Icon(Icons.bolt_rounded, size: 19),
