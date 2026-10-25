@@ -21,7 +21,33 @@ class HotProject {
 class StudioAvatar {
   final String name;
   final String style;
-  const StudioAvatar(this.name, this.style);
+  final String identityNotes;
+  const StudioAvatar(this.name, this.style, {this.identityNotes = ''});
+}
+
+class StoryboardShot {
+  final String title;
+  final String description;
+  final int estimatedSeconds;
+  const StoryboardShot(this.title, this.description, this.estimatedSeconds);
+}
+
+/// A text-only offline planning draft. There is no audio or AI analysis.
+class MusicVideoPlan {
+  final String projectId;
+  final String storyBrief;
+  final String visualStyle;
+  final String avatarName;
+  final List<StoryboardShot> shots;
+  final DateTime createdAt;
+  const MusicVideoPlan({
+    required this.projectId,
+    required this.storyBrief,
+    required this.visualStyle,
+    required this.avatarName,
+    required this.shots,
+    required this.createdAt,
+  });
 }
 
 class GenerationDraft {
@@ -79,6 +105,7 @@ class _DemoWorkspace {
   final List<HotProject> projects = [];
   final List<StudioAvatar> avatars = [];
   final List<GenerationDraft> drafts = [];
+  final List<MusicVideoPlan> musicPlans = [];
   int demoCredits = 1000;
 }
 
@@ -102,6 +129,7 @@ class HotIceStore extends ChangeNotifier {
   List<HotProject> get projects => _workspace.projects;
   List<StudioAvatar> get avatars => _workspace.avatars;
   List<GenerationDraft> get drafts => _workspace.drafts;
+  List<MusicVideoPlan> get musicPlans => _workspace.musicPlans;
 
   void signInDemo(String email) {
     final normalized = email.trim().toLowerCase();
@@ -146,14 +174,14 @@ class HotIceStore extends ChangeNotifier {
   }
 
   /// Avoid duplicate values in the avatar dropdown.
-  bool addAvatar(String name, String style) {
+  bool addAvatar(String name, String style, {String identityNotes = ''}) {
     final trimmed = name.trim();
     if (trimmed.isEmpty ||
         trimmed.toLowerCase() == 'none' ||
         avatars.any((a) => a.name.toLowerCase() == trimmed.toLowerCase())) {
       return false;
     }
-    avatars.insert(0, StudioAvatar(trimmed, style));
+    avatars.insert(0, StudioAvatar(trimmed, style, identityNotes: identityNotes.trim()));
     notifyListeners();
     return true;
   }
@@ -176,6 +204,21 @@ class HotIceStore extends ChangeNotifier {
       }
     }
     drafts.insert(0, draft);
+    notifyListeners();
+  }
+
+  void saveMusicPlan(MusicVideoPlan plan) {
+    if (!projects.any((p) => p.id == plan.projectId)) {
+      throw StateError('The selected project is not in this demo workspace.');
+    }
+    if (plan.storyBrief.trim().isEmpty || plan.shots.isEmpty) {
+      throw StateError('A story and storyboard shots are required.');
+    }
+    if (plan.avatarName != 'None' &&
+        !avatars.any((avatar) => avatar.name == plan.avatarName)) {
+      throw StateError('Avatar belongs to a different workspace.');
+    }
+    musicPlans.insert(0, plan);
     notifyListeners();
   }
 
