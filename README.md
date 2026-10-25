@@ -7,8 +7,19 @@
 HOTICE is a premium multi-AI video creation workspace. This repository contains the **first-stage, functional UI prototype**: navigation, forms, local project drafts, account profile switching, avatar presets, pricing selections and theme controls. The app does **not** yet generate video, accept payments, or authenticate users with a server.
 
 **Brand / product credit:** HOTICE  
-**Repository:** manbir6-ux/HOTICE  
+**Repository:** parmtech/HOTICE  
 **App name:** HOTICE (no space or hyphen).
+
+## UI improvements — Android test preview (26 Oct 2026)
+This development branch adds:
+- **One-tap guest demo**, no fake password requirement, plus optional demo email for isolated workspaces.
+- **Two generator modes**: Normal Video and a separate offline Music Video Studio with eight visual directions.
+- **Editable offline storyboard outlines** (no song analysis, real lyrics, or AI scene planning yet).
+- **Avatar Studio** with named character profiles, edit/delete, reusable identity notes, multi-angle face-capture preparation, and text-only identity guidance passed to each demo video model.
+- Improved small-screen navigation, typography options and visible demo/payment limitations.
+- An Android debug APK build workflow with a generated HOTICE-branded preview launcher icon.
+
+See [Avatar 3D capture and identity design contract](docs/AVATAR_IDENTITY_AND_SCAN.md) for the planned real capture pipeline, model adapter requirements, and privacy gates.
 
 ## Screens included
 - Welcome / onboarding.
@@ -54,5 +65,11 @@ The platform scaffolds (Android/iOS) are intentionally not committed at this UI-
 
 See docs/BLUEPRINT.md and docs/PROGRESS.md.
 
-## Current verification
-The project is still a source-code UI prototype, not a verified Android APK. GitHub Actions runs observed through 2026-10-26 were failing; successful Flutter analysis/tests and APK build have not been confirmed. The next requested milestone is a **testable Android UI build** with HOTICE branding. See [the handoff](docs/CONTINUE_HERE.md) and [Actions](https://github.com/manbir6-ux/HOTICE/actions).
+## Current verification (26 Oct 2026)
+- Flutter static analysis and widget tests passed on the development branch. See [verified CI run 40201075329](https://github.com/parmtech/HOTICE/actions/runs/40201075329).
+- An **Android debug APK** was successfully compiled and uploaded as the GitHub Actions artifact `HOTICE-Android-Preview-APK` in that run. It is a testing build, not a signed Play Store release.
+- Additional avatar editing changes landed after that first build; consult [Actions](https://github.com/parmtech/HOTICE/actions) for the latest complete validation and APK artifact.
+- No on-device usability test has been reported yet. No real camera/depth scan, face matching, AI generation, audio sync, checkout, live authentication, or cloud persistence is connected.
+- The Android and iOS native scaffolds are generated in CI/on demand; they are not committed to this repository.
+
+For continuation, see [docs/CONTINUE_HERE.md](docs/CONTINUE_HERE.md).
