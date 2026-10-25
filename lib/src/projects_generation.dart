@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'state.dart';
+import 'video_models.dart';
 import 'design.dart';
 
 class ProjectsPage extends StatelessWidget {
@@ -117,7 +118,9 @@ class GenerationPage extends StatefulWidget {
 class _GenerationPageState extends State<GenerationPage> {
   final prompt = TextEditingController();
   String? project;
-  String model = 'Cinematic Draft';
+  String model = 'cinematic_demo';
+
+  VideoModelProfile get profile => demoModelById(model);
   String ratio = '16:9';
   int seconds = 8;
   String avatarName = 'None';
@@ -144,6 +147,26 @@ class _GenerationPageState extends State<GenerationPage> {
     super.dispose();
   }
 
+  void changeModel(String nextId) {
+    final next = demoModelById(nextId);
+    setState(() {
+      model = next.id;
+      if (!next.durations.contains(seconds)) seconds = next.durations.first;
+      if (!next.ratiosFor(seconds).contains(ratio)) {
+        ratio = next.ratiosFor(seconds).first;
+      }
+    });
+  }
+
+  void changeDuration(int value) {
+    setState(() {
+      seconds = value;
+      if (!profile.ratiosFor(seconds).contains(ratio)) {
+        ratio = profile.ratiosFor(seconds).first;
+      }
+    });
+  }
+
   void save() {
     if (prompt.text.trim().isEmpty || project == null) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -158,13 +181,20 @@ class _GenerationPageState extends State<GenerationPage> {
       );
       return;
     }
+    if (!profile.accepts(seconds: seconds, ratio: ratio)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Unsupported output for this model.')),
+      );
+      return;
+    }
     final selected = matches.first;
     widget.store.queueDraft(GenerationDraft(
       projectId: selected.id,
+      modelId: profile.id,
       avatarName: avatarName,
       project: selected.title,
       prompt: prompt.text.trim(),
-      model: model,
+      model: profile.label,
       aspectRatio: ratio,
       durationSeconds: seconds,
       createdAt: DateTime.now(),
@@ -176,6 +206,10 @@ class _GenerationPageState extends State<GenerationPage> {
 
   @override
   Widget build(BuildContext context) {
+    final validProjects = widget.store.projects;
+    if (!validProjects.any((item) => item.id == project)) {
+      project = validProjects.isEmpty ? null : validProjects.first.id;
+    }
     final avatars = [
       'None',
       for (final item in widget.store.avatars) item.name,
@@ -214,18 +248,42 @@ class _GenerationPageState extends State<GenerationPage> {
           const SizedBox(height: 13),
           DropdownButtonFormField<String>(
             value: model,
-            decoration: const InputDecoration(labelText: 'Workflow preset'),
-            items: const [
-              DropdownMenuItem(
-                value: 'Cinematic Draft', child: Text('Cinematic Draft')),
-              DropdownMenuItem(
-                value: 'Character Focus', child: Text('Character Focus')),
-              DropdownMenuItem(
-                value: 'Storyboard Mode', child: Text('Storyboard Mode')),
+            isExpanded: true,
+            decoration: const InputDecoration(labelText: 'Model preview'),
+            items: [
+              for (final item in demoVideoModels)
+                DropdownMenuItem(value: item.id, child: Text(item.label)),
             ],
             onChanged: (v) {
-              if (v != null) setState(() => model = v);
+              if (v != null) changeModel(v);
             },
+          ),
+          const SizedBox(height: 9),
+          const Text(
+            'These are demo capability profiles, not connected AI providers.',
+            style: TextStyle(fontSize: 12),
+          ),
+          const SizedBox(height: 13),
+          Text('Accepted reference attachments',
+              style: Theme.of(context).textTheme.titleSmall),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              if (profile.attachments.isEmpty)
+                const Chip(label: Text('Prompt only')),
+              for (final input in profile.attachments)
+                Chip(
+                  avatar: const Icon(Icons.attach_file, size: 17),
+                  label: Text(input.label),
+                ),
+            ],
+          ),
+          const SizedBox(height: 7),
+          const Text(
+            'Capability preview only. No attachment picker or upload is connected.',
+            style: TextStyle(fontSize: 12),
           ),
           const SizedBox(height: 13),
           DropdownButtonFormField<String>(
@@ -240,7 +298,7 @@ class _GenerationPageState extends State<GenerationPage> {
           const SizedBox(height: 17),
           Text('Aspect ratio', style: Theme.of(context).textTheme.titleSmall),
           Wrap(spacing: 8, children: [
-            for (final item in ['16:9', '9:16', '1:1'])
+            for (final item in profile.ratiosFor(seconds))
               ChoiceChip(
                 label: Text(item),
                 selected: ratio == item,
@@ -250,13 +308,23 @@ class _GenerationPageState extends State<GenerationPage> {
           const SizedBox(height: 12),
           Text('Duration', style: Theme.of(context).textTheme.titleSmall),
           Wrap(spacing: 8, children: [
-            for (final item in [4, 8, 10])
+            for (final item in profile.durations)
               ChoiceChip(
-                label: Text(item.toString() + ' seconds'),
+                label: Text('$item seconds'),
                 selected: seconds == item,
-                onSelected: (_) => setState(() => seconds = item),
+                onSelected: (_) => changeDuration(item),
               ),
           ]),
+          const SizedBox(height: 14),
+          Builder(builder: (context) {
+            final quote = profile.quoteCredits(seconds, ratio);
+            return Text(
+              quote == null
+                  ? 'Generation cost: not configured. No charge will be made.'
+                  : 'Estimated cost: $quote HOTICE Credits (demo only)',
+              style: Theme.of(context).textTheme.bodyMedium,
+            );
+          }),
           const SizedBox(height: 20),
           PrimaryButton(
             label: 'Save generation draft',
