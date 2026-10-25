@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:hotice/main.dart';
 import 'package:hotice/src/projects_generation.dart';
 import 'package:hotice/src/state.dart';
+import 'package:hotice/src/video_models.dart';
 
 void main() {
   test('credit prices use integer US cents', () {
@@ -73,6 +74,88 @@ void main() {
         model: 'Cinematic Draft',
         aspectRatio: '16:9',
         durationSeconds: 8,
+        createdAt: DateTime(2026, 10, 26),
+      )),
+      throwsStateError,
+    );
+    store.dispose();
+  });
+
+  test('model profiles filter duration and ratios as a pair', () {
+    final cinematic = demoModelById('cinematic_demo');
+    final character = demoModelById('character_demo');
+    final storyboard = demoModelById('storyboard_demo');
+
+    expect(cinematic.durations, [4, 8, 10]);
+    expect(cinematic.supportsOutput(10, '1:1'), isFalse);
+    expect(cinematic.supportsOutput(10, '16:9'), isTrue);
+    expect(character.durations, [4, 8]);
+    expect(character.supportsOutput(10, '16:9'), isFalse);
+    expect(storyboard.supportsOutput(8, '9:16'), isFalse);
+    expect(storyboard.supportsOutput(8, '1:1'), isTrue);
+  });
+
+  test('attachment types are validated per model', () {
+    final cinematic = demoModelById('cinematic_demo');
+    final character = demoModelById('character_demo');
+    final storyboard = demoModelById('storyboard_demo');
+
+    expect(cinematic.supportsAttachments([VideoAttachment.image]), isTrue);
+    expect(cinematic.supportsAttachments([VideoAttachment.audio]), isFalse);
+    expect(character.supportsAttachments([VideoAttachment.video]), isTrue);
+    expect(storyboard.supportsAttachments([VideoAttachment.image]), isFalse);
+  });
+
+  test('unverified pricing must not produce a generation credit quote', () {
+    for (final model in demoVideoModels) {
+      for (final seconds in model.durations) {
+        for (final ratio in model.ratiosFor(seconds)) {
+          expect(model.quoteCredits(seconds, ratio), isNull);
+        }
+      }
+    }
+  });
+
+  test('quoted credits require a matching verified configuration', () {
+    const profile = VideoModelProfile(
+      id: 'verified_test',
+      label: 'Internal quote test',
+      formatsBySeconds: {
+        4: ['16:9'],
+        8: ['16:9'],
+      },
+      creditsByFormat: {'4|16:9': 45},
+    );
+    expect(profile.quoteCredits(4, '16:9'), 45);
+    expect(profile.quoteCredits(8, '16:9'), isNull);
+    expect(profile.quoteCredits(4, '9:16'), isNull);
+  });
+
+  test('draft storage rejects unsupported model settings or media', () {
+    final store = HotIceStore();
+    expect(
+      () => store.queueDraft(GenerationDraft(
+        projectId: 'demo-film',
+        project: 'Untitled cinematic film',
+        prompt: 'Test scene',
+        model: 'Character Focus · Demo',
+        modelId: 'character_demo',
+        aspectRatio: '16:9',
+        durationSeconds: 10,
+        createdAt: DateTime(2026, 10, 26),
+      )),
+      throwsStateError,
+    );
+    expect(
+      () => store.queueDraft(GenerationDraft(
+        projectId: 'demo-film',
+        project: 'Untitled cinematic film',
+        prompt: 'Test scene',
+        model: 'Cinematic Draft · Demo',
+        modelId: 'cinematic_demo',
+        requestedAttachments: [VideoAttachment.audio],
+        aspectRatio: '16:9',
+        durationSeconds: 4,
         createdAt: DateTime(2026, 10, 26),
       )),
       throwsStateError,
