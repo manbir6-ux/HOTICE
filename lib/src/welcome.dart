@@ -22,6 +22,43 @@ class WelcomePage extends StatelessWidget {
         child: SafeArea(
           child: LayoutBuilder(
             builder: (context, constraints) {
+              // During Android route transitions the first frame may arrive
+              // with zero or tiny constraints; never build full-width branding
+              // and fixed-size controls into an impossible layout.
+              if (constraints.maxWidth < 120) {
+                return const SizedBox.shrink();
+              }
+              if (constraints.maxWidth < 280) {
+                return SingleChildScrollView(
+                  padding: const EdgeInsets.all(10),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      const Center(child: FittedBox(child: HotIceLogo(compact: true))),
+                      const SizedBox(height: 20),
+                      const FittedBox(
+                        child: Text('Create without limits.',
+                            style: TextStyle(color: Colors.white,
+                                fontSize: 32, fontWeight: FontWeight.w800)),
+                      ),
+                      const SizedBox(height: 12),
+                      FittedBox(
+                        child: TextButton.icon(
+                          onPressed: onDemoStart,
+                          icon: const Icon(Icons.play_arrow_rounded),
+                          label: const Text('Explore demo studio'),
+                        ),
+                      ),
+                      FittedBox(
+                        child: TextButton(
+                          onPressed: onStart,
+                          child: const Text('Continue with demo email'),
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              }
               // Flutter can briefly lay out a new route with zero width.
               // Never subtract padding from a transient 0px constraint.
               // The previous `constraints.maxWidth - 50` produced -50.0,
