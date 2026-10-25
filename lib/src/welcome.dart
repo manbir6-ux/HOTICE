@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'design.dart';
 import 'state.dart';
+import 'diagnostics.dart';
 
 class WelcomePage extends StatelessWidget {
   final VoidCallback onStart;
@@ -84,7 +85,7 @@ class WelcomePage extends StatelessWidget {
                                 ),
                                 const SizedBox(height: 17),
                                 const Text(
-                                  'STUDIO UI PROTOTYPE • RENDERING COMING LATER',
+                                  'TEST BUILD $hoticeAppVersion · $hoticeBuildId\nSTUDIO UI PROTOTYPE • RENDERING COMING LATER',
                                   style: TextStyle(
                                     color: Colors.white70,
                                     letterSpacing: 1,
