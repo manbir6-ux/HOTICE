@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'src/state.dart';
 import 'src/design.dart';
 import 'src/pages.dart';
+import 'src/generation_hub.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -36,7 +37,7 @@ class _HotIceAppState extends State<HotIceApp> {
         theme: HotIceDesign.theme(Brightness.light, store.accent.color),
         darkTheme: HotIceDesign.theme(Brightness.dark, store.accent.color),
         home: store.signedIn
-            ? StudioShell(store: store)
+            ? StudioShell(key: ValueKey(store.selectedAccount), store: store)
             : showLogin
                 ? LoginPage(
                     onBack: () => setState(() => showLogin = false),
@@ -44,6 +45,7 @@ class _HotIceAppState extends State<HotIceApp> {
                   )
                 : WelcomePage(
                     onStart: () => setState(() => showLogin = true),
+                    onDemoStart: () => store.signInDemo('creator@hotice.demo'),
                   ),
       ),
     );
@@ -81,7 +83,7 @@ class _StudioShellState extends State<StudioShell> {
             selected = 1;
           }),
         ),
-      1 => GenerationPage(store: store, initialProjectId: openedProjectId),
+      1 => GenerationHubPage(store: store, initialProjectId: openedProjectId),
       2 => AvatarsPage(store: store),
       3 => CreditsPage(store: store),
       4 => SettingsPage(store: store),
@@ -194,7 +196,34 @@ class _StudioShellState extends State<StudioShell> {
               selectedIndex: selected <= 4 ? selected : 4,
               labelBehavior:
                   NavigationDestinationLabelBehavior.onlyShowSelected,
-              onDestinationSelected: navigate,
+              onDestinationSelected: (index) {
+                if (index < 4) {
+                  navigate(index);
+                } else {
+                  showModalBottomSheet<void>(
+                    context: context,
+                    showDragHandle: true,
+                    builder: (ctx) => SafeArea(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          ListTile(
+                            leading: const Icon(Icons.tune_rounded),
+                            title: const Text('Settings & appearance'),
+                            onTap: () { Navigator.pop(ctx); navigate(4); },
+                          ),
+                          ListTile(
+                            leading: const Icon(Icons.people_outline_rounded),
+                            title: const Text('Accounts'),
+                            onTap: () { Navigator.pop(ctx); navigate(5); },
+                          ),
+                          const SizedBox(height: 16),
+                        ],
+                      ),
+                    ),
+                  );
+                }
+              },
               destinations: [
                 for (final option in _nav.take(4))
                   NavigationDestination(
