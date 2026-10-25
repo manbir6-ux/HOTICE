@@ -20,23 +20,60 @@ class _HotIceAppState extends State<HotIceApp> {
   final HotIceStore store = HotIceStore();
   bool showLogin = false;
 
+  late ThemeMode _lastThemeMode;
+  late StudioAccent _lastAccent;
+  late StudioFont _lastFont;
+
+  @override
+  void initState() {
+    super.initState();
+    _lastThemeMode = store.themeMode;
+    _lastAccent = store.accent;
+    _lastFont = store.font;
+    store.addListener(_handleAppearanceChanged);
+  }
+
+  // Keep the Navigator/MaterialApp stable while demo accounts, projects and
+  // avatars change. Rebuild the app-level theme only for appearance changes.
+  // Recreating MaterialApp for every store notification can unnecessarily
+  // churn inherited widgets during transitions and popups.
+  void _handleAppearanceChanged() {
+    if (_lastThemeMode == store.themeMode &&
+        _lastAccent == store.accent &&
+        _lastFont == store.font) {
+      return;
+    }
+    setState(() {
+      _lastThemeMode = store.themeMode;
+      _lastAccent = store.accent;
+      _lastFont = store.font;
+    });
+  }
+
   @override
   void dispose() {
+    store.removeListener(_handleAppearanceChanged);
     store.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: store,
-      builder: (context, _) => MaterialApp(
-        title: 'HOTICE',
-        debugShowCheckedModeBanner: false,
-        themeMode: store.themeMode,
-        theme: HotIceDesign.theme(Brightness.light, store.accent.color, fontFamily: store.font.family),
-        darkTheme: HotIceDesign.theme(Brightness.dark, store.accent.color, fontFamily: store.font.family),
-        home: store.signedIn
+    return MaterialApp(
+      title: 'HOTICE',
+      debugShowCheckedModeBanner: false,
+      themeMode: store.themeMode,
+      theme: HotIceDesign.theme(
+        Brightness.light, store.accent.color,
+        fontFamily: store.font.family,
+      ),
+      darkTheme: HotIceDesign.theme(
+        Brightness.dark, store.accent.color,
+        fontFamily: store.font.family,
+      ),
+      home: AnimatedBuilder(
+        animation: store,
+        builder: (context, _) => store.signedIn
             ? StudioShell(key: ValueKey(store.selectedAccount), store: store)
             : showLogin
                 ? LoginPage(

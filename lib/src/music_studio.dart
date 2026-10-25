@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'avatar_identity.dart';
 import 'design.dart';
 import 'state.dart';
+import 'dialogs.dart';
 
 /// Offline storyboard templates are deliberately NOT AI outputs or transcriptions.
 class MusicStoryboardTemplates {
@@ -80,28 +81,17 @@ class _MusicVideoStudioPageState extends State<MusicVideoStudioPage> {
   }
 
   Future<void> editShot(int index) async {
-    final controller = TextEditingController(text: shots[index].description);
-    final updated = await showDialog<String>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text('Edit ' + shots[index].title),
-        content: TextField(
-          controller: controller,
-          maxLength: 500,
-          minLines: 3,
-          maxLines: 6,
-          decoration: const InputDecoration(labelText: 'Shot description'),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, controller.text.trim()),
-            child: const Text('Save shot'),
-          ),
-        ],
-      ),
+    final current = shots[index];
+    final updated = await showHotIceTextDialog(
+      context,
+      title: 'Edit ${current.title}',
+      label: 'Shot description',
+      confirmLabel: 'Save shot',
+      initialValue: current.description,
+      maxLength: 500,
+      minLines: 3,
+      maxLines: 6,
     );
-    controller.dispose();
     if (!mounted || updated == null || updated.isEmpty) return;
     setState(() {
       final original = shots[index];
