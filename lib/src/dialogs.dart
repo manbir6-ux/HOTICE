@@ -1,12 +1,9 @@
 import 'package:flutter/material.dart';
 
-/// Opens a text-editing dialog without disposing its controller while the
-/// dialog is still animating out of the Navigator's overlay.
-///
-/// Navigator.push completes when a result is popped, but the dialog's
-/// TransitionRoute.completed future completes only once its overlay entries
-/// have been removed. That distinction matters when the caller immediately
-/// switches pages after submitting a project or storyboard.
+/// Opens a text-editing dialog whose controller belongs to its own State.
+/// It remains mounted during the closing route animation, so callers can
+/// immediately update projects or navigate after Navigator.pop completes.
+/// The dialog's State.dispose is the sole owner of controller disposal.
 Future<String?> showHotIceTextDialog(
   BuildContext context, {
   required String title,
@@ -30,9 +27,7 @@ Future<String?> showHotIceTextDialog(
       maxLines: maxLines,
     ),
   );
-  final result = await navigator.push<String>(route);
-  await route.completed;
-  return result;
+  return navigator.push<String>(route);
 }
 
 class _HotIceTextDialog extends StatefulWidget {
