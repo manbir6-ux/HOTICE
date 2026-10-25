@@ -219,6 +219,7 @@ class _MusicVideoStudioPageState extends State<MusicVideoStudioPage> {
                   const Text('Only your story description is needed for this preview.'),
                   const SizedBox(height: 17),
                   DropdownButtonFormField<String>(
+                    key: ValueKey(projectId),
                     value: projectId,
                     isExpanded: true,
                     decoration: const InputDecoration(labelText: 'Project'),
