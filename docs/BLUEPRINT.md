@@ -43,6 +43,20 @@ Flutter presentation -> app state -> repository/services -> authenticated backen
 - Billing: Stripe/PayPal gateway adapters with backend-verified credit ledger and fraud prevention.
 - Observability: structured diagnostics, audit trail, crash reporting and developer QA.
 
+## 5A. Model-dependent controls (UI prototype)
+Each model is defined by a capability record, not a global duration/aspect setting.
+
+- Model ID and display name identify a distinct model configuration.
+- Valid **duration + aspect ratio pairs** come from the selected model.
+- Supported input attachments (reference image, reference video, audio) also come from the selected model; unsupported inputs must never be sent.
+- Switching models resets an incompatible duration or aspect ratio to a valid value; a stale project or model selection is rejected at draft save.
+- Prices are keyed by model, output duration and aspect ratio. A quote is shown only when an actual, positive credit rate is configured; **missing rate means unavailable**, never zero/free.
+- HOTICE unit value stays fixed: **1 Credit = USD 0.01**. A model's generation cost is a separate amount; it must be calculated and confirmed by an authenticated backend.
+- The current `lib/src/video_models.dart` records are **illustrative demo capabilities only**. They are NOT representations of Google Veo, Sora, Kling, Runway or other real provider limits; all demo rates intentionally remain unconfigured.
+- Capability chips currently describe potential attachment types. Local file picking, uploading, storage, provider acceptance, real model list discovery and checkout are NOT yet connected.
+- Before enabling a real model, verify its current version, endpoint, supported input types/file limits, allowed duration/aspect combinations, audio behavior, output size, regional access, and billing from official API documentation. Refresh catalog from the backend; verify the complete request server-side and produce a signed/recorded quote before a render job.
+- Treat story-planning language models (e.g. Gemini/ChatGPT style planners) separately from models that actually render video.
+
 ## 6. First code milestone — UI prototype
 The first commit includes working navigation and local demo forms/screens, *not* live AI or payments. Responsive layouts and reusable theme components are present. No production passwords, keys, tokens or payment credentials are bundled.
 
