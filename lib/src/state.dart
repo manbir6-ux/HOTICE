@@ -197,6 +197,29 @@ class HotIceStore extends ChangeNotifier {
     return true;
   }
 
+  bool editAvatar(String originalName, String newName, String style,
+      {String identityNotes = ''}) {
+    final index = avatars.indexWhere((a) => a.name == originalName);
+    final name = newName.trim();
+    if (index < 0 || name.isEmpty || name.toLowerCase() == 'none' ||
+        avatars.any((a) => a.name != originalName &&
+            a.name.toLowerCase() == name.toLowerCase())) {
+      return false;
+    }
+    avatars[index] = StudioAvatar(name, style, identityNotes: identityNotes.trim());
+    notifyListeners();
+    return true;
+  }
+
+  bool removeAvatar(String name) {
+    final oldLength = avatars.length;
+    avatars.removeWhere((a) => a.name == name);
+    if (avatars.length == oldLength) return false;
+    // Existing scene drafts remain historical snapshots of their creation.
+    notifyListeners();
+    return true;
+  }
+
   void queueDraft(GenerationDraft draft) {
     // Prevent a stale project selection from being saved to another profile.
     if (draft.projectId.isNotEmpty &&
