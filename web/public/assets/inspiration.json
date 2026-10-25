@@ -1,0 +1,120 @@
+{
+  "schemaVersion": 1,
+  "collection": "HOTICE Original Inspiration Templates",
+  "notice": "All example prompts here are original HOTICE editorial text. No external creator videos or exact third-party prompts are bundled. Model IDs reference illustrative demo profiles, not live AI integrations.",
+  "templates": [
+    {
+      "id": "night-drive",
+      "title": "Neon Midnight Drive",
+      "category": "Cinematic",
+      "tags": [
+        "Neon",
+        "Tracking shot",
+        "Noir"
+      ],
+      "modelId": "cinematic_demo",
+      "prompt": "A smooth tracking shot alongside {{Actor1}} driving through a rain-soaked futuristic boulevard at midnight. Neon signs shimmer across the car windows as reflections drift over the dashboard. Moody cinematic lighting, natural motion and grounded camera movement.",
+      "actorSlots": [
+        "Actor1"
+      ],
+      "previewUrl": null,
+      "origin": "hotice_original",
+      "promptStatus": "editorial_original",
+      "publicationStatus": "approved"
+    },
+    {
+      "id": "forest-chase",
+      "title": "Forest Pursuit",
+      "category": "Action",
+      "tags": [
+        "Handheld",
+        "Nature",
+        "Chase"
+      ],
+      "modelId": "character_demo",
+      "prompt": "A handheld tracking shot follows {{Actor1}} sprinting along a damp forest path while {{Actor2}} appears briefly between the distant trees. Ferns bend as the runners pass, morning mist catches the sunlight, and the camera maintains the momentum of the chase.",
+      "actorSlots": [
+        "Actor1",
+        "Actor2"
+      ],
+      "previewUrl": null,
+      "origin": "hotice_original",
+      "promptStatus": "editorial_original",
+      "publicationStatus": "approved"
+    },
+    {
+      "id": "rooftop-music",
+      "title": "Rooftop Music Sequence",
+      "category": "Music Video",
+      "tags": [
+        "Golden hour",
+        "Performance",
+        "Music"
+      ],
+      "modelId": "character_demo",
+      "prompt": "On a high-rise rooftop at sunset, {{Actor1}} performs to camera while the city skyline glows behind. The camera makes a slow continuous orbit, wind moves the fabric of the outfit, and the scene shifts from intimate close-up to a wide cinematic silhouette.",
+      "actorSlots": [
+        "Actor1"
+      ],
+      "previewUrl": null,
+      "origin": "hotice_original",
+      "promptStatus": "editorial_original",
+      "publicationStatus": "approved"
+    },
+    {
+      "id": "fantasy-portal",
+      "title": "The Shifting Portal",
+      "category": "Fantasy",
+      "tags": [
+        "Fantasy",
+        "Atmosphere",
+        "VFX"
+      ],
+      "modelId": "multimodal_demo",
+      "prompt": "A cinematic wide shot reveals {{Actor1}} approaching a floating circular portal within an abandoned stone temple. Luminous particles drift outward, ancient carvings illuminate gradually, and the camera slowly moves forward as the character reaches for the glowing surface.",
+      "actorSlots": [
+        "Actor1"
+      ],
+      "previewUrl": null,
+      "origin": "hotice_original",
+      "promptStatus": "editorial_original",
+      "publicationStatus": "approved"
+    },
+    {
+      "id": "product-orbit",
+      "title": "Premium Product Orbit",
+      "category": "Advertising",
+      "tags": [
+        "Product",
+        "Studio lighting",
+        "Dolly"
+      ],
+      "modelId": "storyboard_demo",
+      "prompt": "A luxury ceramic perfume bottle rests on a sculpted pedestal in a dark minimalist studio. A precise slow orbit reveals polished surfaces as a soft beam of light moves across the bottle. Clean highlights, natural shadows and restrained editorial movement.",
+      "actorSlots": [],
+      "previewUrl": null,
+      "origin": "hotice_original",
+      "promptStatus": "editorial_original",
+      "publicationStatus": "approved"
+    },
+    {
+      "id": "clay-character",
+      "title": "Playful Clay World",
+      "category": "Animation",
+      "tags": [
+        "Claymation",
+        "Playful",
+        "Stylized"
+      ],
+      "modelId": "cinematic_demo",
+      "prompt": "In a handcrafted stop-motion town, {{Actor1}} walks past miniature storefronts as paper clouds roll across the sky. Textured clay surfaces, playful timing, a gentle camera push and warm storybook colors create a tactile animated atmosphere.",
+      "actorSlots": [
+        "Actor1"
+      ],
+      "previewUrl": null,
+      "origin": "hotice_original",
+      "promptStatus": "editorial_original",
+      "publicationStatus": "approved"
+    }
+  ]
+}
