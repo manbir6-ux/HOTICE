@@ -88,6 +88,16 @@ enum StudioAccent {
   final Color color;
 }
 
+enum StudioFont {
+  modern('Modern', null),
+  editorial('Editorial', 'serif'),
+  technical('Technical', 'monospace');
+
+  const StudioFont(this.label, this.family);
+  final String label;
+  final String? family;
+}
+
 /// Ephemeral demo data for one profile. Never treat this as cloud security.
 class _DemoWorkspace {
   _DemoWorkspace({bool seed = false}) {
@@ -113,6 +123,7 @@ class HotIceStore extends ChangeNotifier {
   bool signedIn = false;
   ThemeMode themeMode = ThemeMode.dark;
   StudioAccent accent = StudioAccent.electric;
+  StudioFont font = StudioFont.modern;
   String selectedAccount = 'creator@hotice.demo';
   final List<String> accounts = ['creator@hotice.demo'];
 
@@ -229,6 +240,11 @@ class HotIceStore extends ChangeNotifier {
 
   void updateAccent(StudioAccent value) {
     accent = value;
+    notifyListeners();
+  }
+
+  void updateFont(StudioFont value) {
+    font = value;
     notifyListeners();
   }
 }
