@@ -63,7 +63,7 @@ class _InspirationPageState extends State<InspirationPage> {
                 );
               }
               if (!snapshot.hasData) {
-                return const Center(child: CircularProgressIndicator());
+                return const StudioPanel(child: Text('Loading scene ideas...'));
               }
               final categories = [
                 'All',
