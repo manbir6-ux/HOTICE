@@ -176,7 +176,6 @@ void main() {
     final shot = find.widgetWithText(TextField, 'Describe your shot');
     expect(shot, findsOneWidget);
     await tester.enterText(shot, 'Keep this unsaved forest scene');
-    await tester.testTextInput.hide();
     await tester.pumpAndSettle();
 
     await tester.tap(find.text('Avatars'));
@@ -211,8 +210,8 @@ void main() {
 
     final dropdown = find.byType(DropdownButtonFormField<String>).first;
     expect(dropdown, findsOneWidget);
-    expect(tester.widget<DropdownButtonFormField<String>>(dropdown).value,
-        isNotNull);
+    expect(tester.widget<DropdownButtonFormField<String>>(dropdown).initialValue,
+        isNot('demo-film'));
     expect(find.text('Scene composer'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
