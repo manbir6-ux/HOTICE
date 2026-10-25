@@ -1,5 +1,20 @@
 # HOTICE — Development Progress
 
+> **Continuing HOTICE on another model?** First read [CONTINUE_HERE.md](CONTINUE_HERE.md) for the verified repo state, product decisions, blockers, and ordered next steps. Refresh the current branch and Actions status; this checklist may lag behind newer commits.
+
+## Verification snapshot — 2026-10-26
+- [x] Source-level fixes committed for demo profile isolation, duplicate avatars, missing projects, draft avatar selection, email validation and compact navigation.
+- [x] Demo-only model capability catalog and model-dependent duration/aspect/attachment validation committed (see `lib/src/video_models.dart`).
+- [x] Model-specific credits display guards against unconfigured prices (no real provider pricing configured).
+- [x] Extended unit/widget test source added (about 12 declared tests; **NOT proven to pass**).
+- [ ] Flutter static analysis and widget tests **confirmed green** (latest checked GitHub Actions run 40197914603: `failure`; job steps/logs unavailable via connector).
+- [ ] Android debug APK **successfully built and downloadable**. Latest verified tree contained no `android/` scaffold and no Android APK workflow; do not infer an APK from source commits.
+- [ ] Normal Video / Music Video Studio mode split with music upload, lyric timing, AI story/shot planning and scene editor. **Requested but not yet implemented**.
+- [ ] Actual live provider integrations and verified dynamic credit rates. Current capabilities are deliberately illustrative.
+- [ ] Professional HOTICE logo integrated as Android launcher icon. A visual concept was shown in chat but not checked into the repository.
+
+**Updated user direction:** Deliver a genuine testable Android UI build before live AI/payment integrations, with separate Normal Video and Music Video Studio flows. Maintain one simple free-text prompt box (no numerous advanced detail fields). See [the handoff](CONTINUE_HERE.md).
+
 ## GitHub task threads
 - [M1 — Flutter CI and responsive QA](https://github.com/manbir6-ux/HOTICE/issues/1)
 - [M2 — Secure accounts and persistence](https://github.com/manbir6-ux/HOTICE/issues/2)
