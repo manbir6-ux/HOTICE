@@ -378,12 +378,13 @@ class _MusicVideoStudioPageState extends State<MusicVideoStudioPage> {
           ],
           const SizedBox(height: 22),
           Text('Saved music storyboards', style: Theme.of(context).textTheme.titleLarge),
-          if (widget.store.musicPlans.isEmpty)
+          if (!widget.store.musicPlans.any((plan) => plan.projectId == projectId))
             const Padding(
               padding: EdgeInsets.only(top: 8),
               child: Text('No saved music video plans yet.'),
             ),
-          for (final plan in widget.store.musicPlans.take(5))
+          for (final plan in widget.store.musicPlans
+              .where((plan) => plan.projectId == projectId).take(5))
             ListTile(
               contentPadding: EdgeInsets.zero,
               leading: const Icon(Icons.queue_music_rounded),
