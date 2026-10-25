@@ -108,6 +108,8 @@ class GenerationPage extends StatefulWidget {
 
 class _GenerationPageState extends State<GenerationPage> {
   final prompt = TextEditingController();
+  // Each in-progress scene belongs to one film project in this demo session.
+  final Map<String, String> _unsavedPrompts = {};
   String? project;
   String model = 'cinematic_demo';
 
@@ -123,12 +125,19 @@ class _GenerationPageState extends State<GenerationPage> {
         (widget.store.projects.isEmpty ? null : widget.store.projects.first.id);
   }
 
+  void _selectProject(String? next) {
+    if (project == next) return;
+    if (project != null) _unsavedPrompts[project!] = prompt.text;
+    project = next;
+    prompt.text = next == null ? '' : (_unsavedPrompts[next] ?? '');
+  }
+
   @override
   void didUpdateWidget(covariant GenerationPage oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (widget.initialProjectId != null &&
         widget.initialProjectId != oldWidget.initialProjectId) {
-      project = widget.initialProjectId;
+      _selectProject(widget.initialProjectId);
     }
   }
 
@@ -203,7 +212,7 @@ class _GenerationPageState extends State<GenerationPage> {
   Widget build(BuildContext context) {
     final validProjects = widget.store.projects;
     if (!validProjects.any((item) => item.id == project)) {
-      project = validProjects.isEmpty ? null : validProjects.first.id;
+      _selectProject(validProjects.isEmpty ? null : validProjects.first.id);
     }
     final avatars = [
       'None',
@@ -227,7 +236,7 @@ class _GenerationPageState extends State<GenerationPage> {
                 child: Text(item.title, overflow: TextOverflow.ellipsis),
               )
             ).toList(),
-            onChanged: (v) => setState(() => project = v),
+            onChanged: (v) => setState(() => _selectProject(v)),
           ),
           const SizedBox(height: 13),
           TextField(
