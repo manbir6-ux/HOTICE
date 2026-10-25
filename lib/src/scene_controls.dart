@@ -86,7 +86,7 @@ class _SceneCastAndReferencesState extends State<SceneCastAndReferences> {
     };
     setState(() => _selecting = true);
     try {
-      final picked = await FilePicker.platform.pickFiles(
+      final picked = await FilePicker.pickFiles(
         type: FileType.custom,
         allowedExtensions: allowed,
         allowMultiple: remaining > 1,
