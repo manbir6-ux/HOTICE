@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'video_models.dart';
 
 /// Pricing is in whole US cents to avoid floating point billing errors.
 const int creditsPerUsd = 100;
@@ -32,6 +33,8 @@ class GenerationDraft {
   final DateTime createdAt;
   final String projectId;
   final String avatarName;
+  final String modelId;
+  final List<VideoAttachment> requestedAttachments;
 
   const GenerationDraft({
     required this.project,
@@ -42,6 +45,8 @@ class GenerationDraft {
     required this.createdAt,
     this.projectId = '',
     this.avatarName = 'None',
+    this.modelId = '',
+    this.requestedAttachments = const <VideoAttachment>[],
   });
 }
 
@@ -144,6 +149,7 @@ class HotIceStore extends ChangeNotifier {
   bool addAvatar(String name, String style) {
     final trimmed = name.trim();
     if (trimmed.isEmpty ||
+        trimmed.toLowerCase() == 'none' ||
         avatars.any((a) => a.name.toLowerCase() == trimmed.toLowerCase())) {
       return false;
     }
@@ -157,6 +163,17 @@ class HotIceStore extends ChangeNotifier {
     if (draft.projectId.isNotEmpty &&
         !projects.any((p) => p.id == draft.projectId)) {
       throw StateError('The selected project is not in this demo workspace.');
+    }
+    if (draft.modelId.isNotEmpty) {
+      final matches = demoVideoModels.where((m) => m.id == draft.modelId);
+      if (matches.isEmpty ||
+          !matches.single.accepts(
+            seconds: draft.durationSeconds,
+            ratio: draft.aspectRatio,
+            inputs: draft.requestedAttachments,
+          )) {
+        throw StateError('Unsupported output or attachment for this model.');
+      }
     }
     drafts.insert(0, draft);
     notifyListeners();
