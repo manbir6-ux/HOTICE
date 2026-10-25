@@ -75,7 +75,12 @@ class _HotIceTextDialogState extends State<_HotIceTextDialog> {
 
   void _save() {
     final value = _text.text.trim();
-    if (value.isEmpty) return;
+    if (value.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Enter some text before saving.')),
+      );
+      return;
+    }
     FocusScope.of(context).unfocus();
     assert(() { debugPrint('HOTICE dialog save tapped'); return true; }());
     Navigator.of(context).pop(value);
@@ -96,7 +101,7 @@ class _HotIceTextDialogState extends State<_HotIceTextDialog> {
           textInputAction:
               widget.maxLines == 1 ? TextInputAction.done : TextInputAction.newline,
           onSubmitted: widget.maxLines == 1 ? (_) => _save() : null,
-          onChanged: (_) => setState(() {}),
+          onChanged: (_) {},
           decoration: InputDecoration(labelText: widget.label),
         ),
         actions: [
@@ -105,7 +110,7 @@ class _HotIceTextDialogState extends State<_HotIceTextDialog> {
             child: const Text('Cancel'),
           ),
           FilledButton(
-            onPressed: _text.text.trim().isEmpty ? null : _save,
+            onPressed: _save,
             child: Text(widget.confirmLabel),
           ),
         ],
