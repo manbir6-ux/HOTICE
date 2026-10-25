@@ -29,6 +29,8 @@ class MusicVideoStudioPage extends StatefulWidget {
 
 class _MusicVideoStudioPageState extends State<MusicVideoStudioPage> {
   final story = TextEditingController();
+  final Map<String, String> _unsavedStories = {};
+  final Map<String, List<StoryboardShot>> _unsavedShots = {};
   String? projectId;
   String selectedStyle = 'Cinematic realism';
   String selectedAvatar = 'None';
@@ -52,12 +54,27 @@ class _MusicVideoStudioPageState extends State<MusicVideoStudioPage> {
         (widget.store.projects.isEmpty ? null : widget.store.projects.first.id);
   }
 
+  void _selectProject(String? next) {
+    if (projectId == next) return;
+    if (projectId != null) {
+      _unsavedStories[projectId!] = story.text;
+      _unsavedShots[projectId!] = List<StoryboardShot>.of(shots);
+    }
+    projectId = next;
+    story.text = next == null ? '' : (_unsavedStories[next] ?? '');
+    shots = next == null
+        ? <StoryboardShot>[]
+        : List<StoryboardShot>.of(
+            _unsavedShots[next] ?? const <StoryboardShot>[],
+          );
+  }
+
   @override
   void didUpdateWidget(covariant MusicVideoStudioPage oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (widget.initialProjectId != null &&
         oldWidget.initialProjectId != widget.initialProjectId) {
-      projectId = widget.initialProjectId;
+      _selectProject(widget.initialProjectId);
     }
   }
 
@@ -116,7 +133,7 @@ class _MusicVideoStudioPageState extends State<MusicVideoStudioPage> {
       return;
     }
     setState(() {
-      projectId = plan.projectId;
+      _selectProject(plan.projectId);
       selectedStyle = styles.contains(plan.visualStyle)
           ? plan.visualStyle
           : styles.first;
@@ -172,7 +189,7 @@ class _MusicVideoStudioPageState extends State<MusicVideoStudioPage> {
   Widget build(BuildContext context) {
     final projects = widget.store.projects;
     if (!projects.any((p) => p.id == projectId)) {
-      projectId = projects.isEmpty ? null : projects.first.id;
+      _selectProject(projects.isEmpty ? null : projects.first.id);
     }
     final avatars = ['None', ...widget.store.avatars.map((a) => a.name)];
     if (!avatars.contains(selectedAvatar)) selectedAvatar = 'None';
@@ -210,7 +227,7 @@ class _MusicVideoStudioPageState extends State<MusicVideoStudioPage> {
                         DropdownMenuItem(value: item.id,
                             child: Text(item.title, overflow: TextOverflow.ellipsis)),
                     ],
-                    onChanged: (value) => setState(() => projectId = value),
+                    onChanged: (value) => setState(() => _selectProject(value)),
                   ),
                   const SizedBox(height: 13),
                   TextField(
