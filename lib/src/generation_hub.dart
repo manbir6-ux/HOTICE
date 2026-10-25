@@ -2,12 +2,18 @@ import 'package:flutter/material.dart';
 import 'projects_generation.dart';
 import 'music_studio.dart';
 import 'state.dart';
+import 'inspiration_catalog.dart';
 
 /// One obvious mode switch rather than a maze of generator settings.
 class GenerationHubPage extends StatefulWidget {
   final HotIceStore store;
   final String? initialProjectId;
-  const GenerationHubPage({super.key, required this.store, this.initialProjectId});
+  final InspirationTemplate? initialTemplate;
+  final int templateRevision;
+  const GenerationHubPage({
+    super.key, required this.store, this.initialProjectId,
+    this.initialTemplate, this.templateRevision = 0,
+  });
 
   @override
   State<GenerationHubPage> createState() => _GenerationHubPageState();
@@ -15,6 +21,14 @@ class GenerationHubPage extends StatefulWidget {
 
 class _GenerationHubPageState extends State<GenerationHubPage> {
   bool musicMode = false;
+
+  @override
+  void didUpdateWidget(covariant GenerationHubPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.templateRevision != widget.templateRevision) {
+      musicMode = false;
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -63,6 +77,8 @@ class _GenerationHubPageState extends State<GenerationHubPage> {
               GenerationPage(
                 store: widget.store,
                 initialProjectId: widget.initialProjectId,
+                initialTemplate: widget.initialTemplate,
+                templateRevision: widget.templateRevision,
               ),
               MusicVideoStudioPage(
                 store: widget.store,
