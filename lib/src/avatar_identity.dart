@@ -5,7 +5,7 @@ import 'video_models.dart';
 /// This is not a biometric identity lock, face scan, or vendor-specific API.
 class AvatarPromptComposer {
   static String identityCard(StudioAvatar avatar) {
-    final notes = avatar.identityNotes.trim().replaceAll(RegExp(r'\\s+'), ' ');
+    final notes = avatar.identityNotes.trim().replaceAll(RegExp(r'\s+'), ' ');
     final details = notes.isEmpty
         ? 'No appearance notes yet.'
         : notes;
