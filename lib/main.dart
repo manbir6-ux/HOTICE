@@ -3,9 +3,11 @@ import 'src/state.dart';
 import 'src/design.dart';
 import 'src/pages.dart';
 import 'src/generation_hub.dart';
+import 'src/diagnostics.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
+  HoticeDiagnostics.install();
   runApp(const HotIceApp());
 }
 
@@ -197,6 +199,12 @@ class _StudioShellState extends State<StudioShell> {
                             style: Theme.of(context).textTheme.titleLarge,
                           ),
                         const Spacer(),
+                        if (wide)
+                          Padding(
+                            padding: const EdgeInsets.only(right: 10),
+                            child: Text('TEST $hoticeAppVersion · $hoticeBuildId',
+                              style: const TextStyle(fontSize: 10)),
+                          ),
                         if (wide || MediaQuery.sizeOf(context).width >= 410)
                           TextButton.icon(
                             onPressed: () => navigate(3),

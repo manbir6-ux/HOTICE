@@ -178,13 +178,26 @@ class DemoNotice extends StatelessWidget {
         color: Theme.of(context).colorScheme.primary.withOpacity(.09),
         borderRadius: BorderRadius.circular(12),
       ),
-      child: Row(
-        children: [
-          Icon(Icons.info_outline,
-              size: 18, color: Theme.of(context).colorScheme.primary),
-          const SizedBox(width: 10),
-          Expanded(child: Text(message, style: const TextStyle(fontSize: 12))),
-        ],
+      child: LayoutBuilder(
+        builder: (context, size) {
+          final noticeIcon = Icon(Icons.info_outline,
+              size: 18, color: Theme.of(context).colorScheme.primary);
+          final noticeText = Text(message, style: const TextStyle(fontSize: 12));
+          if (size.maxWidth < 100) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [noticeIcon, const SizedBox(height: 5), noticeText],
+            );
+          }
+          return Row(
+            children: [
+              noticeIcon,
+              const SizedBox(width: 10),
+              Expanded(child: noticeText),
+            ],
+          );
+        },
       ),
     );
   }
@@ -203,15 +216,22 @@ class PrimaryButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return FilledButton.icon(
-      onPressed: onPressed,
-      icon: Icon(icon, size: 19),
-      label: Text(label),
-      style: FilledButton.styleFrom(
-        minimumSize: const Size(0, 52),
-        padding: const EdgeInsets.symmetric(horizontal: 23),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(14),
+    return Align(
+      alignment: Alignment.centerLeft,
+      widthFactor: 1,
+      child: FittedBox(
+        fit: BoxFit.scaleDown,
+        child: FilledButton.icon(
+          onPressed: onPressed,
+          icon: Icon(icon, size: 19),
+          label: Text(label),
+          style: FilledButton.styleFrom(
+            minimumSize: const Size(0, 52),
+            padding: const EdgeInsets.symmetric(horizontal: 23),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14),
+            ),
+          ),
         ),
       ),
     );

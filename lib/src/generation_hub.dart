@@ -54,15 +54,22 @@ class _GenerationHubPageState extends State<GenerationHubPage> {
           ),
         ),
         Expanded(
-          child: musicMode
-              ? MusicVideoStudioPage(
-                  store: widget.store,
-                  initialProjectId: widget.initialProjectId,
-                )
-              : GenerationPage(
-                  store: widget.store,
-                  initialProjectId: widget.initialProjectId,
-                ),
+          // Both editors stay mounted: switching modes must not silently
+          // erase a partially typed scene or storyboard.
+          child: IndexedStack(
+            index: musicMode ? 1 : 0,
+            sizing: StackFit.expand,
+            children: [
+              GenerationPage(
+                store: widget.store,
+                initialProjectId: widget.initialProjectId,
+              ),
+              MusicVideoStudioPage(
+                store: widget.store,
+                initialProjectId: widget.initialProjectId,
+              ),
+            ],
+          ),
         ),
       ],
     );

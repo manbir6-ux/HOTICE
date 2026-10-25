@@ -108,6 +108,30 @@ class _MusicVideoStudioPageState extends State<MusicVideoStudioPage> {
     });
   }
 
+  void loadSavedPlan(MusicVideoPlan plan) {
+    if (!widget.store.projects.any((p) => p.id == plan.projectId)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('The saved project is no longer available.')),
+      );
+      return;
+    }
+    setState(() {
+      projectId = plan.projectId;
+      selectedStyle = styles.contains(plan.visualStyle)
+          ? plan.visualStyle
+          : styles.first;
+      selectedAvatar = widget.store.avatars.any(
+        (a) => a.name == plan.avatarName,
+      ) ? plan.avatarName : 'None';
+      story.text = plan.storyBrief;
+      // Copy instead of mutating the previously saved snapshot.
+      shots = List<StoryboardShot>.of(plan.shots);
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Storyboard loaded. Scroll up to edit and save a new draft.')),
+    );
+  }
+
   void savePlan() {
     if (shots.isEmpty || story.text.trim().isEmpty || projectId == null) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -135,6 +159,10 @@ class _MusicVideoStudioPageState extends State<MusicVideoStudioPage> {
       shots: List.unmodifiable(shots),
       createdAt: DateTime.now(),
     ));
+    // The editor can be embedded on its own during testing or future routing.
+    // Do not rely solely on an AnimatedBuilder in the parent to refresh the
+    // saved-storyboards list.
+    if (mounted) setState(() {});
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Story draft saved locally. No render job or credits used.')),
     );
@@ -362,6 +390,8 @@ class _MusicVideoStudioPageState extends State<MusicVideoStudioPage> {
               title: Text(plan.storyBrief, maxLines: 1, overflow: TextOverflow.ellipsis),
               subtitle: Text(plan.visualStyle + ' · ' +
                   plan.shots.length.toString() + ' editable scene ideas'),
+              trailing: const Icon(Icons.edit_note_outlined),
+              onTap: () => loadSavedPlan(plan),
             ),
         ],
       ),

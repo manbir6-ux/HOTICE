@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - main
-      - feat/android-preview-music-studio
   pull_request:
   workflow_dispatch:
 
@@ -13,7 +12,7 @@ permissions:
 
 jobs:
   validate:
-    name: Flutter analysis and tests
+    name: Flutter analysis and unit/widget tests
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
@@ -28,11 +27,11 @@ jobs:
         run: flutter pub get
       - name: Static analysis
         run: flutter analyze --no-fatal-infos
-      - name: Widget tests
-        run: flutter test
+      - name: Unit and widget tests
+        run: flutter test test/
 
   android-preview:
-    name: Build test APK (unsigned debug)
+    name: Versioned Android debug APK
     needs: validate
     runs-on: ubuntu-latest
     timeout-minutes: 40
@@ -46,18 +45,57 @@ jobs:
         with:
           channel: stable
           cache: true
-      - name: Prepare Android project
+      - name: Generate Android project
         run: flutter create . --project-name hotice --platforms=android
-      - name: Generate HOTICE preview launcher branding
+      - name: Install HOTICE preview icon
         run: python3 tools/brand_android.py
-      - name: Resolve Flutter packages
+      - name: Resolve dependencies
         run: flutter pub get
-      - name: Compile Android debug APK
-        run: flutter build apk --debug
-      - name: Upload Android testing APK
+      - name: Compile identifiable Android APK
+        shell: bash
+        run: |
+          BUILD_ID="${GITHUB_SHA:0:8}"
+          flutter build apk --debug --build-number "$GITHUB_RUN_NUMBER" --dart-define="HOTICE_BUILD_ID=$BUILD_ID"
+          mkdir -p dist
+          cp build/app/outputs/flutter-apk/app-debug.apk "dist/HOTICE-v0.2.0-run${GITHUB_RUN_NUMBER}-${BUILD_ID}.apk"
+      - name: Upload distinct HOTICE Android APK
         uses: actions/upload-artifact@v4
         with:
-          name: HOTICE-Android-Preview-APK
-          path: build/app/outputs/flutter-apk/app-debug.apk
+          name: HOTICE-Android-v0.2.0-run${{ github.run_number }}
+          path: dist/HOTICE-*.apk
           retention-days: 14
           if-no-files-found: error
+
+  android-emulator:
+    name: Real Android emulator smoke test
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Enable KVM for emulator
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=idle"' | sudo tee /etc/udev/rules.d/99-hotice-kvm.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Generate Android project
+        run: flutter create . --project-name hotice --platforms=android
+      - name: Fetch dependencies
+        run: flutter pub get
+      - name: Launch real Android emulator and test user journey
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: true
+          script: flutter test integration_test/android_smoke_test.dart -d emulator-5554 --dart-define=HOTICE_BUILD_ID=ANDROIDTEST

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'design.dart';
 import 'state.dart';
+import 'diagnostics.dart';
 
 class WelcomePage extends StatelessWidget {
   final VoidCallback onStart;
@@ -20,7 +21,62 @@ class WelcomePage extends StatelessWidget {
         ),
         child: SafeArea(
           child: LayoutBuilder(
-            builder: (context, constraints) => SingleChildScrollView(
+            builder: (context, constraints) {
+              // During Android route transitions the first frame may arrive
+              // with zero or tiny constraints; never build full-width branding
+              // and fixed-size controls into an impossible layout.
+              if (constraints.maxWidth < 120) {
+                return const SizedBox.shrink();
+              }
+              if (constraints.maxWidth < 400) {
+                return SingleChildScrollView(
+                  padding: const EdgeInsets.all(10),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      const Center(child: FittedBox(child: HotIceLogo(compact: true))),
+                      const SizedBox(height: 20),
+                      const FittedBox(
+                        child: Text('Create without limits.',
+                            style: TextStyle(color: Colors.white,
+                                fontSize: 32, fontWeight: FontWeight.w800)),
+                      ),
+                      const SizedBox(height: 12),
+                      const Text(
+                        'Cinematic video, recurring characters and your creative studio.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: Color(0xFFCAD3E7), fontSize: 14),
+                      ),
+                      const SizedBox(height: 12),
+                      FittedBox(
+                        child: TextButton.icon(
+                          onPressed: onDemoStart,
+                          icon: const Icon(Icons.play_arrow_rounded),
+                          label: const Text('Explore demo studio'),
+                        ),
+                      ),
+                      FittedBox(
+                        child: TextButton(
+                          onPressed: onStart,
+                          child: const Text('Continue with demo email'),
+                        ),
+                      ),
+                      if (constraints.maxWidth >= 280) ...[
+                        const SizedBox(height: 18),
+                        const FilmPreview(title: 'YOUR STORY. YOUR UNIVERSE.'),
+                      ],
+                    ],
+                  ),
+                );
+              }
+              // Flutter can briefly lay out a new route with zero width.
+              // Never subtract padding from a transient 0px constraint.
+              // The previous `constraints.maxWidth - 50` produced -50.0,
+              // causing the original BoxConstraints failure on Android.
+              final double panelWidth = constraints.maxWidth > 820
+                  ? 450.0
+                  : (constraints.maxWidth - 50.0).clamp(0.0, 450.0);
+              return SingleChildScrollView(
               padding: const EdgeInsets.all(25),
               child: Center(
                 child: ConstrainedBox(
@@ -38,9 +94,7 @@ class WelcomePage extends StatelessWidget {
                         runSpacing: 35,
                         children: [
                           SizedBox(
-                            width: constraints.maxWidth > 820
-                                ? 450
-                                : constraints.maxWidth - 50,
+                            width: panelWidth,
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
@@ -76,15 +130,19 @@ class WelcomePage extends StatelessWidget {
                                   onPressed: onDemoStart,
                                 ),
                                 const SizedBox(height: 8),
-                                TextButton.icon(
-                                  onPressed: onStart,
-                                  icon: const Icon(Icons.alternate_email),
-                                  label: const Text('Continue with a demo email',
-                                      style: TextStyle(color: Colors.white)),
+                                FittedBox(
+                                  alignment: Alignment.centerLeft,
+                                  fit: BoxFit.scaleDown,
+                                  child: TextButton.icon(
+                                    onPressed: onStart,
+                                    icon: const Icon(Icons.alternate_email),
+                                    label: const Text('Continue with a demo email',
+                                        style: TextStyle(color: Colors.white)),
+                                  ),
                                 ),
                                 const SizedBox(height: 17),
                                 const Text(
-                                  'STUDIO UI PROTOTYPE • RENDERING COMING LATER',
+                                  'TEST BUILD $hoticeAppVersion · $hoticeBuildId\nSTUDIO UI PROTOTYPE • RENDERING COMING LATER',
                                   style: TextStyle(
                                     color: Colors.white70,
                                     letterSpacing: 1,
@@ -95,9 +153,7 @@ class WelcomePage extends StatelessWidget {
                             ),
                           ),
                           SizedBox(
-                            width: constraints.maxWidth > 820
-                                ? 450
-                                : constraints.maxWidth - 50,
+                            width: panelWidth,
                             child: const FilmPreview(
                                 title: 'YOUR STORY. YOUR UNIVERSE.'),
                           ),
@@ -118,7 +174,8 @@ class WelcomePage extends StatelessWidget {
                   ),
                 ),
               ),
-            ),
+              );
+            },
           ),
         ),
       ),
