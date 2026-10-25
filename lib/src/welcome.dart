@@ -21,7 +21,15 @@ class WelcomePage extends StatelessWidget {
         ),
         child: SafeArea(
           child: LayoutBuilder(
-            builder: (context, constraints) => SingleChildScrollView(
+            builder: (context, constraints) {
+              // Flutter can briefly lay out a new route with zero width.
+              // Never subtract padding from a transient 0px constraint.
+              // The previous `constraints.maxWidth - 50` produced -50.0,
+              // causing the original BoxConstraints failure on Android.
+              final double panelWidth = constraints.maxWidth > 820
+                  ? 450.0
+                  : (constraints.maxWidth - 50.0).clamp(0.0, 450.0);
+              return SingleChildScrollView(
               padding: const EdgeInsets.all(25),
               child: Center(
                 child: ConstrainedBox(
@@ -39,9 +47,7 @@ class WelcomePage extends StatelessWidget {
                         runSpacing: 35,
                         children: [
                           SizedBox(
-                            width: constraints.maxWidth > 820
-                                ? 450
-                                : constraints.maxWidth - 50,
+                            width: panelWidth,
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
@@ -96,9 +102,7 @@ class WelcomePage extends StatelessWidget {
                             ),
                           ),
                           SizedBox(
-                            width: constraints.maxWidth > 820
-                                ? 450
-                                : constraints.maxWidth - 50,
+                            width: panelWidth,
                             child: const FilmPreview(
                                 title: 'YOUR STORY. YOUR UNIVERSE.'),
                           ),
@@ -119,7 +123,8 @@ class WelcomePage extends StatelessWidget {
                   ),
                 ),
               ),
-            ),
+              );
+            },
           ),
         ),
       ),
