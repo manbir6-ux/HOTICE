@@ -180,13 +180,6 @@ void main() {
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull, reason: 'after entering prompt');
 
-    final previousHandler = FlutterError.onError;
-    FlutterError.onError = (details) {
-      debugPrint('HOTICE_AVATAR_LAYOUT_TRACE: ${details.toString()}');
-      previousHandler?.call(details);
-    };
-    addTearDown(() => FlutterError.onError = previousHandler);
-
     await tester.tap(find.text('Avatars'));
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull, reason: 'after navigating to Avatars');
