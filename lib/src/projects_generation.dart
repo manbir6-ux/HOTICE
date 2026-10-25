@@ -3,6 +3,7 @@ import 'state.dart';
 import 'video_models.dart';
 import 'avatar_identity.dart';
 import 'design.dart';
+import 'dialogs.dart';
 
 class ProjectsPage extends StatelessWidget {
   final HotIceStore store;
@@ -10,30 +11,13 @@ class ProjectsPage extends StatelessWidget {
   const ProjectsPage({super.key, required this.store, required this.onOpen});
 
   Future<void> add(BuildContext context) async {
-    final controller = TextEditingController();
-    final title = await showDialog<String>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('New film project'),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          maxLength: 60,
-          decoration: const InputDecoration(labelText: 'Project title'),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, controller.text),
-            child: const Text('Create'),
-          ),
-        ],
-      ),
+    final title = await showHotIceTextDialog(
+      context,
+      title: 'New film project',
+      label: 'Project title',
+      confirmLabel: 'Create',
+      maxLength: 60,
     );
-    controller.dispose();
     if (!context.mounted) return;
     if (title != null && title.trim().isNotEmpty) {
       onOpen(store.addProject(title));
