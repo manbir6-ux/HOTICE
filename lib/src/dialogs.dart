@@ -27,7 +27,12 @@ Future<String?> showHotIceTextDialog(
       maxLines: maxLines,
     ),
   );
-  return navigator.push<String>(route);
+  final result = await navigator.push<String>(route);
+  assert(() {
+    debugPrint('HOTICE dialog returned a value: ${result != null}');
+    return true;
+  }());
+  return result;
 }
 
 class _HotIceTextDialog extends StatefulWidget {
@@ -72,6 +77,7 @@ class _HotIceTextDialogState extends State<_HotIceTextDialog> {
     final value = _text.text.trim();
     if (value.isEmpty) return;
     FocusScope.of(context).unfocus();
+    assert(() { debugPrint('HOTICE dialog save tapped'); return true; }());
     Navigator.of(context).pop(value);
   }
 
