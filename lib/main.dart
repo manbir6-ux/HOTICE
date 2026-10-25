@@ -1,0 +1,216 @@
+import 'package:flutter/material.dart';
+import 'src/state.dart';
+import 'src/design.dart';
+import 'src/pages.dart';
+
+void main() {
+  WidgetsFlutterBinding.ensureInitialized();
+  runApp(const HotIceApp());
+}
+
+class HotIceApp extends StatefulWidget {
+  const HotIceApp({super.key});
+
+  @override
+  State<HotIceApp> createState() => _HotIceAppState();
+}
+
+class _HotIceAppState extends State<HotIceApp> {
+  final HotIceStore store = HotIceStore();
+  bool showLogin = false;
+
+  @override
+  void dispose() {
+    store.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: store,
+      builder: (context, _) => MaterialApp(
+        title: 'HOTICE',
+        debugShowCheckedModeBanner: false,
+        themeMode: store.themeMode,
+        theme: HotIceDesign.theme(Brightness.light, store.accent.color),
+        darkTheme: HotIceDesign.theme(Brightness.dark, store.accent.color),
+        home: store.signedIn
+            ? StudioShell(store: store)
+            : showLogin
+                ? LoginPage(
+                    onBack: () => setState(() => showLogin = false),
+                    onSubmit: store.signInDemo,
+                  )
+                : WelcomePage(
+                    onStart: () => setState(() => showLogin = true),
+                  ),
+      ),
+    );
+  }
+}
+
+class StudioShell extends StatefulWidget {
+  final HotIceStore store;
+  const StudioShell({super.key, required this.store});
+
+  @override
+  State<StudioShell> createState() => _StudioShellState();
+}
+
+class _StudioShellState extends State<StudioShell> {
+  int selected = 0;
+  String? openedProjectId;
+
+  void navigate(int index) {
+    setState(() {
+      selected = index;
+      if (index == 0) openedProjectId = null;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final store = widget.store;
+    final wide = MediaQuery.sizeOf(context).width >= 850;
+    final destination = switch (selected) {
+      0 => ProjectsPage(
+          store: store,
+          onOpen: (id) => setState(() {
+            openedProjectId = id;
+            selected = 1;
+          }),
+        ),
+      1 => GenerationPage(store: store, initialProjectId: openedProjectId),
+      2 => AvatarsPage(store: store),
+      3 => CreditsPage(store: store),
+      4 => SettingsPage(store: store),
+      _ => AccountsPage(store: store),
+    };
+
+    return Scaffold(
+      body: SafeArea(
+        child: Row(
+          children: [
+            if (wide)
+              SizedBox(
+                width: 238,
+                child: ColoredBox(
+                  color: Theme.of(context).colorScheme.surface,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      const Padding(
+                        padding: EdgeInsets.fromLTRB(24, 28, 12, 34),
+                        child: HotIceLogo(),
+                      ),
+                      for (final option in _nav)
+                        Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 3,
+                          ),
+                          child: ListTile(
+                            selected: selected == option.index,
+                            selectedTileColor:
+                                store.accent.color.withOpacity(.13),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                            leading: Icon(option.icon),
+                            title: Text(option.label),
+                            onTap: () => navigate(option.index),
+                          ),
+                        ),
+                      const Spacer(),
+                      const Padding(
+                        padding: EdgeInsets.all(18),
+                        child: Text(
+                          'HOTICE • Studio prototype\nAI and payments are not connected',
+                          style: TextStyle(fontSize: 11),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            Expanded(
+              child: Column(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 20,
+                      vertical: 12,
+                    ),
+                    decoration: BoxDecoration(
+                      border: Border(
+                        bottom: BorderSide(
+                          color: Theme.of(context).dividerColor,
+                        ),
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        if (!wide) const HotIceLogo(compact: true),
+                        if (wide)
+                          Text(
+                            _nav[selected].label,
+                            style: Theme.of(context).textTheme.titleLarge,
+                          ),
+                        const Spacer(),
+                        TextButton.icon(
+                          onPressed: () => navigate(3),
+                          icon: const Icon(Icons.bolt_rounded, size: 19),
+                          label: Text(store.demoCredits.toString() + ' demo credits'),
+                        ),
+                        IconButton(
+                          tooltip: 'Switch account',
+                          onPressed: () => navigate(5),
+                          icon: const CircleAvatar(
+                            radius: 17,
+                            child: Icon(Icons.person_outline, size: 20),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Expanded(child: destination),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+      bottomNavigationBar: wide
+          ? null
+          : NavigationBar(
+              selectedIndex: selected <= 4 ? selected : 4,
+              labelBehavior:
+                  NavigationDestinationLabelBehavior.onlyShowSelected,
+              onDestinationSelected: navigate,
+              destinations: _nav.take(5).map((option) {
+                return NavigationDestination(
+                  icon: Icon(option.icon),
+                  label: option.label,
+                );
+              }).toList(),
+            ),
+    );
+  }
+}
+
+class _Destination {
+  final int index;
+  final String label;
+  final IconData icon;
+  const _Destination(this.index, this.label, this.icon);
+}
+
+const _nav = <_Destination>[
+  _Destination(0, 'Projects', Icons.grid_view_rounded),
+  _Destination(1, 'Generate', Icons.movie_creation_outlined),
+  _Destination(2, 'Avatars', Icons.face_retouching_natural_outlined),
+  _Destination(3, 'Credits', Icons.toll_outlined),
+  _Destination(4, 'Settings', Icons.tune_rounded),
+  _Destination(5, 'Accounts', Icons.people_outline_rounded),
+];

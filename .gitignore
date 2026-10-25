@@ -1,0 +1,13 @@
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+build/
+coverage/
+.idea/
+.vscode/
+*.iml
+.DS_Store
+**/local.properties
+**/Generated.xcconfig
+**/flutter_export_environment.sh
