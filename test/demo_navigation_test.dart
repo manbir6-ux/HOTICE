@@ -27,6 +27,9 @@ void main() {
     await tester.enterText(find.byType(TextField).last, 'My test film');
     await tester.tap(find.text('Create'));
     await tester.pumpAndSettle();
+    // Route.completed callbacks may settle after the closing animation frame.
+    await tester.pump();
+    await tester.pumpAndSettle();
 
     expect(find.text('Scene composer'), findsOneWidget);
     expect(tester.takeException(), isNull);
@@ -72,6 +75,8 @@ void main() {
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField), 'Story begins');
     await tester.tap(find.text('Save'));
+    await tester.pumpAndSettle();
+    await tester.pump();
     await tester.pumpAndSettle();
     expect(find.text('Next page'), findsOneWidget);
     expect(tester.takeException(), isNull);
@@ -134,6 +139,11 @@ void main() {
     final add = find.text('Add / switch account');
     await tester.ensureVisible(add);
     await tester.tap(add);
+    await tester.pumpAndSettle();
+    // Switching profiles intentionally resets the shell to its Projects tab.
+    await tester.tap(find.text('More'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Accounts'));
     await tester.pumpAndSettle();
     expect(find.text('tester@example.com'), findsWidgets);
     expect(tester.takeException(), isNull);
