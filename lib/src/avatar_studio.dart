@@ -18,6 +18,7 @@ class _AvatarsPageState extends State<AvatarsPage> {
   final name = TextEditingController();
   final identityNotes = TextEditingController();
   String style = 'Photorealistic';
+  String? editingName;
   bool showScanGuide = false;
   int poseIndex = 0;
 
@@ -43,20 +44,59 @@ class _AvatarsPageState extends State<AvatarsPage> {
       );
       return;
     }
-    final created = widget.store.addAvatar(
-      name.text,
-      style,
-      identityNotes: identityNotes.text,
-    );
+    final created = editingName == null
+        ? widget.store.addAvatar(name.text, style,
+            identityNotes: identityNotes.text)
+        : widget.store.editAvatar(editingName!, name.text, style,
+            identityNotes: identityNotes.text);
     if (created) {
       name.clear();
       identityNotes.clear();
+      setState(() => editingName = null);
     }
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(created
-          ? 'Character profile added to this demo workspace.'
+          ? 'Character profile saved in this demo workspace.'
           : 'That character name is already used. Try another name.')),
     );
+  }
+
+  void startEditing(StudioAvatar avatar) {
+    setState(() {
+      editingName = avatar.name;
+      name.text = avatar.name;
+      style = avatar.style;
+      identityNotes.text = avatar.identityNotes;
+      showScanGuide = false;
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Edit the character in the form above.')),
+    );
+  }
+
+  Future<void> deleteAvatar(StudioAvatar avatar) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Delete ' + avatar.name + '?'),
+        content: const Text('This removes the local character preset. Previous scene drafts remain historical snapshots.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Keep character')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Delete')),
+        ],
+      ),
+    );
+    if (!mounted || confirmed != true) return;
+    widget.store.removeAvatar(avatar.name);
+    if (editingName == avatar.name) {
+      setState(() {
+        editingName = null;
+        name.clear();
+        identityNotes.clear();
+      });
+    }
   }
 
   void openProfile(StudioAvatar avatar) {
@@ -224,7 +264,7 @@ class _AvatarsPageState extends State<AvatarsPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('New character',
+                Text(editingName == null ? 'New character' : 'Edit ' + editingName!,
                     style: Theme.of(context).textTheme.titleLarge),
                 const SizedBox(height: 7),
                 const Text('A few details now make it easier to describe the same person in every scene.'),
@@ -272,10 +312,19 @@ class _AvatarsPageState extends State<AvatarsPage> {
                 ),
                 const SizedBox(height: 13),
                 PrimaryButton(
-                  label: 'Save character',
+                  label: editingName == null ? 'Save character' : 'Save changes',
                   icon: Icons.person_add_alt_1_rounded,
                   onPressed: saveAvatar,
                 ),
+                if (editingName != null)
+                  TextButton(
+                    onPressed: () => setState(() {
+                      editingName = null;
+                      name.clear();
+                      identityNotes.clear();
+                    }),
+                    child: const Text('Cancel editing'),
+                  ),
               ],
             ),
           ),
@@ -310,7 +359,20 @@ class _AvatarsPageState extends State<AvatarsPage> {
                           ? 'Add identity notes later'
                           : 'Identity notes ready for prompts')),
                   isThreeLine: false,
-                  trailing: const Icon(Icons.chevron_right_rounded),
+                  trailing: PopupMenuButton<String>(
+                    tooltip: 'Character options',
+                    onSelected: (action) {
+                      if (action == 'edit') {
+                        startEditing(avatar);
+                      } else if (action == 'delete') {
+                        deleteAvatar(avatar);
+                      }
+                    },
+                    itemBuilder: (ctx) => const [
+                      PopupMenuItem(value: 'edit', child: Text('Edit character')),
+                      PopupMenuItem(value: 'delete', child: Text('Delete character')),
+                    ],
+                  ),
                   onTap: () => openProfile(avatar),
                 ),
               ),
