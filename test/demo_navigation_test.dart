@@ -180,10 +180,10 @@ void main() {
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull, reason: 'after entering prompt');
 
-    await tester.tap(find.text('Avatars'));
+    await tester.tap(find.text('Actors'));
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull, reason: 'after navigating to Avatars');
-    expect(find.text('Avatar Studio'), findsOneWidget);
+    expect(find.text('Actors Studio'), findsOneWidget);
     await tester.tap(find.text('Generate'));
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull, reason: 'returning to Generate');
