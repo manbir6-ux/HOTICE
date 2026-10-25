@@ -4,7 +4,8 @@ import 'state.dart';
 
 class WelcomePage extends StatelessWidget {
   final VoidCallback onStart;
-  const WelcomePage({super.key, required this.onStart});
+  final VoidCallback onDemoStart;
+  const WelcomePage({super.key, required this.onStart, required this.onDemoStart});
 
   @override
   Widget build(BuildContext context) {
@@ -51,9 +52,9 @@ class WelcomePage extends StatelessWidget {
                                       letterSpacing: 2,
                                     )),
                                 const SizedBox(height: 22),
-                                const Text('Create without limits.',
+                                Text('Create without limits.',
                                     style: TextStyle(
-                                      fontSize: 49,
+                                      fontSize: constraints.maxWidth < 510 ? 37 : 49,
                                       height: 1.05,
                                       color: Colors.white,
                                       fontWeight: FontWeight.w900,
@@ -70,8 +71,16 @@ class WelcomePage extends StatelessWidget {
                                 ),
                                 const SizedBox(height: 30),
                                 PrimaryButton(
-                                  label: 'Get started',
+                                  label: 'Explore demo studio',
+                                  icon: Icons.play_arrow_rounded,
+                                  onPressed: onDemoStart,
+                                ),
+                                const SizedBox(height: 8),
+                                TextButton.icon(
                                   onPressed: onStart,
+                                  icon: const Icon(Icons.alternate_email),
+                                  label: const Text('Continue with a demo email',
+                                      style: TextStyle(color: Colors.white)),
                                 ),
                                 const SizedBox(height: 17),
                                 const Text(
@@ -158,14 +167,10 @@ class LoginPage extends StatefulWidget {
 class _LoginPageState extends State<LoginPage> {
   final formKey = GlobalKey<FormState>();
   final email = TextEditingController();
-  final password = TextEditingController();
-  bool register = false;
-  bool hidePassword = true;
 
   @override
   void dispose() {
     email.dispose();
-    password.dispose();
     super.dispose();
   }
 
@@ -189,6 +194,7 @@ class _LoginPageState extends State<LoginPage> {
                   Align(
                     alignment: Alignment.centerLeft,
                     child: IconButton(
+                      tooltip: 'Back to welcome',
                       onPressed: widget.onBack,
                       icon: const Icon(Icons.arrow_back),
                     ),
@@ -196,10 +202,10 @@ class _LoginPageState extends State<LoginPage> {
                   const SizedBox(height: 20),
                   const HotIceLogo(),
                   const SizedBox(height: 30),
-                  Text(
-                    register ? 'Create a HOTICE account' : 'Welcome to HOTICE',
-                    style: Theme.of(context).textTheme.headlineLarge,
-                  ),
+                  Text('Welcome to HOTICE',
+                    style: Theme.of(context).textTheme.headlineLarge),
+                  const SizedBox(height: 8),
+                  const Text('Enter any valid email format to try a separate local demo workspace.'),
                   const SizedBox(height: 20),
                   StudioPanel(
                     child: Form(
@@ -208,51 +214,27 @@ class _LoginPageState extends State<LoginPage> {
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
                           const DemoNotice(
-                            'Authentication is a UI demo, not a real login. Do not enter a real password.',
+                            'No real login or registration is connected. Never enter a password; demo profiles live only until the app closes.',
                           ),
                           const SizedBox(height: 20),
                           TextFormField(
                             controller: email,
                             keyboardType: TextInputType.emailAddress,
+                            textInputAction: TextInputAction.done,
+                            autofillHints: const [AutofillHints.email],
+                            onFieldSubmitted: (_) => submit(),
                             decoration: const InputDecoration(
-                              labelText: 'Email',
+                              labelText: 'Demo email',
                               prefixIcon: Icon(Icons.mail_outline),
                             ),
                             validator: (v) => !isValidDemoEmail(v ?? '')
-                                ? 'Enter a valid email'
-                                : null,
-                          ),
-                          const SizedBox(height: 14),
-                          TextFormField(
-                            controller: password,
-                            obscureText: hidePassword,
-                            decoration: InputDecoration(
-                              labelText: 'Demo password',
-                              prefixIcon: const Icon(Icons.lock_outline),
-                              suffixIcon: IconButton(
-                                onPressed: () => setState(
-                                    () => hidePassword = !hidePassword),
-                                icon: Icon(hidePassword
-                                    ? Icons.visibility_outlined
-                                    : Icons.visibility_off_outlined),
-                              ),
-                            ),
-                            validator: (v) => v == null || v.length < 6
-                                ? 'Use at least 6 characters'
-                                : null,
+                                ? 'Enter a valid email format' : null,
                           ),
                           const SizedBox(height: 19),
                           PrimaryButton(
-                            label: register ? 'Create demo account' : 'Enter studio',
+                            label: 'Enter studio',
                             onPressed: submit,
-                            icon: Icons.login,
-                          ),
-                          TextButton(
-                            onPressed: () =>
-                                setState(() => register = !register),
-                            child: Text(register
-                                ? 'Already registered? Sign in'
-                                : 'New here? Create an account'),
+                            icon: Icons.arrow_forward_rounded,
                           ),
                         ],
                       ),
