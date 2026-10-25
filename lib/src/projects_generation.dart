@@ -282,14 +282,12 @@ class _GenerationPageState extends State<GenerationPage> {
           throw StateError('Assign the named actors before saving.');
         }
         final seen = <String>{};
-        var position = 0;
         source = source.replaceAllMapped(RegExp(r'\{\{Actor[0-9]+\}\}'), (match) {
           final token = match.group(0)!;
           if (!seen.contains(token)) {
             seen.add(token);
           }
           final index = seen.toList().indexOf(token);
-          position++;
           return sceneActors[index].sceneName;
         });
       }
