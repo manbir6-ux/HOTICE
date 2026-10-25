@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'design.dart';
+import 'state.dart';
 
 class WelcomePage extends StatelessWidget {
   final VoidCallback onStart;
@@ -217,7 +218,7 @@ class _LoginPageState extends State<LoginPage> {
                               labelText: 'Email',
                               prefixIcon: Icon(Icons.mail_outline),
                             ),
-                            validator: (v) => v == null || !v.contains('@')
+                            validator: (v) => !isValidDemoEmail(v ?? '')
                                 ? 'Enter a valid email'
                                 : null,
                           ),
