@@ -172,17 +172,21 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Generate'));
     await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull, reason: 'enter Generate');
 
     final shot = find.widgetWithText(TextField, 'Describe your shot');
     expect(shot, findsOneWidget);
     await tester.enterText(shot, 'Keep this unsaved forest scene');
     await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull, reason: 'after entering prompt');
 
     await tester.tap(find.text('Avatars'));
     await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull, reason: 'after navigating to Avatars');
     expect(find.text('Avatar Studio'), findsOneWidget);
     await tester.tap(find.text('Generate'));
     await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull, reason: 'returning to Generate');
     expect(
       tester.widget<TextField>(shot).controller!.text,
       'Keep this unsaved forest scene',
