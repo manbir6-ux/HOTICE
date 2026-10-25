@@ -1,7 +1,14 @@
 import 'package:flutter/material.dart';
 
+/// Pricing is in whole US cents to avoid floating point billing errors.
 const int creditsPerUsd = 100;
 const int minimumPurchaseUsd = 10;
+
+/// This validates only the local UI demo. It is not authentication.
+bool isValidDemoEmail(String value) {
+  final email = value.trim();
+  return RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(email);
+}
 
 class HotProject {
   final String id;
@@ -23,6 +30,9 @@ class GenerationDraft {
   final String aspectRatio;
   final int durationSeconds;
   final DateTime createdAt;
+  final String projectId;
+  final String avatarName;
+
   const GenerationDraft({
     required this.project,
     required this.prompt,
@@ -30,6 +40,8 @@ class GenerationDraft {
     required this.aspectRatio,
     required this.durationSeconds,
     required this.createdAt,
+    this.projectId = '',
+    this.avatarName = 'None',
   });
 }
 
@@ -45,6 +57,26 @@ enum StudioAccent {
   final Color color;
 }
 
+/// Ephemeral demo data for one profile. Never treat this as cloud security.
+class _DemoWorkspace {
+  _DemoWorkspace({bool seed = false}) {
+    if (seed) {
+      projects.addAll([
+        HotProject('demo-film', 'Untitled cinematic film',
+            DateTime(2026, 10, 25)),
+        HotProject('demo-social', 'Social teaser',
+            DateTime(2026, 10, 24)),
+      ]);
+      avatars.add(const StudioAvatar('Nova', 'Cinematic'));
+    }
+  }
+
+  final List<HotProject> projects = [];
+  final List<StudioAvatar> avatars = [];
+  final List<GenerationDraft> drafts = [];
+  int demoCredits = 1000;
+}
+
 class HotIceStore extends ChangeNotifier {
   bool signedIn = false;
   ThemeMode themeMode = ThemeMode.dark;
@@ -52,23 +84,25 @@ class HotIceStore extends ChangeNotifier {
   String selectedAccount = 'creator@hotice.demo';
   final List<String> accounts = ['creator@hotice.demo'];
 
-  // Mock display balance; never represents purchased or redeemable funds.
-  int demoCredits = 1000;
-  final List<HotProject> projects = [
-    HotProject('demo-film', 'Untitled cinematic film',
-        DateTime(2026, 10, 25)),
-    HotProject('demo-social', 'Social teaser',
-        DateTime(2026, 10, 24)),
-  ];
-  final List<StudioAvatar> avatars = [
-    StudioAvatar('Nova', 'Cinematic'),
-  ];
-  final List<GenerationDraft> drafts = [];
+  final Map<String, _DemoWorkspace> _workspaces = {
+    'creator@hotice.demo': _DemoWorkspace(seed: true),
+  };
+
+  _DemoWorkspace get _workspace => _workspaces.putIfAbsent(
+        selectedAccount,
+        () => _DemoWorkspace(),
+      );
+
+  int get demoCredits => _workspace.demoCredits;
+  List<HotProject> get projects => _workspace.projects;
+  List<StudioAvatar> get avatars => _workspace.avatars;
+  List<GenerationDraft> get drafts => _workspace.drafts;
 
   void signInDemo(String email) {
     final normalized = email.trim().toLowerCase();
-    if (normalized.isEmpty) return;
+    if (!isValidDemoEmail(normalized)) return;
     if (!accounts.contains(normalized)) accounts.add(normalized);
+    _workspaces.putIfAbsent(normalized, () => _DemoWorkspace());
     selectedAccount = normalized;
     signedIn = true;
     notifyListeners();
@@ -81,31 +115,49 @@ class HotIceStore extends ChangeNotifier {
 
   void addAccount(String email) {
     final normalized = email.trim().toLowerCase();
-    if (normalized.isEmpty) return;
+    if (!isValidDemoEmail(normalized)) return;
     if (!accounts.contains(normalized)) accounts.add(normalized);
+    _workspaces.putIfAbsent(normalized, () => _DemoWorkspace());
     selectedAccount = normalized;
     notifyListeners();
   }
 
   void switchAccount(String email) {
-    if (!accounts.contains(email)) return;
-    selectedAccount = email;
+    final normalized = email.trim().toLowerCase();
+    if (!accounts.contains(normalized)) return;
+    selectedAccount = normalized;
     notifyListeners();
   }
 
   String addProject(String title) {
+    final trimmed = title.trim();
+    if (trimmed.isEmpty) {
+      throw ArgumentError.value(title, 'title', 'Project title is empty');
+    }
     final id = DateTime.now().microsecondsSinceEpoch.toString();
-    projects.insert(0, HotProject(id, title.trim(), DateTime.now()));
+    projects.insert(0, HotProject(id, trimmed, DateTime.now()));
     notifyListeners();
     return id;
   }
 
-  void addAvatar(String name, String style) {
-    avatars.insert(0, StudioAvatar(name.trim(), style));
+  /// Avoid duplicate values in the avatar dropdown.
+  bool addAvatar(String name, String style) {
+    final trimmed = name.trim();
+    if (trimmed.isEmpty ||
+        avatars.any((a) => a.name.toLowerCase() == trimmed.toLowerCase())) {
+      return false;
+    }
+    avatars.insert(0, StudioAvatar(trimmed, style));
     notifyListeners();
+    return true;
   }
 
   void queueDraft(GenerationDraft draft) {
+    // Prevent a stale project selection from being saved to another profile.
+    if (draft.projectId.isNotEmpty &&
+        !projects.any((p) => p.id == draft.projectId)) {
+      throw StateError('The selected project is not in this demo workspace.');
+    }
     drafts.insert(0, draft);
     notifyListeners();
   }
