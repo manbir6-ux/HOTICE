@@ -330,11 +330,9 @@ class _GenerationPageState extends State<GenerationPage> {
     if (!validProjects.any((item) => item.id == project)) {
       _selectProject(validProjects.isEmpty ? null : validProjects.first.id);
     }
-    final avatars = [
-      'None',
-      for (final item in widget.store.avatars) item.name,
-    ];
-    if (!avatars.contains(avatarName)) avatarName = 'None';
+    // Remove stale cast entries if an actor preset was deleted.
+    sceneActors.removeWhere((cast) =>
+        !widget.store.avatars.any((actor) => actor.name == cast.avatarName));
     final editor = StudioPanel(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
