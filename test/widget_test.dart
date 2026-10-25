@@ -4,6 +4,8 @@ import 'package:hotice/main.dart';
 import 'package:hotice/src/projects_generation.dart';
 import 'package:hotice/src/state.dart';
 import 'package:hotice/src/video_models.dart';
+import 'package:hotice/src/avatar_identity.dart';
+import 'package:hotice/src/music_studio.dart';
 
 void main() {
   test('credit prices use integer US cents', () {
@@ -163,13 +165,69 @@ void main() {
     store.dispose();
   });
 
+
+  test('reusable avatar identity notes are added across demo video models', () {
+    const avatar = StudioAvatar('Explorer', 'Cinematic',
+        identityNotes: '  long  dark hair   and a blue jacket ');
+    final output = <String>[];
+    for (final model in demoVideoModels) {
+      final text = AvatarPromptComposer.compose(
+        scenePrompt: 'Running through a forest',
+        avatar: avatar,
+        model: model,
+      );
+      output.add(text);
+      expect(text, contains('long dark hair and a blue jacket'));
+      expect(text, contains('Running through a forest'));
+    }
+    expect(output.toSet().length, 1);
+    expect(AvatarPromptComposer.compose(
+      scenePrompt: 'Empty shot',
+      avatar: null,
+      model: demoVideoModels.first,
+    ), 'Empty shot');
+  });
+
+  test('offline storyboard is editable draft, not a fake audio analysis', () {
+    expect(MusicStoryboardTemplates.fromBrief('   '), isEmpty);
+    final plan = MusicStoryboardTemplates.fromBrief('  Hero   comes home  ');
+    expect(plan.length, 4);
+    expect(plan.first.description, contains('Hero comes home'));
+    expect(plan.every((shot) => shot.estimatedSeconds > 0), isTrue);
+  });
+
+  test('music video drafts are isolated by profile and reject foreign projects', () {
+    final store = HotIceStore();
+    final plan = MusicVideoPlan(
+      projectId: 'demo-film',
+      storyBrief: 'A hero returns home',
+      visualStyle: 'Cinematic realism',
+      avatarName: 'Nova',
+      shots: MusicStoryboardTemplates.fromBrief('A hero returns home'),
+      createdAt: DateTime(2026, 10, 26),
+    );
+    store.saveMusicPlan(plan);
+    expect(store.musicPlans.single.avatarName, 'Nova');
+    store.addAccount('second@example.com');
+    expect(store.musicPlans, isEmpty);
+    expect(() => store.saveMusicPlan(plan), throwsStateError);
+    store.dispose();
+  });
+
+  testWidgets('guest demo enters projects without a fake password', (tester) async {
+    await tester.pumpWidget(const HotIceApp());
+    await tester.tap(find.text('Explore demo studio'));
+    await tester.pumpAndSettle();
+    expect(find.text('Untitled cinematic film'), findsOneWidget);
+  });
+
   testWidgets('welcome enters demo login screen', (tester) async {
     await tester.pumpWidget(const HotIceApp());
     expect(find.text('Create without limits.'), findsOneWidget);
-    await tester.tap(find.text('Get started'));
+    await tester.tap(find.text('Continue with a demo email'));
     await tester.pumpAndSettle();
     expect(find.text('Welcome to HOTICE'), findsOneWidget);
-    expect(find.byType(TextFormField), findsNWidgets(2));
+    expect(find.byType(TextFormField), findsOneWidget);
   });
 
   testWidgets('generation page tolerates an account with no projects',
