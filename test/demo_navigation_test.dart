@@ -158,4 +158,63 @@ void main() {
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
   });
+  testWidgets('normal video unsaved prompt survives switching between tabs',
+      (tester) async {
+    tester.view.physicalSize = const Size(393, 852);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+
+    await tester.pumpWidget(const HotIceApp());
+    await tester.tap(find.text('Explore demo studio'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Generate'));
+    await tester.pumpAndSettle();
+
+    final shot = find.widgetWithText(TextField, 'Describe your shot');
+    expect(shot, findsOneWidget);
+    await tester.enterText(shot, 'Keep this unsaved forest scene');
+    await tester.testTextInput.hide();
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Avatars'));
+    await tester.pumpAndSettle();
+    expect(find.text('Avatar Studio'), findsOneWidget);
+    await tester.tap(find.text('Generate'));
+    await tester.pumpAndSettle();
+    expect(
+      tester.widget<TextField>(shot).controller!.text,
+      'Keep this unsaved forest scene',
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('new project selection still reaches generator with retained tabs',
+      (tester) async {
+    tester.view.physicalSize = const Size(393, 852);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+
+    await tester.pumpWidget(const HotIceApp());
+    await tester.tap(find.text('Explore demo studio'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('New project'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).last, 'Fresh project');
+    await tester.tap(find.text('Create'));
+    await tester.pumpAndSettle();
+
+    final dropdown = find.byType(DropdownButtonFormField<String>).first;
+    expect(dropdown, findsOneWidget);
+    expect(tester.widget<DropdownButtonFormField<String>>(dropdown).value,
+        isNotNull);
+    expect(find.text('Scene composer'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
 }
