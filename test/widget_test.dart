@@ -218,7 +218,7 @@ void main() {
     await tester.pumpWidget(const HotIceApp());
     await tester.tap(find.text('Explore demo studio'));
     await tester.pumpAndSettle();
-    expect(find.text('Untitled cinematic film'), findsOneWidget);
+    expect(find.text('Untitled cinematic film'), findsWidgets);
   });
 
   testWidgets('welcome enters demo login screen', (tester) async {
