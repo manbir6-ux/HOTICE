@@ -43,6 +43,34 @@ void main() {
     );
   });
 
+  test('JPEG parser blocks excessive dimensions before image decode', () {
+    final original = jpg(40);
+    final dimensions = ActorArchiveCodec.inspectPhotoHeader(original);
+    expect(dimensions.$1, 64);
+    expect(dimensions.$2, 80);
+
+    final oversized = Uint8List.fromList(original);
+    for (var i = 2; i < oversized.length - 9; i++) {
+      if (oversized[i] == 0xff &&
+          (oversized[i + 1] == 0xc0 ||
+           oversized[i + 1] == 0xc1 ||
+           oversized[i + 1] == 0xc2)) {
+        // SOF precision, height, width; advertise 65,535 x 65,535.
+        oversized[i + 5] = 0xff;
+        oversized[i + 6] = 0xff;
+        oversized[i + 7] = 0xff;
+        oversized[i + 8] = 0xff;
+        break;
+      }
+    }
+    expect(() => ActorArchiveCodec.inspectPhotoHeader(oversized),
+        throwsFormatException);
+    expect(() => ActorArchiveCodec.encode(
+      name: 'Unsafe', style: 'Cinematic', notes: '',
+      photos: [oversized],
+    ), throwsFormatException);
+  });
+
   test('ZIP bomb preflight rejects massive claimed size before inflation', () {
     final encoded = ActorArchiveCodec.encode(
       name: 'Portrait', style: 'Cinematic', notes: '',
