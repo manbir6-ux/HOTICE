@@ -292,6 +292,9 @@
       get('trimEnd').value = clip.end.toFixed(1);
       get('clipSpeed').value = String(clip.speed);
       video.src = clip.url;
+      // Playback rate is per clip; it must not leak from a previous clip's
+      // speed setting when browsing or auto-advancing the timeline.
+      video.playbackRate = clip.speed;
       video.classList.add('has-video');
       emptyStage.hidden = true;
       video.onloadedmetadata = () => {
