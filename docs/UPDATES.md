@@ -52,6 +52,18 @@
 - **Verified automation:** [run 40283778534](https://github.com/parmtech/HOTICE/actions/runs/40283778534) passed **55/55 Flutter tests**, Node web-editor regression, six static approved templates, six Python worker tests, and PHP media validation. Android emulator/APK were still in progress at the last verification; the final status of the latest audit commit must be checked separately. Analyzer still reports **41 nonfatal info/lint issues**.
 - **Audit report:** [Full Code Audit Pass 2](https://github.com/parmtech/HOTICE/blob/fix/full-code-audit-2026-10-26/docs/CODE_AUDIT_FULL_PASS2_2026-10-26.md). **Production blockers remain:** server authentication/MFA/provider key vault, real model API, verified billing/capabilities, encrypted Actor vault, real-phone selfie face/pose QA, true installed 3D reconstruction and secure Actor import/export.
 
+## 26 October 2026 — Actor Scanner device-test build preparation
+
+- **Active source branch:** `fix/full-code-audit-2026-10-26` in [PR #19](https://github.com/parmtech/HOTICE/pull/19), stacked on PR #17 → #16 → #11. **Not merged into `main` or a production mobile release.**
+- **Guided Actor camera beta:** seven real angle captures and review/retake from earlier stacked branches; fixed project identity/reference leaks, asynchronous save races and browser timeline selection (full pass-2 audit).
+- **New hardware calibration:** `Swap left/right directions` toggle in the guided camera affects both live ML Kit yaw and saved-photo angle validation, to help calibrate OEM-specific mirrored selfie cameras. Phone validation is still mandatory; this is not a guaranteed cross-device yaw fix.
+- **Portable Actor packages:** versioned `.hoticeactor` ZIP encode/decode with 1–12 original JPEGs, actor name/style/notes, optional touch-up preference, size limits, strict entry whitelist, image format checks, duplicate-name handling and rollback. User must explicitly approve export/import of **UNENCRYPTED** face photos. Source files remain temporary device-local; no cloud backup.
+- **Optional Actor Auto touch-up:** OFF by default, toggled per Actor. Local scene-reference preparation creates separate gently colour/lighting adjusted JPGs only when opted in; scanned originals remain untouched. It is **not** an AI skin/blemish filter, shape reconstruction or identity guarantee.
+- **Security work:** PHP Omni input MIME/image validation, 3D worker symlink/size controls, temporary composite cleanup, updated Node/Flutter/Python/PHP regression tests and CI concurrency cancellation.
+- **Testing:** GitHub CI validates static code/tests and builds Android emulator/debug APK; real phone face tracking, preview, image quality, import/export through Android storage picker and privacy deletion must be confirmed using [Actor device-test checklist](https://github.com/parmtech/HOTICE/blob/fix/full-code-audit-2026-10-26/docs/ACTOR_DEVICE_TEST_RELEASE.md).
+- **Unfinished major production milestones:** encrypted persistent Actor vault, optional sophisticated face-specific beauty filter, actual licensed 3D reconstruction and verified GLB/rig, server installer/admin 2FA, secure provider key management, real AI video generation and paid credits. Do **not** call any of these complete from CI alone.
+- **APK:** Download only from the exact **latest completed successful PR #19 GitHub Actions run**. A queued/in-progress run is not a verified APK and old upstream APKs do not include these Actor additions.
+
 ## 1. GitHub status verified today
 
 | Track | Status | Evidence |
