@@ -10,8 +10,9 @@ manifest = Path("android/app/src/main/AndroidManifest.xml")
 if manifest.exists():
     raw = manifest.read_text()
     if 'android.permission.CAMERA' not in raw:
-        raw = raw.replace('<manifest', '<manifest', 1)
-        raw = raw.replace('>', '>\n    <uses-permission android:name="android.permission.CAMERA" />', 1)
+        raw = re.sub(r'(<manifest[^>]*>)',
+            lambda m: m.group(1) + '\\n    <uses-permission android:name="android.permission.CAMERA" />',
+            raw, count=1)
     manifest.write_text(raw)
 
 gradle = Path("android/app/build.gradle.kts")
