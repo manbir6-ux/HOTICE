@@ -12,6 +12,12 @@
 - Privacy note: temporary decrypted face photos are needed during the session, encrypted backups are only as strong as their password, and a compromised/unlocked phone can still expose preview images. Passwords **cannot be reset/recovered**; store them separately from the backup.
 - The existing password-unprotected ZIP remains available only for *importing older data*, not for new export in this feature.
 
+## Privacy-safe deletion
+
+- Deleting an Actor now also removes saved scene drafts and music storyboards referencing that Actor. Their generated temporary JPEG contact sheets and touch-up reference copies are deleted from HOTICE-managed temporary folders; other Actors' scenes remain intact.
+- An already exported portable backup is **not** automatically erased from Downloads, cloud drives, or other people's devices. The confirmation dialog explains this clearly.
+- Delete still needs a working mobile vault to remove the encrypted master record. Device data recovery and storage encryption are subject to the OS and hardware.
+
 ## Tests and device acceptance
 
 - `test/actor_transfer_cipher_test.dart` checks real JPEG data round-trip through ZIP → KDF → AES-GCM → ZIP, unique random salt/nonce, wrong passwords, one-byte tampering, short passwords and truncated records.
