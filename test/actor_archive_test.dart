@@ -43,6 +43,40 @@ void main() {
     );
   });
 
+  test('ZIP bomb preflight rejects massive claimed size before inflation', () {
+    final encoded = ActorArchiveCodec.encode(
+      name: 'Portrait', style: 'Cinematic', notes: '',
+      photos: [jpg(60)],
+    );
+    final tampered = Uint8List.fromList(encoded);
+    int? central;
+    for (var i = 0; i <= tampered.length - 46; i++) {
+      if (tampered[i] == 0x50 && tampered[i + 1] == 0x4b &&
+          tampered[i + 2] == 0x01 && tampered[i + 3] == 0x02) {
+        central = i;
+        break;
+      }
+    }
+    expect(central, isNotNull);
+    // Deliberately advertise 2 GiB expanded data in a tiny photo archive.
+    final sizeField = central! + 24;
+    tampered[sizeField] = 0x00;
+    tampered[sizeField + 1] = 0x00;
+    tampered[sizeField + 2] = 0x00;
+    tampered[sizeField + 3] = 0x80;
+    expect(() => ActorArchiveCodec.decode(tampered), throwsFormatException);
+  });
+
+  test('valid archive remains readable under ZIP directory limits', () {
+    final archive = ActorArchiveCodec.encode(
+      name: 'Valid', style: 'Photorealistic',
+      notes: 'Preserves all 7 angles',
+      photos: List.generate(7, (index) => jpg(index + 11)),
+    );
+    final decoded = ActorArchiveCodec.decode(archive);
+    expect(decoded.photos.length, 7);
+  });
+
   test('import rejects traversal, symlink and unrelated package files', () {
     final archive = Archive();
     archive.addFile(ArchiveFile.string('../secret.txt', 'attack'));
