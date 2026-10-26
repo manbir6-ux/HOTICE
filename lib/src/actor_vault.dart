@@ -20,11 +20,14 @@ import 'state.dart';
 class ActorVault {
   ActorVault({
     Directory? root,
+    Directory? cacheRoot,
     Future<Uint8List> Function()? keyProvider,
   }) : _root = root,
+       _cacheRoot = cacheRoot,
        _keyProvider = keyProvider;
 
   final Directory? _root;
+  final Directory? _cacheRoot;
   final Future<Uint8List> Function()? _keyProvider;
 
   static const int _formatVersion = 1;
@@ -187,7 +190,9 @@ class ActorVault {
           await item.readAsBytes(), account, id,
         );
         final profile = ActorArchiveCodec.decode(packed);
-        final photos = await ActorArchiveCodec.importToTemporaryFolder(profile);
+        final photos = await ActorArchiveCodec.importToTemporaryFolder(
+          profile, cacheRoot: _cacheRoot,
+        );
         restored.add(StudioAvatar(
           profile.name, profile.style,
           identityNotes: profile.notes,
