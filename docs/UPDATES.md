@@ -64,6 +64,17 @@
 - **Unfinished major production milestones:** encrypted persistent Actor vault, optional sophisticated face-specific beauty filter, actual licensed 3D reconstruction and verified GLB/rig, server installer/admin 2FA, secure provider key management, real AI video generation and paid credits. Do **not** call any of these complete from CI alone.
 - **APK:** Download only from the exact **latest completed successful PR #19 GitHub Actions run**. A queued/in-progress run is not a verified APK and old upstream APKs do not include these Actor additions.
 
+## 26 October 2026 — Encrypted local Actor vault (PR #20)
+
+- **New source branch:** `feat/secure-actor-vault-v1`, [draft PR #20](https://github.com/parmtech/HOTICE/pull/20), stacked on the audit/camera/Actor branches. **Nothing from PR #20 is merged into stable `main`.**
+- **Persistent device Actor storage:** Android/iOS use AES-256-GCM authenticated encryption to store versioned Actor metadata and original guided JPG photos in private app-support directories, with a device-managed 256-bit key held through `flutter_secure_storage`. New image data is saved only after user consent. Random filenames do not expose Actor names.
+- **Restart restoration:** the existing startup routine purges unencrypted temporary preview files, then Actors Studio reconstructs preview copies from encrypted saved records. Mobile save/edit/rename/delete and Actor ZIP import update the encrypted record, while temporary derived touch-ups and contact sheets remain unencrypted session-only files.
+- **Android device backup:** the generated manifest script now sets `android:allowBackup="false"` to avoid restoring encrypted files without the Keystore key. iOS backup and OS key-recovery behavior still require release security checks.
+- **Crypto tests:** [PR #20](https://github.com/parmtech/HOTICE/pull/20) unit tests reject tampered ciphertext, wrong key/account metadata and validate nonce uniqueness. New Android emulator integration test uses **synthetic images**, and exercises save → restore → rename → account separation → delete on the actual Android secure-storage plugin.
+- **CI snapshot:** [run 40304428412](https://github.com/parmtech/HOTICE/actions/runs/40304428412) passed **65/65 Flutter tests** and static web/PHP/Python checks; Android emulator and APK jobs were still queued at last check. **Do not claim device storage is verified until the Android integration test also passes.**
+- **Privacy limitations:** encryption at rest is not user authentication or a certified biometric vault. App-private **decrypted temporary** photos still exist while the app is used, exports are an intentionally **unencrypted** `.hoticeactor` ZIP after an explicit privacy warning, and OS/root compromise remains a risk. Demo email accounts are not secure user identities; there is no cloud sync, recovery, password protection or installed 3D worker.
+- **Device QA checklist:** [Actor Device Test Release](https://github.com/parmtech/HOTICE/blob/feat/secure-actor-vault-v1/docs/ACTOR_DEVICE_TEST_RELEASE.md). Outstanding: real front-camera OEM yaw, pose and autofocus validation; iOS checks; encrypted vault backup/recovery security, full beauty segmentation, 3D mesh reconstruction and real Gemini/video provider integration.
+
 ## 1. GitHub status verified today
 
 | Track | Status | Evidence |
