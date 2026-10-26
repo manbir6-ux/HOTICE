@@ -85,7 +85,15 @@ class ActorLocalVault {
   final Map<String, String> _nameToFile = {};
   String? _loadedAccount;
   SecretKey? _cachedKey;
-  Future<void>? _loadOperation;
+  // All account loads, saves and deletes share one queue. Otherwise an
+  // asynchronous import/scan can write under another workspace's index.
+  Future<void> _serialTail = Future<void>.value();
+
+  Future<T> _serial<T>(Future<T> Function() operation) {
+    final result = _serialTail.then((_) => operation());
+    _serialTail = result.then<void>((_) {}, onError: (Object _, StackTrace __) {});
+    return result;
+  }
 
   static String _normalize(String name) => name.trim().toLowerCase();
 
@@ -124,23 +132,11 @@ class ActorLocalVault {
     return generated;
   }
 
-  Future<void> _waitForLoad() async {
-    if (_loadOperation != null) await _loadOperation;
-  }
-
   /// Restore only profiles belonging to the currently active demo workspace.
-  /// A damaged record fails closed and remains encrypted on disk for recovery;
-  /// no corrupted photos are silently imported.
-  Future<ActorVaultLoad> load(String account) async {
-    await _waitForLoad();
-    final future = _loadInternal(account);
-    _loadOperation = future.then<void>((_) {});
-    try {
-      return await future;
-    } finally {
-      _loadOperation = null;
-    }
-  }
+  /// Serialized with writes to keep account indexes and files consistent.
+  /// Damaged records fail closed and stay encrypted for recovery.
+  Future<ActorVaultLoad> load(String account) =>
+      _serial(() => _loadInternal(account));
 
   Future<ActorVaultLoad> _loadInternal(String account) async {
     final folder = await _directoryFor(account);
@@ -194,14 +190,25 @@ class ActorLocalVault {
   }
 
   Future<void> save(String account, StudioAvatar actor,
+      {String? formerName}) => _serial(
+        () => _saveInternal(account, actor, formerName: formerName),
+      );
+
+  Future<void> _saveInternal(String account, StudioAvatar actor,
       {String? formerName}) async {
-    await _waitForLoad();
     if (_loadedAccount != account) {
       throw StateError('Actor vault not loaded for this workspace.');
     }
     final folder = await _directoryFor(account);
     await folder.create(recursive: true);
     final oldPath = _nameToFile[_normalize(formerName ?? actor.name)];
+    final currentOwner = _nameToFile[_normalize(actor.name)];
+    if (currentOwner != null && currentOwner != oldPath) {
+      throw StateError('Another Actor already owns that vault name.');
+    }
+    if (formerName != null && oldPath == null) {
+      throw StateError('Original Actor not found in encrypted vault.');
+    }
     final random = Random.secure();
     final newId = List.generate(16, (_) =>
         random.nextInt(256).toRadixString(16).padLeft(2, '0')).join();
@@ -240,8 +247,10 @@ class ActorLocalVault {
     }
   }
 
-  Future<void> delete(String account, String actorName) async {
-    await _waitForLoad();
+  Future<void> delete(String account, String actorName) =>
+      _serial(() => _deleteInternal(account, actorName));
+
+  Future<void> _deleteInternal(String account, String actorName) async {
     if (_loadedAccount != account) {
       throw StateError('Actor vault not loaded for this workspace.');
     }
