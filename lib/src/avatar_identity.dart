@@ -38,8 +38,8 @@ class AvatarPromptComposer {
       if (matches.isEmpty) throw StateError('Actor not in the current library.');
       descriptions.add('Role "$displayName": ${identityCard(matches.first)}');
     }
-    return '$prompt\\n\\n[HOTICE CAST — TEXT PREVIEW ONLY]\\n'
-        '${descriptions.join('\\n')}\\n'
+    return '$prompt\n\n[HOTICE CAST — TEXT PREVIEW ONLY]\n'
+        '${descriptions.join('\n')}\n'
         'Use the assigned names consistently. Exact visual identity requires '
         'provider-supported references.';
   }
