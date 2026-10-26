@@ -11,7 +11,7 @@ if manifest.exists():
     raw = manifest.read_text()
     if 'android.permission.CAMERA' not in raw:
         raw = re.sub(r'(<manifest[^>]*>)',
-            lambda m: m.group(1) + '\\n    <uses-permission android:name="android.permission.CAMERA" />',
+            lambda m: m.group(1) + '\n    <uses-permission android:name="android.permission.CAMERA" />',
             raw, count=1)
     manifest.write_text(raw)
 
