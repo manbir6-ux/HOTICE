@@ -43,6 +43,43 @@ void main() {
     );
   });
 
+  test('rejects ZIP bombs based on central directory before decompression', () {
+    final zipped = ActorArchiveCodec.encode(
+      name: 'Actor', style: 'Cinematic', notes: '',
+      photos: [jpg(70)],
+    );
+    final forged = Uint8List.fromList(zipped);
+    final data = ByteData.sublistView(forged);
+    var central = -1;
+    for (var i = 0; i < forged.length - 46; i++) {
+      if (data.getUint32(i, Endian.little) == 0x02014b50) {
+        central = i;
+        break;
+      }
+    }
+    expect(central, greaterThanOrEqualTo(0));
+    // Advertise 2 GB uncompressed JPEG in a tiny ZIP.
+    data.setUint32(central + 24, 0x7FFFFFFF, Endian.little);
+    expect(() => ActorArchiveCodec.decode(forged),
+        throwsFormatException);
+  });
+
+  test('refuses encrypted-entry flags before any ZIP extraction', () {
+    final zipped = ActorArchiveCodec.encode(
+      name: 'Actor', style: 'Cinematic', notes: '',
+      photos: [jpg(70)],
+    );
+    final forged = Uint8List.fromList(zipped);
+    final data = ByteData.sublistView(forged);
+    for (var i = 0; i < forged.length - 46; i++) {
+      if (data.getUint32(i, Endian.little) == 0x02014b50) {
+        data.setUint16(i + 8, 1, Endian.little);
+        break;
+      }
+    }
+    expect(() => ActorArchiveCodec.decode(forged), throwsFormatException);
+  });
+
   test('import rejects traversal, symlink and unrelated package files', () {
     final archive = Archive();
     archive.addFile(ArchiveFile.string('../secret.txt', 'attack'));
