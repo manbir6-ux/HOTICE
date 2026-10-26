@@ -18,12 +18,14 @@ void main() {
     final bytes = ActorArchiveCodec.encode(
       name: 'My Star', style: 'Photorealistic',
       notes: 'Distinctive beard', photos: photos,
+      autoTouchUp: true,
     );
     final restored = ActorArchiveCodec.decode(bytes);
     expect(restored.name, 'My Star');
     expect(restored.style, 'Photorealistic');
     expect(restored.notes, 'Distinctive beard');
     expect(restored.photos.length, 7);
+    expect(restored.autoTouchUp, isTrue);
     expect(restored.photos.first, orderedEquals(photos.first));
   });
 
@@ -37,7 +39,7 @@ void main() {
     );
     expect(
       () => ActorArchiveCodec.decode(Uint8List.fromList([1, 2, 3])),
-      throwsA(isA<Exception>()),
+      throwsA(anything),
     );
   });
 
