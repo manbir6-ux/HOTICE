@@ -13,6 +13,9 @@ if manifest.exists():
         raw = re.sub(r'(<manifest[^>]*>)',
             lambda m: m.group(1) + '\n    <uses-permission android:name="android.permission.CAMERA" />',
             raw, count=1)
+    if 'android:allowBackup=' not in raw:
+        raw = re.sub(r'<application\\b',
+            '<application android:allowBackup="false"', raw, count=1)
     manifest.write_text(raw)
 
 gradle = Path("android/app/build.gradle.kts")
