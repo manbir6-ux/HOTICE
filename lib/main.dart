@@ -177,8 +177,8 @@ class _HotIceAppState extends State<HotIceApp> {
 
 class StudioShell extends StatefulWidget {
   final HotIceStore store;
-  final ActorVault vault;
-  const StudioShell({super.key, required this.store, required this.vault});
+  final ActorVault? vault;
+  const StudioShell({super.key, required this.store, this.vault});
 
   @override
   State<StudioShell> createState() => _StudioShellState();
