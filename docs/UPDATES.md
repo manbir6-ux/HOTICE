@@ -1,12 +1,24 @@
 # HOTICE — UPDATES & DEVELOPMENT PROGRESS
 
-**Last updated:** 26 October 2026 (Australia/Sydney)  
+**Last updated:** 27 October 2026 (Australia/Sydney)  
 **Canonical repo:** https://github.com/parmtech/HOTICE  
 **Purpose:** Durable, factual change log, latest tested build, outstanding product decisions, security requirements and handoff for the next development iteration. **Update this file after each meaningful implementation and CI verification.**
 
 > **Do not confuse requirements, prototypes and production features.** "Implemented" means source code exists; "CI verified" means GitHub Actions passed for a specified commit; "production ready" additionally requires security, deployment and real-device tests. This document is not a claim that video AI, a real 3D face scanner, live payments or an administrator backend are active.
 
 
+
+## 27 October 2026 — Password-encrypted Actor backups and verified Android APK
+
+- **PR #24** [protected Actor portable backups](https://github.com/parmtech/HOTICE/pull/24) (branch `feat/actor-backup-v2`, commit `9573c01cd725d0e26feead7195b43498b9fddd1e`) is stacked on **PR #21 → PR #20 → PR #19 → PR #17 → PR #16 → PR #11** and remains **DRAFT / NOT MERGED** into `main`.
+- **New exports are password encrypted:** `.hoticeactor` v2 is AES-256-GCM sealed with a random salt/nonce, PBKDF2-HMAC-SHA256 (180,000 iterations), password and confirmation UI. Wrong passwords and modified archive bytes are rejected before ZIP extraction. The app does **not store** export passwords; losing the password means the backup cannot be recovered.
+- **Backward-compatible legacy import:** an old unencrypted `.hoticeactor` ZIP can still be imported, but only after a separate explicit privacy warning; no new plaintext ZIPs are exported in PR #24.
+- **Delete privacy:** deleting a scanned Actor also removes local scene/music drafts that embed that Actor's references/appearance, and clears HOTICE-managed generated montage/touch-up JPEGs alongside original temporary capture photos. Previously exported copies in Downloads or elsewhere **cannot** be revoked.
+- **Tests:** [Actions run 40337323732](https://github.com/parmtech/HOTICE/actions/runs/40337323732) is **fully GREEN** for commit `9573c01cd725d0e26feead7195b43498b9fddd1e`: **82/82 Flutter unit/widget tests**, static web/PHP/Python contracts, Android emulator smoke test and Android debug APK build all passed. Flutter analyzer retains **44 non-fatal info/lint issues**; passing CI is not zero-warning status.
+- **Verified device-test APK:** `HOTICE-v0.2.0-run210-ad42bb9c.apk` (GitHub artifact **HOTICE-Android-v0.2.0-run210**, artifact ID `12657457040`). SHA-256 `b4bb74e893f020730bd3b1239a73c775359aff57da46ab21a79ab83640ebfe7f`. The actual APK was downloaded and its archive integrity, Android manifest and classes.dex were inspected. GitHub: https://github.com/parmtech/HOTICE/actions/runs/40337323732.
+- **Physical phone QA still mandatory:** 7-angle front-camera capture, left/right and chin pitch calibration, photo review/retake, permission/lifecycle, Android file chooser export/import and password roundtrip. Emulator navigation tests are not human-face device tests.
+- **Still absent:** true AI 3D face/head reconstruction with licensed model weights, a full body/rigged Actor, server authentication/MFA, provider billing, actual Google Gemini Omni/Veo video generation, dependable identity preservation across commercial models or account-level cloud sync.
+- Design and device test cases: [ACTOR_ENCRYPTED_BACKUP_V2.md](https://github.com/parmtech/HOTICE/blob/feat/actor-backup-v2/docs/ACTOR_ENCRYPTED_BACKUP_V2.md).
 
 ## 26 October 2026 — High-resolution Actor capture and restart-restore fixes
 
