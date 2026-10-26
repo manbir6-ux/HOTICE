@@ -1,7 +1,14 @@
-/// Pose advice is an *approximate* quality gate, not 3D geometry
-/// or biometric identity verification. Device-specific mirror behaviour
-/// must be tested before shipping outside the demo.
-enum ScanPose { front, left, right }
+/// On-device framing heuristics, NOT a 3D/biometric identity guarantee.
+/// Selfie yaw and pitch directions need physical camera QA across OEMs.
+enum ScanPose {
+  front,
+  left,
+  right,
+  leftProfile,
+  rightProfile,
+  chinUp,
+  chinDown,
+}
 
 class PoseAssessment {
   final bool ready;
@@ -10,11 +17,48 @@ class PoseAssessment {
 }
 
 class ActorPoseGate {
+  /// ML Kit selfie yaw can run opposite to the actor's own left/right.
+  static double? selfieYaw(double? raw, {bool mirroredFront = true}) =>
+      raw == null ? null : (mirroredFront ? -raw : raw);
+
+  static String instruction(ScanPose pose) => switch (pose) {
+        ScanPose.front => 'Look straight at the camera',
+        ScanPose.left => 'Turn your head slightly LEFT',
+        ScanPose.right => 'Turn your head slightly RIGHT',
+        ScanPose.leftProfile => 'Turn further LEFT, to about 45 degrees',
+        ScanPose.rightProfile => 'Turn further RIGHT, to about 45 degrees',
+        ScanPose.chinUp => 'Look forward and raise your chin slightly',
+        ScanPose.chinDown => 'Look forward and lower your chin slightly',
+      };
+
+  /// Evaluate the SAME pose on preview frames and the saved still.
+  /// A user perspective and a fixed sign convention must be tested on device.
+  static bool matchesAngle({
+    required ScanPose pose,
+    required double? yaw,
+    required double? roll,
+    double? pitch,
+  }) {
+    if (yaw == null || roll == null || roll.abs() > 18) return false;
+    return switch (pose) {
+      ScanPose.front => yaw.abs() < 11,
+      ScanPose.left => yaw <= -18 && yaw >= -37,
+      ScanPose.right => yaw >= 18 && yaw <= 37,
+      ScanPose.leftProfile => yaw <= -38 && yaw >= -60,
+      ScanPose.rightProfile => yaw >= 38 && yaw <= 60,
+      ScanPose.chinUp => yaw.abs() <= 14 &&
+          pitch != null && pitch >= 12 && pitch <= 35,
+      ScanPose.chinDown => yaw.abs() <= 14 &&
+          pitch != null && pitch <= -12 && pitch >= -35,
+    };
+  }
+
   static PoseAssessment evaluate({
     required ScanPose pose,
     required int faceCount,
     required double? yaw,
     required double? roll,
+    double? pitch,
     required double faceWidthFraction,
     required double faceHeightFraction,
     required double horizontalCenterOffset,
@@ -42,19 +86,9 @@ class ActorPoseGate {
     if (roll.abs() > 18) {
       return const PoseAssessment(false, 'Keep your head upright');
     }
-    switch (pose) {
-      case ScanPose.front:
-        return yaw.abs() < 11
-            ? const PoseAssessment(true, 'Front angle ready')
-            : const PoseAssessment(false, 'Look straight at the camera');
-      case ScanPose.left:
-        return yaw <= -18 && yaw >= -48
-            ? const PoseAssessment(true, 'Left angle ready')
-            : const PoseAssessment(false, 'Slowly turn your head to the left');
-      case ScanPose.right:
-        return yaw >= 18 && yaw <= 48
-            ? const PoseAssessment(true, 'Right angle ready')
-            : const PoseAssessment(false, 'Slowly turn your head to the right');
+    if (matchesAngle(pose: pose, yaw: yaw, roll: roll, pitch: pitch)) {
+      return const PoseAssessment(true, 'Angle ready');
     }
+    return PoseAssessment(false, instruction(pose));
   }
 }

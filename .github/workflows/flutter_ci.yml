@@ -116,3 +116,11 @@ jobs:
         run: node --check web/public/assets/site.js
       - name: Verify public-site assets, prompts and rights metadata
         run: python3 tools/check_web.py
+      - name: Validate optional private 3D worker consent and cleanup contract
+        run: python3 -m unittest discover -s workers/actor3d/tests -v
+      - name: Configure PHP 8.3 for server-only Omni request contract
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+      - name: Validate Gemini Omni backend payload and input rejection
+        run: php -l server/src/GeminiOmniPayload.php && php server/tests/test_omni_payload.php

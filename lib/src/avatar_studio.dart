@@ -6,8 +6,8 @@ import 'avatar_identity.dart';
 import 'design.dart';
 import 'state.dart';
 
-/// Local-only character workshop. The scan guide never requests the camera,
-/// captures a face, or constructs a 3D model. Those require later integrations.
+/// Consent-first Actor workshop; new Actors require mobile camera capture.
+/// Captures are temporary local photos, not persistent biometric 3D models.
 class AvatarsPage extends StatefulWidget {
   final HotIceStore store;
   const AvatarsPage({super.key, required this.store});
@@ -21,7 +21,7 @@ class _AvatarsPageState extends State<AvatarsPage> {
   final identityNotes = TextEditingController();
   String style = 'Photorealistic';
   String? editingName;
-  bool showScanGuide = false;
+  bool _scanInProgress = false;
   Future<void> scanActor() async {
     final actorName = name.text.trim();
     if (actorName.isEmpty) {
@@ -30,6 +30,7 @@ class _AvatarsPageState extends State<AvatarsPage> {
       );
       return;
     }
+    if (_scanInProgress) return;
     if (editingName != null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Finish editing before creating a new scanned Actor.')),
@@ -43,11 +44,21 @@ class _AvatarsPageState extends State<AvatarsPage> {
       );
       return;
     }
-    final result = await Navigator.of(context).push<ActorCameraResult>(
+    FocusManager.instance.primaryFocus?.unfocus();
+    setState(() => _scanInProgress = true);
+    ActorCameraResult? result;
+    try {
+      result = await Navigator.of(context).push<ActorCameraResult>(
       MaterialPageRoute(
         builder: (_) => GuidedActorCameraPage(actorName: actorName),
       ),
-    );
+      );
+    } finally {
+      if (mounted) {
+        FocusManager.instance.primaryFocus?.unfocus();
+        setState(() => _scanInProgress = false);
+      }
+    }
     if (result == null) return;
     if (!mounted) {
       for (final path in result.paths) {
@@ -62,8 +73,10 @@ class _AvatarsPageState extends State<AvatarsPage> {
         try { await File(path).delete(); } catch (_) {}
       }
     } else {
-      name.clear();
-      identityNotes.clear();
+      setState(() {
+        name.clear();
+        identityNotes.clear();
+      });
     }
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -81,27 +94,26 @@ class _AvatarsPageState extends State<AvatarsPage> {
   }
 
   void saveAvatar() {
-    if (name.text.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Give your character a name first.')),
-      );
-      return;
-    }
-    final created = editingName == null
-        ? widget.store.addAvatar(name.text, style,
-            identityNotes: identityNotes.text)
-        : widget.store.editAvatar(editingName!, name.text, style,
-            identityNotes: identityNotes.text);
-    if (created) {
-      name.clear();
-      identityNotes.clear();
-      setState(() => editingName = null);
-    }
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(created
-          ? 'Character profile saved in this demo workspace.'
-          : 'That character name is already used. Try another name.')),
+    // New Actors MUST pass the mobile camera flow. Only existing Actor
+    // metadata may be edited here, never create an unscanned identity.
+    if (editingName == null) return;
+    final created = widget.store.editAvatar(
+      editingName!, name.text, style,
+      identityNotes: identityNotes.text,
     );
+    if (created) {
+      FocusManager.instance.primaryFocus?.unfocus();
+      setState(() {
+        editingName = null;
+        name.clear();
+        identityNotes.clear();
+      });
+    }
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(created
+          ? 'Actor details updated.'
+          : 'Actor name is invalid or already used.'),
+    ));
   }
 
   void startEditing(StudioAvatar avatar) {
@@ -110,7 +122,6 @@ class _AvatarsPageState extends State<AvatarsPage> {
       name.text = avatar.name;
       style = avatar.style;
       identityNotes.text = avatar.identityNotes;
-      showScanGuide = false;
     });
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Edit the character in the form above.')),
@@ -162,7 +173,7 @@ class _AvatarsPageState extends State<AvatarsPage> {
               children: [
                 Text(avatar.name, style: Theme.of(ctx).textTheme.headlineMedium),
                 const SizedBox(height: 8),
-                const Text('Reusable character identity card · Text-only demo'),
+                const Text('Reusable Actor profile · appearance notes and local references'),
                 const SizedBox(height: 16),
                 SelectableText(card),
                 const SizedBox(height: 16),
@@ -220,62 +231,14 @@ class _AvatarsPageState extends State<AvatarsPage> {
           const PageTitle(
             eyebrow: 'Actor identity',
             title: 'Actors Studio',
-            subtitle: 'Create once. Reuse the same character description across your shots.',
+            subtitle: 'Name your Actor, capture guided face angles and reuse references across scenes.',
           ),
           const DemoNotice(
-            'Actors can be created from appearance notes or live guided front-camera photos on Android/iOS. Photos remain temporary on-device references; no 3D reconstruction or upload.',
-          ),
-          const SizedBox(height: 20),
-          Wrap(
-            spacing: 10,
-            runSpacing: 10,
-            children: [
-              ChoiceChip(
-                avatar: const Icon(Icons.edit_note_rounded, size: 18),
-                label: const Text('Quick actor'),
-                selected: !showScanGuide,
-                onSelected: (_) => setState(() => showScanGuide = false),
-              ),
-              ChoiceChip(
-                avatar: const Icon(Icons.face_retouching_natural_rounded, size: 18),
-                label: const Text('Guided camera'),
-                selected: showScanGuide,
-                onSelected: (_) => setState(() => showScanGuide = true),
-              ),
-            ],
+            'New Actors are created only after guided front-camera capture '
+            'with your consent. The photos stay temporarily on this device. '
+            'This is not a 3D face scan or cloud backup.',
           ),
           const SizedBox(height: 16),
-          if (showScanGuide) ...[
-            StudioPanel(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('Guided face capture',
-                      style: Theme.of(context).textTheme.titleLarge),
-                  const SizedBox(height: 8),
-                  const Text(
-                    'Give your Actor a name in the form below, then open the '
-                    'front camera. HOTICE checks one visible face, distance, '
-                    'centering and front/left/right angles with red/green cues. '
-                    'A click and vibration indicate stable alignment.',
-                  ),
-                  const SizedBox(height: 12),
-                  const DemoNotice(
-                    'This records three real photos with your consent, '
-                    'not a biometric 3D scan. Captures are temporarily stored '
-                    'on this device and cleared at next app launch.',
-                  ),
-                  const SizedBox(height: 15),
-                  FilledButton.icon(
-                    onPressed: scanActor,
-                    icon: const Icon(Icons.camera_front_outlined),
-                    label: const Text('Start real guided camera'),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 16),
-          ],
           StudioPanel(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -327,11 +290,25 @@ class _AvatarsPageState extends State<AvatarsPage> {
                   ),
                 ),
                 const SizedBox(height: 13),
-                PrimaryButton(
-                  label: editingName == null ? 'Save actor' : 'Save changes',
-                  icon: Icons.person_add_alt_1_rounded,
-                  onPressed: saveAvatar,
-                ),
+                if (editingName == null) ...[
+                  const Text(
+                    'Next: guided front-camera capture (front, left and right). '
+                    'HOTICE creates the Actor only after the capture is complete.',
+                  ),
+                  const SizedBox(height: 12),
+                  PrimaryButton(
+                    label: _scanInProgress
+                        ? 'Opening camera...'
+                        : 'Continue to guided camera',
+                    icon: Icons.camera_front_outlined,
+                    onPressed: _scanInProgress ? null : scanActor,
+                  ),
+                ] else
+                  PrimaryButton(
+                    label: 'Save changes',
+                    icon: Icons.save_rounded,
+                    onPressed: saveAvatar,
+                  ),
                 if (editingName != null)
                   TextButton(
                     onPressed: () => setState(() {
@@ -379,7 +356,7 @@ class _AvatarsPageState extends State<AvatarsPage> {
                       maxLines: 1, overflow: TextOverflow.ellipsis),
                   subtitle: Text(avatar.style +
                       ' · ' + (avatar.capturePaths.isNotEmpty
-                          ? '3 guided angle photos · temporary'
+                          ? '${avatar.capturePaths.length} guided angle photos · temporary'
                           : avatar.identityNotes.isEmpty
                               ? 'Add identity notes later'
                               : 'Identity notes ready for prompts')),

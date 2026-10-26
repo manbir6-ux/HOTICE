@@ -1,4 +1,6 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'actor_reference_adapter.dart';
 import 'state.dart';
 import 'video_models.dart';
 import 'avatar_identity.dart';
@@ -222,7 +224,7 @@ class _GenerationPageState extends State<GenerationPage> {
     });
   }
 
-  void save() {
+  Future<void> save() async {
     if (prompt.text.trim().isEmpty || project == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Choose a project and describe your scene.')),
@@ -291,6 +293,48 @@ class _GenerationPageState extends State<GenerationPage> {
           return sceneActors[index].sceneName;
         });
       }
+      final adapterPlan = ActorReferenceAdapter.plan(
+        model: profile,
+        cast: sceneActors,
+        library: widget.store.avatars,
+        otherImageAttachments: references.where(
+          (item) => item.type == VideoAttachment.image,
+        ).length,
+        otherVideoAttachments: references.where(
+          (item) => item.type == VideoAttachment.video,
+        ).length,
+      );
+      final preparedRefs = <SceneReference>[];
+      if (adapterPlan.requiresMontage) {
+        final jpegPath = await ActorContactSheet.saveToTemporaryFile(
+          adapterPlan,
+        );
+        if (!mounted) return;
+        preparedRefs.add(SceneReference(
+          type: VideoAttachment.image,
+          fileName: jpegPath.split(Platform.pathSeparator).last,
+          bytes: await File(jpegPath).length(),
+          localPath: jpegPath,
+        ));
+      } else {
+        for (final sourceRef in adapterPlan.sources) {
+          final file = File(sourceRef.path);
+          if (!await file.exists()) {
+            throw StateError('Actor photo is missing; recapture this Actor.');
+          }
+          preparedRefs.add(SceneReference(
+            type: VideoAttachment.image,
+            fileName: '${sourceRef.sceneName}_${sourceRef.angle}.jpg',
+            bytes: await file.length(),
+            localPath: sourceRef.path,
+          ));
+        }
+      }
+      final attachments = [...references, ...preparedRefs];
+      if (profile.validateInputs(attachments.map((r) => r.type)) != null) {
+        throw StateError('Actor and extra photos exceed this model limit.');
+      }
+      if (!mounted) return;
       final selected = matches.first;
       widget.store.queueDraft(GenerationDraft(
         projectId: selected.id,
@@ -306,14 +350,14 @@ class _GenerationPageState extends State<GenerationPage> {
         aspectRatio: ratio,
         durationSeconds: seconds,
         actors: List<SceneActor>.unmodifiable(sceneActors),
-        referenceFiles: List<SceneReference>.unmodifiable(references),
+        referenceFiles: List<SceneReference>.unmodifiable(attachments),
         negativePrompt: negativePrompt.text.trim(),
         seed: seed,
         soundEnabled: soundEnabled,
         createdAt: DateTime.now(),
       ));
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Scene draft saved. No AI request sent.')),
+        const SnackBar(content: Text('Scene and model-compatible Actor references saved locally. No AI request sent.')),
       );
     } on StateError catch (error) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -407,6 +451,47 @@ class _GenerationPageState extends State<GenerationPage> {
                 ..addAll(items);
             }),
           ),
+          const SizedBox(height: 10),
+          Builder(builder: (context) {
+            try {
+              final plan = ActorReferenceAdapter.plan(
+                model: profile,
+                cast: sceneActors,
+                library: widget.store.avatars,
+                otherImageAttachments: references.where(
+                  (r) => r.type == VideoAttachment.image,
+                ).length,
+                otherVideoAttachments: references.where(
+                  (r) => r.type == VideoAttachment.video,
+                ).length,
+              );
+              final message = switch (plan.delivery) {
+                ActorReferenceDelivery.textOnly =>
+                  'Actor identity: text notes only (0 extra image slots used)',
+                ActorReferenceDelivery.individualImages =>
+                  'Actor identity: ${plan.imageCount} selected angle image(s)',
+                ActorReferenceDelivery.contactSheet =>
+                  'Actor identity: 1 combined reference image for ${plan.sources.length} Actors',
+              };
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Automatic model reference preparation',
+                      style: Theme.of(context).textTheme.titleSmall),
+                  const SizedBox(height: 6),
+                  Text(message, style: Theme.of(context).textTheme.bodySmall),
+                  for (final note in plan.notes)
+                    Text(note, style: Theme.of(context).textTheme.bodySmall),
+                  const SizedBox(height: 4),
+                  const Text('Actor source photos stay on-device. They are included in a local draft, not uploaded or used for AI yet.',
+                      style: TextStyle(fontSize: 12)),
+                ],
+              );
+            } on StateError catch (error) {
+              return Text('Actor references unavailable: ${error.message}',
+                  style: const TextStyle(color: Colors.orangeAccent));
+            }
+          }),
           const SizedBox(height: 17),
           Text('Aspect ratio', style: Theme.of(context).textTheme.titleSmall),
           Wrap(spacing: 8, children: [

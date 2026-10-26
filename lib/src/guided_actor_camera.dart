@@ -3,8 +3,10 @@ import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
+import 'package:image/image.dart' as img;
 import 'package:path_provider/path_provider.dart';
 import 'actor_pose_gate.dart';
+import 'actor_photo_quality.dart';
 
 /// Android/iOS capture only. Images stay on-device in a dedicated *temporary*
 /// directory and are never uploaded by this feature. No depth/3D model is built.
@@ -20,22 +22,33 @@ class GuidedActorCameraPage extends StatefulWidget {
 /// Paths are short-lived local reference photos, NOT a persistent identity
 /// model, encrypted biometric repository, or certified liveness check.
 class ActorCameraResult {
-  const ActorCameraResult(this.front, this.left, this.right);
-  final String front;
-  final String left;
-  final String right;
-  List<String> get paths => [front, left, right];
+  ActorCameraResult(List<String> captured)
+      : paths = List<String>.unmodifiable(captured);
+  final List<String> paths;
+  String get front => paths[0];
+  String get left => paths[1];
+  String get right => paths[2];
 }
 
 class _GuidedActorCameraPageState extends State<GuidedActorCameraPage>
     with WidgetsBindingObserver {
   static const _poses = <ScanPose>[
-    ScanPose.front, ScanPose.left, ScanPose.right,
+    ScanPose.front,
+    ScanPose.left,
+    ScanPose.right,
+    ScanPose.leftProfile,
+    ScanPose.rightProfile,
+    ScanPose.chinUp,
+    ScanPose.chinDown,
   ];
   static const _labels = <String>[
-    'Look straight ahead',
-    'Turn slowly to your left',
-    'Turn slowly to your right',
+    'Front portrait',
+    'Left 25–35°',
+    'Right 25–35°',
+    'Left profile 40–60°',
+    'Right profile 40–60°',
+    'Chin slightly up',
+    'Chin slightly down',
   ];
 
   final _detector = FaceDetector(
@@ -49,6 +62,7 @@ class _GuidedActorCameraPageState extends State<GuidedActorCameraPage>
   );
   CameraController? _controller;
   final List<String> _captures = [];
+  final Map<int, List<String>> _qualityWarnings = {};
   bool _agreed = false;
   bool _resumed = true;
   bool _initializing = false;
@@ -56,6 +70,8 @@ class _GuidedActorCameraPageState extends State<GuidedActorCameraPage>
   bool _capturing = false;
   bool _disposed = false;
   bool _completed = false;
+  bool _reviewing = false;
+  bool _retaking = false;
   String? _error;
   String _instruction = 'Starting front camera...';
   bool _ready = false;
@@ -182,7 +198,7 @@ class _GuidedActorCameraPageState extends State<GuidedActorCameraPage>
   }
 
   void _onFrame(CameraImage frame) {
-    if (!_agreed || _capturing || _processing || _disposed || !mounted) return;
+    if (!_agreed || _reviewing || _capturing || _processing || _disposed || !mounted) return;
     final now = DateTime.now();
     if (now.difference(_lastAnalysis).inMilliseconds < 170) return;
     _lastAnalysis = now;
@@ -212,8 +228,9 @@ class _GuidedActorCameraPageState extends State<GuidedActorCameraPage>
       final assessment = ActorPoseGate.evaluate(
         pose: _pose,
         faceCount: faces.length,
-        yaw: face?.headEulerAngleY,
+        yaw: ActorPoseGate.selfieYaw(face?.headEulerAngleY),
         roll: face?.headEulerAngleZ,
+        pitch: face?.headEulerAngleX,
         faceWidthFraction: box == null ? 0 : box.width / width,
         faceHeightFraction: box == null ? 0 : box.height / height,
         horizontalCenterOffset: box == null ? 1 : box.center.dx / width - .5,
@@ -254,16 +271,13 @@ class _GuidedActorCameraPageState extends State<GuidedActorCameraPage>
         InputImage.fromFilePath(photo.path),
       );
       final latest = faces.isEmpty ? null : faces.first;
-      final angleOk = latest != null && latest.headEulerAngleY != null &&
-          latest.headEulerAngleZ != null &&
-          latest.headEulerAngleZ!.abs() <= 18 &&
-          switch (_pose) {
-            ScanPose.front => latest.headEulerAngleY!.abs() < 13,
-            ScanPose.left => latest.headEulerAngleY! <= -16 &&
-                latest.headEulerAngleY! >= -50,
-            ScanPose.right => latest.headEulerAngleY! >= 16 &&
-                latest.headEulerAngleY! <= 50,
-          };
+      final userYaw = ActorPoseGate.selfieYaw(latest?.headEulerAngleY);
+      final angleOk = ActorPoseGate.matchesAngle(
+        pose: _pose,
+        yaw: userYaw,
+        roll: latest?.headEulerAngleZ,
+        pitch: latest?.headEulerAngleX,
+      );
       if (faces.length != 1 || !angleOk) {
         try { await File(photo.path).delete(); } catch (_) {}
         throw StateError(
@@ -278,21 +292,49 @@ class _GuidedActorCameraPageState extends State<GuidedActorCameraPage>
       await File(photo.path).copy(file.path);
       await File(photo.path).delete().catchError((_) => File(photo.path));
       saved = file.path;
-      _captures.add(saved);
-      if (_step == _poses.length - 1) {
-        _completed = true;
-        if (mounted) {
-          Navigator.pop(context, ActorCameraResult(
-            _captures[0], _captures[1], _captures[2],
-          ));
+      // Advisory only. A well-framed face can legitimately be captured
+      // in creative low-key lighting, so quality never silently rejects
+      // or beautifies the user's original photo.
+      var warnings = <String>[];
+      try {
+        if (await file.length() <= 16 * 1024 * 1024) {
+          final decoded = img.decodeImage(await file.readAsBytes());
+          if (decoded != null) {
+            warnings = ActorPhotoQuality.assess(decoded).warnings;
+          }
+        } else {
+          warnings = ['Large photo — check sharpness before continuing.'];
         }
-        return;
+      } catch (_) {
+        warnings = ['Could not assess photo quality; review this angle.'];
       }
-      setState(() {
-        _step++;
-        _streak = 0;
-        _instruction = _labels[_step];
-      });
+      _qualityWarnings[_step] = warnings;
+      if (_retaking) {
+        final previous = _captures[_step];
+        _captures[_step] = saved;
+        _retaking = false;
+        try { await File(previous).delete(); } catch (_) {}
+        setState(() {
+          _reviewing = true;
+          _streak = 0;
+        });
+        _stopCamera();
+      } else {
+        _captures.add(saved);
+        if (_step == _poses.length - 1) {
+          setState(() {
+            _reviewing = true;
+            _streak = 0;
+          });
+          _stopCamera();
+        } else {
+          setState(() {
+            _step++;
+            _streak = 0;
+            _instruction = _labels[_step];
+          });
+        }
+      }
     } catch (e) {
       if (saved != null) {
         _captures.remove(saved);
@@ -303,12 +345,34 @@ class _GuidedActorCameraPageState extends State<GuidedActorCameraPage>
       );
     } finally {
       _capturing = false;
-      if (mounted && !_completed && _controller == camera) {
+      if (mounted && !_completed && !_reviewing && _controller == camera) {
         try { await camera.startImageStream(_onFrame); } catch (e) {
           if (mounted) setState(() => _error = 'Unable to resume face detection: $e');
         }
       }
     }
+  }
+
+  Future<void> _retake(int index) async {
+    if (_capturing || !_reviewing || index < 0 || index >= _captures.length) {
+      return;
+    }
+    setState(() {
+      _step = index;
+      _retaking = true;
+      _reviewing = false;
+      _ready = false;
+      _streak = 0;
+      _instruction = ActorPoseGate.instruction(_poses[index]);
+    });
+    await _start();
+  }
+
+  void _confirmActor() {
+    if (!_reviewing || _captures.length != _poses.length ||
+        !_captures.every((path) => File(path).existsSync())) return;
+    _completed = true;
+    Navigator.pop(context, ActorCameraResult(_captures));
   }
 
   void _agree() {
@@ -350,7 +414,7 @@ class _GuidedActorCameraPageState extends State<GuidedActorCameraPage>
               Text('Your face. Your choice.',
                   style: Theme.of(context).textTheme.headlineSmall),
               const SizedBox(height: 12),
-              const Text('HOTICE will use your front camera to detect one face and guide three separate photos: front, left and right. Face analysis runs on your device. Photos stay temporarily on this device; nothing is uploaded. This is not a depth or 3D face scan.'),
+              const Text('HOTICE will use your front camera to detect one face and guide seven photos: front, both side angles, two profiles and chin up/down. Face analysis runs on your device. Photos stay temporarily on this device; nothing is uploaded. This is not a depth or 3D face scan.'),
               const SizedBox(height: 12),
               const Text('Only scan yourself or a person who has agreed. This demo does not verify identity or reconstruct a 3D actor. You can cancel at any point.'),
               const SizedBox(height: 22),
@@ -359,12 +423,80 @@ class _GuidedActorCameraPageState extends State<GuidedActorCameraPage>
                 icon: const Icon(Icons.camera_alt_outlined),
                 label: const Text('I agree — start camera'),
               ),
+            ] else if (_reviewing) ...[
+              Text('Review Actor: ${widget.actorName}',
+                  style: Theme.of(context).textTheme.headlineSmall),
+              const SizedBox(height: 8),
+              const Text(
+                'Check every face photo. Retake any angle before saving. '
+                'Nothing is uploaded or reconstructed into 3D.',
+              ),
+              const SizedBox(height: 16),
+              Wrap(
+                spacing: 10,
+                runSpacing: 13,
+                children: [
+                  for (var i = 0; i < _captures.length; i++)
+                    SizedBox(
+                      width: 136,
+                      child: Column(
+                        children: [
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(14),
+                            child: Image.file(
+                              File(_captures[i]),
+                              width: 128,
+                              height: 160,
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, __, ___) =>
+                                  const SizedBox(
+                                width: 128, height: 160,
+                                child: Icon(Icons.broken_image_outlined),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(_labels[i],
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(fontSize: 11)),
+                          if ((_qualityWarnings[i] ?? const <String>[]).isNotEmpty)
+                            for (final message in _qualityWarnings[i]!)
+                              Text(
+                                message,
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(
+                                  fontSize: 11,
+                                  color: Colors.orangeAccent,
+                                ),
+                              ),
+                          OutlinedButton(
+                            onPressed: () => _retake(i),
+                            child: const Text('Retake'),
+                          ),
+                        ],
+                      ),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 17),
+              FilledButton.icon(
+                onPressed: _confirmActor,
+                icon: const Icon(Icons.check_circle_outline),
+                label: const Text('Save Actor with 7 views'),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Temporary, unencrypted images on this device. '
+                'A secure Actor vault and actual 3D reconstruction are '
+                'separate future features.',
+                style: TextStyle(fontSize: 12),
+              ),
             ] else ...[
               Row(
                 children: [
-                  Expanded(child: Text('Angle ${_step + 1} of 3',
+                  Expanded(child: Text('Angle ${_step + 1} of ${_poses.length}',
                       style: Theme.of(context).textTheme.titleLarge)),
-                  Text('${_captures.length}/3 saved',
+                  Text('${_captures.length}/${_poses.length} saved',
                       style: const TextStyle(fontWeight: FontWeight.bold)),
                 ],
               ),
@@ -378,11 +510,35 @@ class _GuidedActorCameraPageState extends State<GuidedActorCameraPage>
                 ),
                 clipBehavior: Clip.antiAlias,
                 child: AspectRatio(
-                  aspectRatio: active ? camera.value.aspectRatio : 3 / 4,
+                  aspectRatio: 3 / 4,
                   child: Stack(
                     fit: StackFit.expand,
                     children: [
-                      if (active) CameraPreview(camera)
+                      if (active)
+                        LayoutBuilder(
+                          builder: (context, bounds) {
+                            final nativeSize = camera.value.previewSize;
+                            if (nativeSize == null) {
+                              return const Center(
+                                child: CircularProgressIndicator(),
+                              );
+                            }
+                            // Preview comes from landscape sensor coordinates.
+                            // Portrait viewport uses swapped dimensions, and
+                            // BoxFit.cover crops without ever stretching face.
+                            return ClipRect(
+                              child: FittedBox(
+                                fit: BoxFit.cover,
+                                alignment: Alignment.center,
+                                child: SizedBox(
+                                  width: nativeSize.height,
+                                  height: nativeSize.width,
+                                  child: CameraPreview(camera),
+                                ),
+                              ),
+                            );
+                          },
+                        )
                       else const Center(child: CircularProgressIndicator()),
                       Center(
                         child: FractionallySizedBox(
@@ -415,7 +571,7 @@ class _GuidedActorCameraPageState extends State<GuidedActorCameraPage>
                 ),
               ),
               const SizedBox(height: 15),
-              Text(_labels[_step],
+              Text(ActorPoseGate.instruction(_pose),
                   textAlign: TextAlign.center,
                   style: Theme.of(context).textTheme.titleMedium),
               const SizedBox(height: 6),
