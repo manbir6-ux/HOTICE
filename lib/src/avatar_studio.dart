@@ -91,16 +91,28 @@ class _AvatarsPageState extends State<AvatarsPage> {
     }
   }
 
-  Future<void> _persistActor(StudioAvatar actor,
-      {String? formerName}) async {
+  bool _sameActiveAccount(String account) =>
+      mounted && widget.store.signedIn &&
+      widget.store.selectedAccount == account;
+
+  Future<void> _persistActor(StudioAvatar actor, {
+    required String account,
+    String? formerName,
+  }) async {
+    if (!_sameActiveAccount(account)) {
+      throw StateError('Account changed during Actor operation.');
+    }
     if (!_deviceVaultAvailable) return;
     if (!_vaultReady) throw StateError('Secure Actor vault is not available.');
+    // Always use the account captured BEFORE async camera/file dialogs,
+    // never whichever account happens to be selected after an await.
     await ActorLocalVault.instance.save(
-      widget.store.selectedAccount, actor, formerName: formerName,
+      account, actor, formerName: formerName,
     );
   }
 
   Future<void> scanActor() async {
+    final account = widget.store.selectedAccount;
     final actorName = name.text.trim();
     if (actorName.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -141,7 +153,7 @@ class _AvatarsPageState extends State<AvatarsPage> {
       }
     }
     if (result == null) return;
-    if (!mounted) {
+    if (!_sameActiveAccount(account)) {
       for (final path in result.paths) {
         try { await File(path).delete(); } catch (_) {}
       }
@@ -152,7 +164,7 @@ class _AvatarsPageState extends State<AvatarsPage> {
       capturePaths: result.paths, autoTouchUp: _autoTouchUp,
     );
     try {
-      await _persistActor(profile);
+      await _persistActor(profile, account: account);
     } catch (_) {
       for (final path in result.paths) {
         try { await File(path).delete(); } catch (_) {}
@@ -160,13 +172,18 @@ class _AvatarsPageState extends State<AvatarsPage> {
       _feedback('Actor was not saved: device encryption/storage unavailable.');
       return;
     }
-    if (!mounted) return;
+    if (!_sameActiveAccount(account)) {
+      for (final path in result.paths) {
+        try { await File(path).delete(); } catch (_) {}
+      }
+      return;
+    }
     final saved = widget.store.addAvatar(actorName, style,
         identityNotes: identityNotes.text, capturePaths: result.paths,
         autoTouchUp: _autoTouchUp);
     if (!saved && _deviceVaultAvailable) {
       try {
-        await ActorLocalVault.instance.delete(widget.store.selectedAccount, actorName);
+        await ActorLocalVault.instance.delete(account, actorName);
       } catch (_) {}
     }
     if (!saved) {
@@ -197,6 +214,7 @@ class _AvatarsPageState extends State<AvatarsPage> {
 
   Future<void> saveAvatar() async {
     if (editingName == null || !_vaultReady || _vaultBusy) return;
+    final account = widget.store.selectedAccount;
     final currentName = editingName!;
     final nameValue = name.text.trim();
     if (nameValue.isEmpty || nameValue.toLowerCase() == 'none' ||
@@ -216,9 +234,11 @@ class _AvatarsPageState extends State<AvatarsPage> {
     try {
       // Persist first. No UI mutation if authenticated encryption fails.
       if (updated.capturePaths.isNotEmpty) {
-        await _persistActor(updated, formerName: currentName);
+        await _persistActor(
+          updated, account: account, formerName: currentName,
+        );
       }
-      if (!mounted) return;
+      if (!_sameActiveAccount(account)) return;
       final success = widget.store.editAvatar(
         currentName, nameValue, style,
         identityNotes: updated.identityNotes,
@@ -364,6 +384,7 @@ class _AvatarsPageState extends State<AvatarsPage> {
 
   Future<void> _exportActor(StudioAvatar actor) async {
     if (_transferBusy || _vaultBusy || !_vaultReady) return;
+    final account = widget.store.selectedAccount;
     if (actor.capturePaths.isEmpty) {
       _feedback('This demo Actor has no guided photos to export.');
       return;
@@ -372,13 +393,14 @@ class _AvatarsPageState extends State<AvatarsPage> {
     final password = await requestActorBackupPassword(
       context, creatingBackup: true,
     );
-    if (password == null || !mounted) return;
+    if (password == null || !_sameActiveAccount(account)) return;
     setState(() => _transferBusy = true);
     try {
       final zipped = await ActorArchiveCodec.exportActor(actor);
       final encrypted = await ActorTransferCipher.encrypt(
         zipped, password: password,
       );
+      if (!_sameActiveAccount(account)) return;
       final safeName = actor.name.replaceAll(
           RegExp(r'[^a-zA-Z0-9_-]'), '_');
       final saved = await FilePicker.saveFile(
@@ -399,6 +421,7 @@ class _AvatarsPageState extends State<AvatarsPage> {
 
   Future<void> _importActor() async {
     if (_transferBusy || _vaultBusy || !_vaultReady) return;
+    final account = widget.store.selectedAccount;
     if (!await _confirmFaceTransfer('Import') || !mounted) return;
     setState(() => _transferBusy = true);
     List<String> created = [];
@@ -469,8 +492,8 @@ class _AvatarsPageState extends State<AvatarsPage> {
       await _persistActor(StudioAvatar(
         actorName, profile.style, identityNotes: profile.notes,
         capturePaths: created, autoTouchUp: profile.autoTouchUp,
-      ));
-      if (!mounted) return;
+      ), account: account);
+      if (!_sameActiveAccount(account)) return;
       final success = widget.store.addAvatar(
         actorName, profile.style,
         identityNotes: profile.notes, capturePaths: created,
@@ -480,7 +503,7 @@ class _AvatarsPageState extends State<AvatarsPage> {
         if (_deviceVaultAvailable) {
           try {
             await ActorLocalVault.instance.delete(
-              widget.store.selectedAccount, actorName,
+              account, actorName,
             );
           } catch (_) {}
         }
