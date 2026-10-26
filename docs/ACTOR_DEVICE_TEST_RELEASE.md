@@ -24,6 +24,14 @@
 8. **Actor export / import:** intentional user action exports a versioned `.hoticeactor` ZIP, including metadata, up to 12 original JPGs and touch-up preference; import checks manifest, all paths, duplicates, JPG signatures/dimensions and compressed/expanded size budgets before writing to a temporary private device folder. Duplicate names are suffixed rather than overwritten.
 9. **Privacy:** face photos and touched-up references are temporarily decrypted for active use; their encrypted Actor archive is now persisted on mobile and restored next app start. *Export ZIP is UNENCRYPTED* and shows a warning/confirmation before exporting/importing. No backend upload, cloud backup, third-party telemetry or provider API key is used by these demo operations.
 
+## 26 October 2026 — Performance and vault restore hardening (PR #21)
+
+- **Camera freeze mitigation:** saved high-resolution camera JPEGs are checked for file size and JPEG header dimensions **before** decoding, then photo exposure/detail analysis is performed on a Dart worker isolate. This avoids decoding every full-resolution portrait on the live Flutter UI thread; the original photo is untouched.
+- **Scan cancellation safety:** if the guided camera page closes during the asynchronous quality analysis, the newly captured working photo is removed instead of trying to show a disposed widget.
+- **Stale Actor repair:** encrypted vault restoration now reconciles the in-memory library against authenticated records. Actor photos deleted/corrupt/missing from the vault no longer leave stale, seemingly usable profile entries after switching accounts; built-in text-only demo presets remain.
+- **Additional automated tests:** synthetic JPEG quality/isolate verification, malformed JPEG rejection and duplicate/missing Actor identity reconciliation. Physical Android camera yaw/pitch, image orientation and media performance **still require testing on the actual handset**.
+- This build does **not** deploy 3D face reconstruction, production login, cloud sync or live model generation.
+
 ## Required phone acceptance tests
 
 - [ ] Install the **newest full-green PR #19 APK** from the GitHub Actions Artifacts section, and note the short build commit ID shown in the app.
