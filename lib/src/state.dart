@@ -67,10 +67,14 @@ class SceneReference {
   final VideoAttachment type;
   final String fileName;
   final int bytes;
+  /// Local temporary source path for an internally prepared image.
+  /// This is NOT a provider URL or upload token.
+  final String? localPath;
   const SceneReference({
     required this.type,
     required this.fileName,
     required this.bytes,
+    this.localPath,
   });
 }
 
