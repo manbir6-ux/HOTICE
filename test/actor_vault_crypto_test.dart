@@ -17,15 +17,17 @@ void main() {
         autoTouchUp: true,
     ));
     expect(store.avatars.where((a) => a.name == 'Original Hero').length, 1);
-    expect(store.avatars.single.capturePaths, ['fresh-decrypted.jpg']);
-    expect(store.avatars.single.autoTouchUp, isTrue);
+    final hero = store.avatars.singleWhere((a) => a.name == 'Original Hero');
+    expect(hero.capturePaths, ['fresh-decrypted.jpg']);
+    expect(hero.autoTouchUp, isTrue);
 
     store.addAccount('second-actor@hotice.demo');
     store.restoreAvatar(const StudioAvatar('Second', 'Cinematic',
         capturePaths: ['second.jpg']));
     store.switchAccount('creator@hotice.demo');
-    expect(store.avatars.single.name, 'Original Hero');
-    expect(store.avatars.single.capturePaths, ['fresh-decrypted.jpg']);
+    final restored = store.avatars.singleWhere(
+        (a) => a.name == 'Original Hero');
+    expect(restored.capturePaths, ['fresh-decrypted.jpg']);
   });
 
   test('AES-256-GCM vault payload survives authenticated roundtrip', () async {
