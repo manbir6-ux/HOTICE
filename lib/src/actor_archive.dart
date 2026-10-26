@@ -28,16 +28,53 @@ class ActorArchiveCodec {
   static const maxTotalDecodedBytes = 72 * 1024 * 1024;
   static const maxPhotos = 12;
 
-  static void _validatePhoto(Uint8List bytes) {
-    if (bytes.isEmpty || bytes.length > maxPhotoBytes ||
-        bytes.length < 4 || bytes[0] != 0xFF || bytes[1] != 0xD8) {
+  /// Parse JPEG Start-of-Frame dimensions *before decoding image pixels*.
+  /// An apparently small JPG can advertise gigantic dimensions and exhaust
+  /// RAM if a decoder is invoked first.
+  static (int width, int height) inspectPhotoHeader(Uint8List bytes) {
+    if (bytes.length < 10 || bytes.length > maxPhotoBytes ||
+        bytes[0] != 0xff || bytes[1] != 0xd8) {
       throw const FormatException('Expected a valid JPG face photo.');
     }
+    var offset = 2;
+    while (offset + 4 <= bytes.length) {
+      if (bytes[offset] != 0xff) break;
+      while (offset < bytes.length && bytes[offset] == 0xff) {
+        offset++;
+      }
+      if (offset >= bytes.length) break;
+      final marker = bytes[offset++];
+      if (marker == 0xd9 || marker == 0xda) break;
+      if (marker == 0x01 || (marker >= 0xd0 && marker <= 0xd7)) {
+        continue;
+      }
+      if (offset + 2 > bytes.length) break;
+      final size = bytes[offset] * 256 + bytes[offset + 1];
+      if (size < 2 || offset + size > bytes.length) break;
+      final frame = (marker >= 0xc0 && marker <= 0xcf) &&
+          marker != 0xc4 && marker != 0xc8 && marker != 0xcc;
+      if (frame) {
+        if (size < 8) break;
+        final height = bytes[offset + 3] * 256 + bytes[offset + 4];
+        final width = bytes[offset + 5] * 256 + bytes[offset + 6];
+        if (width < 32 || height < 32 ||
+            width > 6500 || height > 6500 ||
+            width * height > 18000000) {
+          throw const FormatException('Actor JPEG pixel dimensions are unsafe.');
+        }
+        return (width, height);
+      }
+      offset += size;
+    }
+    throw const FormatException('JPEG dimensions could not be verified.');
+  }
+
+  static void _validatePhoto(Uint8List bytes) {
+    final (width, height) = inspectPhotoHeader(bytes);
     final decoded = img.decodeJpg(bytes);
-    if (decoded == null || decoded.width < 32 || decoded.height < 32 ||
-        decoded.width > 6500 || decoded.height > 6500 ||
-        decoded.width * decoded.height > 18000000) {
-      throw const FormatException('Actor photo has invalid dimensions or encoding.');
+    if (decoded == null || decoded.width != width ||
+        decoded.height != height) {
+      throw const FormatException('Actor photo has invalid encoding.');
     }
   }
 
