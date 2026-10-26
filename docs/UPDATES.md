@@ -29,6 +29,16 @@
 - Exact latest CI results/artifact must be rechecked on [PR #17](https://github.com/parmtech/HOTICE/pull/17) before merging. All generated media stays in the app's **unencrypted temporary storage** until production encryption, consent/deletion and backend protections exist.
 - Full plan and implementation map: [Actor Identity Engine](https://github.com/parmtech/HOTICE/blob/feat/actor-identity-model-adapters-v1/docs/ACTOR_IDENTITY_ENGINE.md). Open blockers: actual 3D inference and GLB quality, persistent secure Actor vault, officially verified model limits/prices, central admin/MFA/backend, media uploads and real paid video generation, physical-phone camera QA.
 
+## 26 October 2026 — Guided-only Actor creation and seven-angle scan review
+
+- **PR #17 source changes (NOT merged into `main`):** removed the Quick Actor / unsupervised `Save actor` creation route from Actors Studio. User now enters Actor name and optional notes **before** opening guided camera, and the keyboard is dismissed on navigation.
+- **Scan extended:** front, left slight, right slight, left profile, right profile, chin up and chin down (**seven** real face photos). Preview/still validation uses consistent yaw/pitch gates, with on-screen red/green instructions and haptic/click readiness.
+- **User review:** after seven captures, a thumbnail gallery offers **Retake** for each angle, followed by explicit `Save Actor with 7 views`. No Actor created automatically on the last shot; cancelled scans discard collected temporary photos. Model adapters now label seven angles correctly.
+- **Tests:** added small-phone UI guard that creation is guided-only, plus seven-angle yaw/pitch boundary tests. The updated Flutter run 40281012796 passed **50/50** unit/widget tests, static analysis exit-success and static web/PHP/Python checks; Android emulator/APK verification is separately pending at this snapshot.
+- **Original camera screenshots:** earlier left/right guidance reversal and stretched preview were addressed in branch code, but the exact selfie-yaw sign and portrait crop **require retesting on the reported physical phone**. Changing head pitch/yaw thresholds is not proof they fit every device.
+- **Still blocked:** optional beauty/touch-up, actor ZIP import/export, more advanced optical blur/lighting scores, encrypted persistent Actor identity vault, actual installed/licence-audited 3D reconstruction/GLB worker, provider API calls and secure Namecheap control-plane.
+- **Tracking:** [PR #17](https://github.com/parmtech/HOTICE/pull/17) · [Camera QA plan](https://github.com/parmtech/HOTICE/blob/feat/actor-identity-model-adapters-v1/docs/ACTOR_GUIDED_CAMERA_V1.md) · [Issue #13](https://github.com/parmtech/HOTICE/issues/13).
+
 ## 1. GitHub status verified today
 
 | Track | Status | Evidence |
