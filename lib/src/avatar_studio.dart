@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'actor_archive.dart';
+import 'actor_vault.dart';
 import 'package:flutter/material.dart';
 import 'guided_actor_camera.dart';
 import 'package:flutter/services.dart';
@@ -26,6 +27,82 @@ class _AvatarsPageState extends State<AvatarsPage> {
   String? editingName;
   bool _scanInProgress = false;
   bool _transferBusy = false;
+  bool _vaultReady = false;
+  bool _vaultBusy = false;
+  String? _vaultProblem;
+
+  bool get _deviceVaultAvailable => Platform.isAndroid || Platform.isIOS;
+
+  @override
+  void initState() {
+    super.initState();
+    _restoreVault();
+  }
+
+  Future<void> _restoreVault() async {
+    // Flutter widget tests and unsupported desktop platforms have no Keychain/
+    // Keystore. Continue as a clearly marked ephemeral demonstration there.
+    if (!_deviceVaultAvailable) {
+      if (mounted) setState(() => _vaultReady = true);
+      return;
+    }
+    final account = widget.store.selectedAccount;
+    try {
+      final loaded = await ActorLocalVault.instance.load(account);
+      if (!mounted || widget.store.selectedAccount != account) {
+        for (final actor in loaded.actors) {
+          for (final path in actor.capturePaths) {
+            try { await File(path).delete(); } catch (_) {}
+          }
+        }
+        return;
+      }
+      for (final actor in loaded.actors) {
+        final existing = widget.store.avatars.where(
+          (a) => a.name.toLowerCase() == actor.name.toLowerCase(),
+        );
+        if (existing.isNotEmpty && existing.first.capturePaths.isEmpty) {
+          // Replace the stock text-only "Nova" demo if a real photo actor
+          // with that name was previously saved in this local vault.
+          widget.store.removeAvatar(existing.first.name);
+        }
+        if (!widget.store.addAvatar(
+          actor.name, actor.style,
+          identityNotes: actor.identityNotes,
+          capturePaths: actor.capturePaths,
+          autoTouchUp: actor.autoTouchUp,
+        )) {
+          for (final path in actor.capturePaths) {
+            try { await File(path).delete(); } catch (_) {}
+          }
+        }
+      }
+      if (mounted) {
+        setState(() {
+          _vaultReady = true;
+          _vaultProblem = loaded.failedEntries == 0 ? null
+              : '${loaded.failedEntries} encrypted Actor record(s) could not be opened.';
+        });
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _vaultReady = false;
+          _vaultProblem = 'Secure Actor storage is unavailable. Do not scan until it is restored.';
+        });
+      }
+    }
+  }
+
+  Future<void> _persistActor(StudioAvatar actor,
+      {String? formerName}) async {
+    if (!_deviceVaultAvailable) return;
+    if (!_vaultReady) throw StateError('Secure Actor vault is not available.');
+    await ActorLocalVault.instance.save(
+      widget.store.selectedAccount, actor, formerName: formerName,
+    );
+  }
+
   Future<void> scanActor() async {
     final actorName = name.text.trim();
     if (actorName.isEmpty) {
@@ -34,7 +111,10 @@ class _AvatarsPageState extends State<AvatarsPage> {
       );
       return;
     }
-    if (_scanInProgress) return;
+    if (_scanInProgress || _transferBusy || _vaultBusy || !_vaultReady) {
+      _feedback('Secure Actor vault is not ready. Try reopening Actors Studio.');
+      return;
+    }
     if (editingName != null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Finish editing before creating a new scanned Actor.')),
@@ -70,9 +150,28 @@ class _AvatarsPageState extends State<AvatarsPage> {
       }
       return;
     }
+    final profile = StudioAvatar(
+      actorName, style, identityNotes: identityNotes.text.trim(),
+      capturePaths: result.paths, autoTouchUp: _autoTouchUp,
+    );
+    try {
+      await _persistActor(profile);
+    } catch (_) {
+      for (final path in result.paths) {
+        try { await File(path).delete(); } catch (_) {}
+      }
+      _feedback('Actor was not saved: device encryption/storage unavailable.');
+      return;
+    }
+    if (!mounted) return;
     final saved = widget.store.addAvatar(actorName, style,
         identityNotes: identityNotes.text, capturePaths: result.paths,
         autoTouchUp: _autoTouchUp);
+    if (!saved && _deviceVaultAvailable) {
+      try {
+        await ActorLocalVault.instance.delete(widget.store.selectedAccount, actorName);
+      } catch (_) {}
+    }
     if (!saved) {
       for (final path in result.paths) {
         try { await File(path).delete(); } catch (_) {}
@@ -87,7 +186,7 @@ class _AvatarsPageState extends State<AvatarsPage> {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
       content: Text(saved
-          ? 'Actor created with ${result.paths.length} temporary camera photos. No upload.'
+          ? 'Actor created with ${result.paths.length} photos. Encrypted local vault on mobile; no upload.'
           : 'Could not save Actor. Camera captures were discarded.'),
     ));
   }
@@ -99,29 +198,51 @@ class _AvatarsPageState extends State<AvatarsPage> {
     super.dispose();
   }
 
-  void saveAvatar() {
-    // New Actors MUST pass the mobile camera flow. Only existing Actor
-    // metadata may be edited here, never create an unscanned identity.
-    if (editingName == null) return;
-    final created = widget.store.editAvatar(
-      editingName!, name.text, style,
-      identityNotes: identityNotes.text,
-      autoTouchUp: _autoTouchUp,
-    );
-    if (created) {
-      FocusManager.instance.primaryFocus?.unfocus();
-      setState(() {
-        editingName = null;
-        name.clear();
-        identityNotes.clear();
-        _autoTouchUp = false;
-      });
+  Future<void> saveAvatar() async {
+    if (editingName == null || !_vaultReady || _vaultBusy) return;
+    final currentName = editingName!;
+    final nameValue = name.text.trim();
+    if (nameValue.isEmpty || nameValue.toLowerCase() == 'none' ||
+        widget.store.avatars.any((a) =>
+          a.name != currentName &&
+          a.name.toLowerCase() == nameValue.toLowerCase())) {
+      _feedback('Actor name is invalid or already used.');
+      return;
     }
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text(created
-          ? 'Actor details updated.'
-          : 'Actor name is invalid or already used.'),
-    ));
+    final existing = widget.store.avatars.where((a) => a.name == currentName);
+    if (existing.isEmpty) return;
+    final updated = StudioAvatar(
+      nameValue, style, identityNotes: identityNotes.text.trim(),
+      capturePaths: existing.single.capturePaths, autoTouchUp: _autoTouchUp,
+    );
+    setState(() => _vaultBusy = true);
+    try {
+      // Persist first. No UI mutation if authenticated encryption fails.
+      if (updated.capturePaths.isNotEmpty) {
+        await _persistActor(updated, formerName: currentName);
+      }
+      if (!mounted) return;
+      final success = widget.store.editAvatar(
+        currentName, nameValue, style,
+        identityNotes: updated.identityNotes,
+        autoTouchUp: _autoTouchUp,
+      );
+      if (success) {
+        FocusManager.instance.primaryFocus?.unfocus();
+        setState(() {
+          editingName = null;
+          name.clear();
+          identityNotes.clear();
+          _autoTouchUp = false;
+        });
+      }
+      _feedback(success ? 'Encrypted Actor details updated.'
+          : 'Actor could not be edited.');
+    } catch (_) {
+      _feedback('Changes were not saved: encrypted storage is unavailable.');
+    } finally {
+      if (mounted) setState(() => _vaultBusy = false);
+    }
   }
 
   void startEditing(StudioAvatar avatar) {
@@ -138,6 +259,7 @@ class _AvatarsPageState extends State<AvatarsPage> {
   }
 
   Future<void> deleteAvatar(StudioAvatar avatar) async {
+    if (_transferBusy || _scanInProgress || _vaultBusy || !_vaultReady) return;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -152,11 +274,25 @@ class _AvatarsPageState extends State<AvatarsPage> {
       ),
     );
     if (!mounted || confirmed != true) return;
+    if (_vaultBusy || !_vaultReady) return;
+    setState(() => _vaultBusy = true);
+    try {
+      if (_deviceVaultAvailable && avatar.capturePaths.isNotEmpty) {
+        await ActorLocalVault.instance.delete(
+          widget.store.selectedAccount, avatar.name,
+        );
+      }
+    } catch (_) {
+      _feedback('Could not remove encrypted Actor. Nothing was deleted.');
+      if (mounted) setState(() => _vaultBusy = false);
+      return;
+    }
     widget.store.removeAvatar(avatar.name);
     for (final path in avatar.capturePaths) {
       try { await File(path).delete(); } catch (_) {}
     }
     if (!mounted) return;
+    setState(() => _vaultBusy = false);
     if (editingName == avatar.name) {
       setState(() {
         editingName = null;
@@ -201,7 +337,7 @@ class _AvatarsPageState extends State<AvatarsPage> {
   }
 
   Future<void> _exportActor(StudioAvatar actor) async {
-    if (_transferBusy) return;
+    if (_transferBusy || _vaultBusy || !_vaultReady) return;
     if (actor.capturePaths.isEmpty) {
       _feedback('This demo Actor has no guided photos to export.');
       return;
@@ -229,7 +365,7 @@ class _AvatarsPageState extends State<AvatarsPage> {
   }
 
   Future<void> _importActor() async {
-    if (_transferBusy) return;
+    if (_transferBusy || _vaultBusy || !_vaultReady) return;
     if (!await _confirmFaceTransfer('Import') || !mounted) return;
     setState(() => _transferBusy = true);
     List<String> created = [];
@@ -259,17 +395,29 @@ class _AvatarsPageState extends State<AvatarsPage> {
       }
       created = await ActorArchiveCodec.importToTemporaryFolder(profile);
       if (!mounted) return;
+      await _persistActor(StudioAvatar(
+        actorName, profile.style, identityNotes: profile.notes,
+        capturePaths: created, autoTouchUp: profile.autoTouchUp,
+      ));
+      if (!mounted) return;
       final success = widget.store.addAvatar(
         actorName, profile.style,
         identityNotes: profile.notes, capturePaths: created,
         autoTouchUp: profile.autoTouchUp,
       );
       if (!success) {
+        if (_deviceVaultAvailable) {
+          try {
+            await ActorLocalVault.instance.delete(
+              widget.store.selectedAccount, actorName,
+            );
+          } catch (_) {}
+        }
         throw StateError('Actor profile could not be saved.');
       }
       created = [];
-      _feedback('Actor imported with ${profile.photos.length} real photos. '
-          'Temporary until app restart.');
+      _feedback('Actor imported with ${profile.photos.length} photos. '
+          'Encrypted on this mobile device.');
     } catch (_) {
       _feedback('Import rejected. Check ZIP safety, format and photos.');
     } finally {
@@ -301,13 +449,14 @@ class _AvatarsPageState extends State<AvatarsPage> {
                 SelectableText(card),
                 const SizedBox(height: 16),
                 const DemoNotice(
-                  'Camera references stay on this device temporarily, not cloud-synced. '
+                  'Mobile Actor originals are stored encrypted on-device and unpacked only ' 
+                  'into app-private temporary files while the app is running. '
                   'They are not 3D meshes, biometric identity verification or guaranteed '
                   'AI face-locking.',
                 ),
                 if (avatar.capturePaths.isNotEmpty) ...[
                   const SizedBox(height: 12),
-                  Text('${avatar.capturePaths.length} captured camera angles (session only)'),
+                  Text('${avatar.capturePaths.length} captured angles (encrypted local backup on mobile)'),
                   const SizedBox(height: 9),
                   Wrap(
                     spacing: 8,
@@ -357,10 +506,16 @@ class _AvatarsPageState extends State<AvatarsPage> {
             subtitle: 'Name your Actor, capture guided face angles and reuse references across scenes.',
           ),
           const DemoNotice(
-            'New Actors are created only after guided front-camera capture '
-            'with your consent. The photos stay temporarily on this device. '
-            'This is not a 3D face scan or cloud backup.',
+            'New Actors require consented guided-camera capture. Android/iOS '
+            'store an encrypted local copy; app previews use temporary photos. '
+            'No cloud upload, account authentication or 3D reconstruction.',
           ),
+          const SizedBox(height: 12),
+          if (!_vaultReady)
+            DemoNotice(_vaultProblem ??
+                'Preparing private Actor storage before face capture...'),
+          if (_vaultReady && _vaultProblem != null)
+            DemoNotice(_vaultProblem!),
           const SizedBox(height: 16),
           StudioPanel(
             child: Column(
@@ -435,13 +590,13 @@ class _AvatarsPageState extends State<AvatarsPage> {
                         ? 'Opening camera...'
                         : 'Continue to guided camera',
                     icon: Icons.camera_front_outlined,
-                    onPressed: _scanInProgress ? null : scanActor,
+                    onPressed: (_scanInProgress || !_vaultReady || _vaultBusy) ? null : scanActor,
                   ),
                 ] else
                   PrimaryButton(
                     label: 'Save changes',
                     icon: Icons.save_rounded,
-                    onPressed: saveAvatar,
+                    onPressed: (_vaultReady && !_vaultBusy) ? saveAvatar : null,
                   ),
                 if (editingName != null)
                   TextButton(
@@ -474,7 +629,7 @@ class _AvatarsPageState extends State<AvatarsPage> {
           ),
           const SizedBox(height: 12),
           OutlinedButton.icon(
-            onPressed: _transferBusy ? null : _importActor,
+            onPressed: (_transferBusy || !_vaultReady || _vaultBusy) ? null : _importActor,
             icon: const Icon(Icons.file_download_outlined),
             label: const Text('Import Actor (.hoticeactor)'),
           ),
@@ -500,7 +655,7 @@ class _AvatarsPageState extends State<AvatarsPage> {
                       maxLines: 1, overflow: TextOverflow.ellipsis),
                   subtitle: Text(avatar.style +
                       ' · ' + (avatar.capturePaths.isNotEmpty
-                          ? '${avatar.capturePaths.length} guided angle photos · temporary'
+                          ? '${avatar.capturePaths.length} guided photos · encrypted local vault (mobile)'
                           : avatar.identityNotes.isEmpty
                               ? 'Add identity notes later'
                               : 'Identity notes ready for prompts')),

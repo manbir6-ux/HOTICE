@@ -39,6 +39,24 @@ void main() {
     expect(check(yaw: null).ready, isFalse);
   });
 
+  test('chin up/down calibration reverses sensor pitch consistently', () {
+    expect(ActorPoseGate.selfiePitch(19), 19);
+    expect(ActorPoseGate.selfiePitch(19, reversed: true), -19);
+    expect(ActorPoseGate.selfiePitch(null, reversed: true), isNull);
+    expect(ActorPoseGate.matchesAngle(
+      pose: ScanPose.chinDown,
+      yaw: 0,
+      roll: 0,
+      pitch: ActorPoseGate.selfiePitch(20, reversed: true),
+    ), isTrue);
+    expect(ActorPoseGate.matchesAngle(
+      pose: ScanPose.chinUp,
+      yaw: 0,
+      roll: 0,
+      pitch: ActorPoseGate.selfiePitch(-20, reversed: true),
+    ), isTrue);
+  });
+
   test('mirrored selfie camera yaw follows the actor left/right perspective', () {
     expect(ActorPoseGate.selfieYaw(25), -25);
     expect(ActorPoseGate.selfieYaw(-25), 25);
