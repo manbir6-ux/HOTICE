@@ -128,6 +128,29 @@ const List<VideoModelProfile> demoVideoModels = [
     priceBand: 'Premium · illustrative',
     maxActors: 1,
   ),
+  // This *planning preset* is based on Google's published Gemini Omni Flash
+  // developer docs. Input counts and "maxActors" here are conservative HOTICE
+  // demo policies, NOT claims of official maximums or a connected provider.
+  // The production model list must come from the secure server catalog.
+  VideoModelProfile(
+    id: 'gemini_omni_flash_preview',
+    label: 'Gemini Omni Flash · Integration preview',
+    formatsBySeconds: {
+      3: ['16:9', '9:16'],
+      5: ['16:9', '9:16'],
+      10: ['16:9', '9:16'],
+    },
+    attachments: [
+      VideoAttachment.image, VideoAttachment.video, VideoAttachment.audio,
+    ],
+    maxInputs: {
+      VideoAttachment.image: 2,
+      VideoAttachment.video: 1,
+      VideoAttachment.audio: 1,
+    },
+    maxActors: 3,
+    priceBand: 'Price not connected',
+  ),
   VideoModelProfile(
     id: 'multimodal_demo',
     label: 'Multimodal Studio · Demo',
