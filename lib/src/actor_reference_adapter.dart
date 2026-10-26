@@ -203,8 +203,15 @@ class ActorContactSheet {
       if (!await file.exists()) {
         throw StateError('Actor capture is missing: please recapture this Actor.');
       }
+      final byteCount = await file.length();
+      if (byteCount < 1 || byteCount > 16 * 1024 * 1024) {
+        throw StateError('Actor photo is too large for safe local processing.');
+      }
       final decoded = img.decodeImage(await file.readAsBytes());
       if (decoded == null) throw StateError('Could not decode Actor photo.');
+      if (decoded.width > 6000 || decoded.height > 6000) {
+        throw StateError('Actor image dimensions exceed safe processing limits.');
+      }
       portraits.add(decoded);
     }
     final rendered = compose(portraits: portraits);
