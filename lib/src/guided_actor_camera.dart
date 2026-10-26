@@ -152,9 +152,22 @@ class _GuidedActorCameraPageState extends State<GuidedActorCameraPage>
       return null;
     }
     final format = android ? InputImageFormat.nv21 : InputImageFormat.bgra8888;
-    final rawRotation = camera.description.sensorOrientation;
+    // ML Kit's Android byte-buffer rotation must account for how the phone
+    // is held, plus the front-camera sensor orientation. iOS obtains
+    // orientation from the native image and ignores metadata rotation.
+    final deviceDegrees = switch (camera.value.deviceOrientation) {
+      DeviceOrientation.portraitUp => 0,
+      DeviceOrientation.landscapeLeft => 90,
+      DeviceOrientation.portraitDown => 180,
+      DeviceOrientation.landscapeRight => 270,
+    };
+    final sensorDegrees = camera.description.sensorOrientation;
+    final imageDegrees = camera.description.lensDirection ==
+            CameraLensDirection.front
+        ? (sensorDegrees + deviceDegrees) % 360
+        : (sensorDegrees - deviceDegrees + 360) % 360;
     final rotation = InputImageRotationValue.fromRawValue(
-      ios ? 0 : rawRotation,
+      ios ? 0 : imageDegrees,
     );
     if (rotation == null) return null;
     return InputImage.fromBytes(
@@ -188,7 +201,8 @@ class _GuidedActorCameraPageState extends State<GuidedActorCameraPage>
     }
     _processing = true;
     _detector.processImage(image).then((faces) {
-      if (_disposed || !mounted || _capturing) return;
+      if (_disposed || !mounted || _capturing || !_resumed ||
+          _controller != camera) return;
       final face = faces.isEmpty ? null : faces.first;
       final portrait = camera.description.sensorOrientation == 90 ||
           camera.description.sensorOrientation == 270;
