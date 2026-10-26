@@ -7,6 +7,17 @@
 > **Do not confuse requirements, prototypes and production features.** "Implemented" means source code exists; "CI verified" means GitHub Actions passed for a specified commit; "production ready" additionally requires security, deployment and real-device tests. This document is not a claim that video AI, a real 3D face scanner, live payments or an administrator backend are active.
 
 
+
+## 26 October 2026 — Actor scanner/vault reliability hardening (PR #21)
+
+- **Active follow-up:** [PR #21](https://github.com/parmtech/HOTICE/pull/21) on `fix/actor-camera-vault-hardening-v2`, stacked on [PR #20](https://github.com/parmtech/HOTICE/pull/20) → PR #19 → #17 → #16 → #11. Source is **NOT merged into stable main**.
+- **Camera bugs fixed in source:** wait for camera controller disposal before opening Retake; always attempt to delete raw native camera capture cache JPG after photo processing, even on failure; no video/photo upload.
+- **Vault logic:** serialize asynchronous account loads/saves/deletes; block rename collisions with another encrypted Actor; when returning to a demo account, refresh old in-memory Actor photo paths using newly decrypted copies. On workspace switch, delete the previous account's unencrypted temporary face JPEGs, derived reference sheets and touch-ups while retaining AES-GCM encrypted vault records.
+- **Actor ZIP import:** temporary JPG names are now unpredictable, partially written files cleaned up on error. Pre-inflate ZIP32 central directory checks limit entry count, compression, size and malicious ZIP bombs; JPEG SOF dimensions checked before image pixel decoding.
+- **Tests:** added synthetic ZIP bomb/JPEG and account-restore unit tests; updated Android Keystore emulator flow to check parallel Actor saves, name-collision rejection, account-switch plaintext cleanup and deletion. **70/70 Flutter tests and static web/PHP/Python checks passed** in [run 40312164768](https://github.com/parmtech/HOTICE/actions/runs/40312164768), commit `63d8b103`. APK/emulator jobs were **still running** at this checkpoint; do not claim an APK from this run until the artifact is verified. Flutter analyze still reports informational lints, not zero warnings.
+- **Important coordination:** draft [PR #22](https://github.com/parmtech/HOTICE/pull/22) is a *separate, parallel encrypted-vault implementation branching from PR #19*. Do not simply merge both competing vault implementations; select/reconcile one vault architecture and port reviewed fixes before integration. PR #21 hardens the PR #20 architecture.
+- **Still incomplete:** physical phone camera angles, background/resume and focus/lighting QA; signed production account authentication, cloud encryption/sync, real Google Omni generation, licensed 3D reconstruction/GLB rendering and cross-provider face consistency.
+
 ## 26 October 2026 — Encrypted on-device Actor Vault (PR #22)
 
 - **Feature branch:** `feat/encrypted-actor-vault-v1` in [draft PR #22](https://github.com/parmtech/HOTICE/pull/22), stacked on PR #19 → PR #17 → PR #16 → PR #11; **NOT merged into main**.
