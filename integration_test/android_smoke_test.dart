@@ -119,11 +119,22 @@ void main() {
       // encrypted Actor, even on the same physical installation.
       final oldDecryptedPath = afterRename.actors.single.capturePaths.first;
       expect(await File(oldDecryptedPath).exists(), isTrue);
+
+      // Simulate an app sign-out: zero remaining decrypted JPG copies without
+      // deleting encrypted Actor originals. Then restore like a new sign-in.
+      await vault.lockSession();
+      expect(await File(oldDecryptedPath).exists(), isFalse);
+      final afterSignIn = await vault.load(account);
+      expect(afterSignIn.failedEntries, 0);
+      expect(afterSignIn.actors.single.name, 'Vault CI Actor Renamed');
+      final reopenedPath = afterSignIn.actors.single.capturePaths.first;
+      expect(await File(reopenedPath).exists(), isTrue);
+
       final other = await vault.load('vault-other-ci@hotice.demo');
       expect(other.actors, isEmpty);
       // Switching accounts must remove plaintext from the previous account,
       // leaving only its encrypted vault records available for later restore.
-      expect(await File(oldDecryptedPath).exists(), isFalse);
+      expect(await File(reopenedPath).exists(), isFalse);
       await vault.load(account);
       await vault.delete(account, 'Vault CI Actor Renamed');
       final afterDeletion = await vault.load(account);
