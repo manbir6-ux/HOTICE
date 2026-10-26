@@ -1,10 +1,14 @@
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:file_picker/file_picker.dart';
 import 'actor_archive.dart';
+import 'actor_transfer_cipher.dart';
+import 'actor_backup_password_dialog.dart';
 import 'actor_vault.dart';
 import 'package:flutter/material.dart';
 import 'guided_actor_camera.dart';
 import 'package:flutter/services.dart';
+import 'package:path_provider/path_provider.dart';
 import 'avatar_identity.dart';
 import 'design.dart';
 import 'state.dart';
@@ -87,16 +91,28 @@ class _AvatarsPageState extends State<AvatarsPage> {
     }
   }
 
-  Future<void> _persistActor(StudioAvatar actor,
-      {String? formerName}) async {
+  bool _sameActiveAccount(String account) =>
+      mounted && widget.store.signedIn &&
+      widget.store.selectedAccount == account;
+
+  Future<void> _persistActor(StudioAvatar actor, {
+    required String account,
+    String? formerName,
+  }) async {
+    if (!_sameActiveAccount(account)) {
+      throw StateError('Account changed during Actor operation.');
+    }
     if (!_deviceVaultAvailable) return;
     if (!_vaultReady) throw StateError('Secure Actor vault is not available.');
+    // Always use the account captured BEFORE async camera/file dialogs,
+    // never whichever account happens to be selected after an await.
     await ActorLocalVault.instance.save(
-      widget.store.selectedAccount, actor, formerName: formerName,
+      account, actor, formerName: formerName,
     );
   }
 
   Future<void> scanActor() async {
+    final account = widget.store.selectedAccount;
     final actorName = name.text.trim();
     if (actorName.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -137,7 +153,7 @@ class _AvatarsPageState extends State<AvatarsPage> {
       }
     }
     if (result == null) return;
-    if (!mounted) {
+    if (!_sameActiveAccount(account)) {
       for (final path in result.paths) {
         try { await File(path).delete(); } catch (_) {}
       }
@@ -148,7 +164,7 @@ class _AvatarsPageState extends State<AvatarsPage> {
       capturePaths: result.paths, autoTouchUp: _autoTouchUp,
     );
     try {
-      await _persistActor(profile);
+      await _persistActor(profile, account: account);
     } catch (_) {
       for (final path in result.paths) {
         try { await File(path).delete(); } catch (_) {}
@@ -156,13 +172,18 @@ class _AvatarsPageState extends State<AvatarsPage> {
       _feedback('Actor was not saved: device encryption/storage unavailable.');
       return;
     }
-    if (!mounted) return;
+    if (!_sameActiveAccount(account)) {
+      for (final path in result.paths) {
+        try { await File(path).delete(); } catch (_) {}
+      }
+      return;
+    }
     final saved = widget.store.addAvatar(actorName, style,
         identityNotes: identityNotes.text, capturePaths: result.paths,
         autoTouchUp: _autoTouchUp);
     if (!saved && _deviceVaultAvailable) {
       try {
-        await ActorLocalVault.instance.delete(widget.store.selectedAccount, actorName);
+        await ActorLocalVault.instance.delete(account, actorName);
       } catch (_) {}
     }
     if (!saved) {
@@ -193,6 +214,7 @@ class _AvatarsPageState extends State<AvatarsPage> {
 
   Future<void> saveAvatar() async {
     if (editingName == null || !_vaultReady || _vaultBusy) return;
+    final account = widget.store.selectedAccount;
     final currentName = editingName!;
     final nameValue = name.text.trim();
     if (nameValue.isEmpty || nameValue.toLowerCase() == 'none' ||
@@ -212,9 +234,11 @@ class _AvatarsPageState extends State<AvatarsPage> {
     try {
       // Persist first. No UI mutation if authenticated encryption fails.
       if (updated.capturePaths.isNotEmpty) {
-        await _persistActor(updated, formerName: currentName);
+        await _persistActor(
+          updated, account: account, formerName: currentName,
+        );
       }
-      if (!mounted) return;
+      if (!_sameActiveAccount(account)) return;
       final success = widget.store.editAvatar(
         currentName, nameValue, style,
         identityNotes: updated.identityNotes,
@@ -257,7 +281,11 @@ class _AvatarsPageState extends State<AvatarsPage> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text('Delete ' + avatar.name + '?'),
-        content: const Text('This removes the local character preset. Previous scene drafts remain historical snapshots.'),
+        content: const Text(
+          'This permanently removes the encrypted Actor record, local face '
+          'photos and saved scene/music drafts containing this Actor. '
+          'Previously exported backups are not deleted.',
+        ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false),
               child: const Text('Keep character')),
@@ -268,19 +296,41 @@ class _AvatarsPageState extends State<AvatarsPage> {
     );
     if (!mounted || confirmed != true) return;
     if (_vaultBusy || !_vaultReady) return;
+    final account = widget.store.selectedAccount;
+    // Collect derived reference JPEGs *before* removing draft metadata.
+    final derivedPaths = widget.store.drafts
+        .where((draft) =>
+            draft.avatarName.toLowerCase() == avatar.name.toLowerCase() ||
+            draft.actors.any((a) =>
+                a.avatarName.toLowerCase() == avatar.name.toLowerCase()))
+        .expand((draft) => draft.referenceFiles)
+        .map((ref) => ref.localPath)
+        .whereType<String>()
+        .toSet();
     setState(() => _vaultBusy = true);
     try {
       if (_deviceVaultAvailable && avatar.capturePaths.isNotEmpty) {
-        await ActorLocalVault.instance.delete(
-          widget.store.selectedAccount, avatar.name,
-        );
+        await ActorLocalVault.instance.delete(account, avatar.name);
       }
     } catch (_) {
       _feedback('Could not remove encrypted Actor. Nothing was deleted.');
       if (mounted) setState(() => _vaultBusy = false);
       return;
     }
-    widget.store.removeAvatar(avatar.name);
+    if (mounted && widget.store.selectedAccount == account) {
+      widget.store.removeAvatar(avatar.name);
+    }
+    // Only delete files from HOTICE-owned generated asset directories.
+    // Never follow arbitrary draft paths into a user's personal files.
+    try {
+      final temp = (await getTemporaryDirectory()).absolute.path;
+      for (final path in derivedPaths) {
+        if (path.startsWith('$temp/hotice_actor_reference_sheets/') ||
+            path.startsWith('$temp/hotice_actor_touchups/')) {
+          try { await File(path).delete(); } catch (_) {}
+        }
+      }
+    } catch (_) {}
     for (final path in avatar.capturePaths) {
       try { await File(path).delete(); } catch (_) {}
     }
@@ -301,12 +351,15 @@ class _AvatarsPageState extends State<AvatarsPage> {
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: Text('$action Actor photos?'),
-        content: const Text(
-          'Actor packages contain recognizable face photos. This testing '
-          'format is an UNENCRYPTED ZIP. Anyone who obtains the exported '
-          'file can view the photos. Share only with consent, store it '
-          'privately, and delete unwanted copies. No cloud upload is made.',
-        ),
+        content: Text(action == 'Export'
+            ? 'This backup contains recognizable face photos. HOTICE will '
+              'encrypt the file with a password you choose. A lost password '
+              'cannot be recovered. Keep the password separate from the '
+              'backup; nothing will be uploaded.'
+            : 'Only import face photos with the person\'s consent. HOTICE '
+              'supports password-encrypted Actor backups and older '
+              'UNENCRYPTED ZIP files; old files can expose private faces. '
+              'Nothing will be uploaded.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext, false),
@@ -331,27 +384,36 @@ class _AvatarsPageState extends State<AvatarsPage> {
 
   Future<void> _exportActor(StudioAvatar actor) async {
     if (_transferBusy || _vaultBusy || !_vaultReady) return;
+    final account = widget.store.selectedAccount;
     if (actor.capturePaths.isEmpty) {
       _feedback('This demo Actor has no guided photos to export.');
       return;
     }
     if (!await _confirmFaceTransfer('Export') || !mounted) return;
+    final password = await requestActorBackupPassword(
+      context, creatingBackup: true,
+    );
+    if (password == null || !_sameActiveAccount(account)) return;
     setState(() => _transferBusy = true);
     try {
       final zipped = await ActorArchiveCodec.exportActor(actor);
+      final encrypted = await ActorTransferCipher.encrypt(
+        zipped, password: password,
+      );
+      if (!_sameActiveAccount(account)) return;
       final safeName = actor.name.replaceAll(
           RegExp(r'[^a-zA-Z0-9_-]'), '_');
       final saved = await FilePicker.saveFile(
-        dialogTitle: 'Save sensitive HOTICE Actor archive',
+        dialogTitle: 'Save encrypted HOTICE Actor backup',
         fileName: 'HOTICE_${safeName}.hoticeactor',
-        bytes: zipped,
+        bytes: encrypted,
       );
       if (!mounted) return;
       _feedback(saved == null
           ? 'Export cancelled.'
-          : 'Actor exported. Protect the unencrypted file.');
+          : 'Actor backup encrypted. Keep your password safe.');
     } catch (_) {
-      _feedback('Could not export this Actor. Check the captured photos.');
+      _feedback('Could not encrypt/export Actor backup. Check photos and storage.');
     } finally {
       if (mounted) setState(() => _transferBusy = false);
     }
@@ -359,6 +421,7 @@ class _AvatarsPageState extends State<AvatarsPage> {
 
   Future<void> _importActor() async {
     if (_transferBusy || _vaultBusy || !_vaultReady) return;
+    final account = widget.store.selectedAccount;
     if (!await _confirmFaceTransfer('Import') || !mounted) return;
     setState(() => _transferBusy = true);
     List<String> created = [];
@@ -370,10 +433,48 @@ class _AvatarsPageState extends State<AvatarsPage> {
       if (picked == null) return;
       final length = picked.lengthSync() ?? await picked.length();
       if (length == null || length < 1 ||
-          length > ActorArchiveCodec.maxArchiveBytes) {
+          length > ActorArchiveCodec.maxArchiveBytes + 64) {
         throw const FormatException('Actor package exceeds safety size limit.');
       }
-      final profile = ActorArchiveCodec.decode(await picked.readAsBytes());
+      final archiveBytes = await picked.readAsBytes();
+      Uint8List decodedZip;
+      if (ActorTransferCipher.isEncrypted(archiveBytes)) {
+        if (!mounted) return;
+        final password = await requestActorBackupPassword(
+          context, creatingBackup: false,
+        );
+        if (password == null || !mounted) return;
+        decodedZip = await ActorTransferCipher.decrypt(
+          archiveBytes, password: password,
+        );
+      } else if (ActorTransferCipher.isLegacyZip(archiveBytes)) {
+        if (!mounted) return;
+        final allowLegacy = await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('Unencrypted older Actor backup'),
+            content: const Text(
+              'This older ZIP has no password protection. Anyone with a '
+              'copy can view the face photos. Import only with consent.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('Import legacy ZIP'),
+              ),
+            ],
+          ),
+        );
+        if (allowLegacy != true || !mounted) return;
+        decodedZip = archiveBytes;
+      } else {
+        throw const FormatException('Unknown Actor backup format.');
+      }
+      final profile = ActorArchiveCodec.decode(decodedZip);
       if (!mounted) return;
       var actorName = profile.name;
       var n = 2;
@@ -391,8 +492,8 @@ class _AvatarsPageState extends State<AvatarsPage> {
       await _persistActor(StudioAvatar(
         actorName, profile.style, identityNotes: profile.notes,
         capturePaths: created, autoTouchUp: profile.autoTouchUp,
-      ));
-      if (!mounted) return;
+      ), account: account);
+      if (!_sameActiveAccount(account)) return;
       final success = widget.store.addAvatar(
         actorName, profile.style,
         identityNotes: profile.notes, capturePaths: created,
@@ -402,7 +503,7 @@ class _AvatarsPageState extends State<AvatarsPage> {
         if (_deviceVaultAvailable) {
           try {
             await ActorLocalVault.instance.delete(
-              widget.store.selectedAccount, actorName,
+              account, actorName,
             );
           } catch (_) {}
         }
@@ -412,7 +513,7 @@ class _AvatarsPageState extends State<AvatarsPage> {
       _feedback('Actor imported with ${profile.photos.length} photos. '
           'Encrypted on this mobile device.');
     } catch (_) {
-      _feedback('Import rejected. Check ZIP safety, format and photos.');
+      _feedback('Import rejected. Verify password, file integrity and Actor photos.');
     } finally {
       for (final path in created) {
         try { await File(path).delete(); } catch (_) {}
@@ -628,7 +729,7 @@ class _AvatarsPageState extends State<AvatarsPage> {
             label: const Text('Import Actor (.hoticeactor)'),
           ),
           const SizedBox(height: 10),
-          const Text('Exports contain private face photos in an unencrypted testing ZIP.',
+          const Text('New backups are password-encrypted. Legacy Actor ZIPs remain unencrypted.',
             style: TextStyle(fontSize: 12)),
           const SizedBox(height: 12),
           if (widget.store.avatars.isEmpty)
@@ -667,7 +768,7 @@ class _AvatarsPageState extends State<AvatarsPage> {
                     },
                     itemBuilder: (ctx) => const [
                       PopupMenuItem(value: 'edit', child: Text('Edit actor')),
-                      PopupMenuItem(value: 'export', child: Text('Export Actor ZIP')),
+                      PopupMenuItem(value: 'export', child: Text('Export encrypted Actor backup')),
                       PopupMenuItem(value: 'delete', child: Text('Delete actor')),
                     ],
                   ),

@@ -300,11 +300,20 @@ class HotIceStore extends ChangeNotifier {
     return true;
   }
 
+  /// Remove an Actor and the drafts/storyboards that embed its face
+  /// references or appearance description. Retaining such drafts after
+  /// deleting a face creates a privacy leak through temporary JPEG copies.
   bool removeAvatar(String name) {
+    final normalized = name.trim().toLowerCase();
     final oldLength = avatars.length;
-    avatars.removeWhere((a) => a.name == name);
+    avatars.removeWhere((a) => a.name.toLowerCase() == normalized);
     if (avatars.length == oldLength) return false;
-    // Existing scene drafts remain historical snapshots of their creation.
+    drafts.removeWhere((draft) =>
+        draft.avatarName.toLowerCase() == normalized ||
+        draft.actors.any((a) =>
+            a.avatarName.toLowerCase() == normalized));
+    musicPlans.removeWhere((plan) =>
+        plan.avatarName.toLowerCase() == normalized);
     notifyListeners();
     return true;
   }

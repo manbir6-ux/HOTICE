@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import 'src/state.dart';
+import 'src/actor_vault.dart';
 import 'src/design.dart';
 import 'src/pages.dart';
 import 'src/generation_hub.dart';
@@ -40,6 +41,7 @@ class HotIceApp extends StatefulWidget {
 class _HotIceAppState extends State<HotIceApp> {
   final HotIceStore store = HotIceStore();
   bool showLogin = false;
+  bool _wasSignedIn = false;
 
   late ThemeMode _lastThemeMode;
   late StudioAccent _lastAccent;
@@ -52,6 +54,20 @@ class _HotIceAppState extends State<HotIceApp> {
     _lastAccent = store.accent;
     _lastFont = store.font;
     store.addListener(_handleAppearanceChanged);
+    store.addListener(_onSessionStateChanged);
+  }
+
+  void _onSessionStateChanged() {
+    final active = store.signedIn;
+    if (_wasSignedIn && !active) {
+      // Queue behind in-flight vault operations. A rapid re-login waits for
+      // this purge before rehydrating face photos from encrypted storage.
+      ActorLocalVault.instance.lockSession().catchError((Object _) {
+        // An OS storage error must not reopen authentication or crash the app.
+        // Startup also attempts to clear abandoned working photos.
+      });
+    }
+    _wasSignedIn = active;
   }
 
   // Keep the Navigator/MaterialApp stable while demo accounts, projects and
@@ -74,6 +90,7 @@ class _HotIceAppState extends State<HotIceApp> {
   @override
   void dispose() {
     store.removeListener(_handleAppearanceChanged);
+    store.removeListener(_onSessionStateChanged);
     store.dispose();
     super.dispose();
   }
