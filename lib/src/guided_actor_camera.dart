@@ -61,6 +61,7 @@ class _GuidedActorCameraPageState extends State<GuidedActorCameraPage>
     ),
   );
   CameraController? _controller;
+  Future<void>? _stopOperation;
   final List<String> _captures = [];
   final Map<int, List<String>> _qualityWarnings = {};
   bool _agreed = false;
@@ -94,7 +95,11 @@ class _GuidedActorCameraPageState extends State<GuidedActorCameraPage>
         (!Platform.isAndroid && !Platform.isIOS)) return;
     _initializing = true;
     try {
+      // Retake and app-resume must not open the same camera while its
+      // previous image stream/controller is still being disposed.
+      if (_stopOperation != null) await _stopOperation;
       if (_controller != null) await _stopCamera();
+      if (_disposed || !_resumed || !_agreed) return;
       final cameras = await availableCameras();
       final front = cameras.where(
         (c) => c.lensDirection == CameraLensDirection.front,
@@ -143,18 +148,33 @@ class _GuidedActorCameraPageState extends State<GuidedActorCameraPage>
   }
 
   Future<void> _stopCamera() async {
+    final stopping = _stopOperation;
+    if (stopping != null) {
+      await stopping;
+      return;
+    }
     final controller = _controller;
     _controller = null;
     if (controller == null) return;
+    final operation = _disposeCameraController(controller);
+    _stopOperation = operation;
+    try {
+      await operation;
+    } finally {
+      _stopOperation = null;
+      if (mounted && !_disposed) setState(() => _ready = false);
+    }
+  }
+
+  Future<void> _disposeCameraController(CameraController controller) async {
     try {
       if (controller.value.isStreamingImages) {
         await controller.stopImageStream();
       }
     } catch (_) {
-      // Camera may already have been stopped by the OS.
+      // Camera may already be shutting down during app lifecycle changes.
     }
     try { await controller.dispose(); } catch (_) {}
-    if (mounted && !_disposed) setState(() => _ready = false);
   }
 
   InputImage? _inputFromFrame(CameraImage frame, CameraController camera) {
@@ -266,11 +286,13 @@ class _GuidedActorCameraPageState extends State<GuidedActorCameraPage>
     if (!_ready || _capturing || camera == null || !_agreed) return;
     setState(() { _capturing = true; _ready = false; });
     String? saved;
+    String? cameraOriginal;
     try {
       if (camera.value.isStreamingImages) {
         await camera.stopImageStream();
       }
       final photo = await camera.takePicture();
+      cameraOriginal = photo.path;
       final faces = await _detector.processImage(
         InputImage.fromFilePath(photo.path),
       );
@@ -285,7 +307,6 @@ class _GuidedActorCameraPageState extends State<GuidedActorCameraPage>
             reversed: _swapPitch),
       );
       if (faces.length != 1 || !angleOk) {
-        try { await File(photo.path).delete(); } catch (_) {}
         throw StateError(
           'Keep one face at the required angle for the actual photo. Retry.',
         );
@@ -296,7 +317,6 @@ class _GuidedActorCameraPageState extends State<GuidedActorCameraPage>
       await temp.create(recursive: true);
       final file = File('${temp.path}/${DateTime.now().microsecondsSinceEpoch}_${_step}.jpg');
       await File(photo.path).copy(file.path);
-      await File(photo.path).delete().catchError((_) => File(photo.path));
       saved = file.path;
       // Advisory only. A well-framed face can legitimately be captured
       // in creative low-key lighting, so quality never silently rejects
@@ -324,7 +344,7 @@ class _GuidedActorCameraPageState extends State<GuidedActorCameraPage>
           _reviewing = true;
           _streak = 0;
         });
-        _stopCamera();
+        await _stopCamera();
       } else {
         _captures.add(saved);
         if (_step == _poses.length - 1) {
@@ -332,7 +352,7 @@ class _GuidedActorCameraPageState extends State<GuidedActorCameraPage>
             _reviewing = true;
             _streak = 0;
           });
-          _stopCamera();
+          await _stopCamera();
         } else {
           setState(() {
             _step++;
@@ -342,14 +362,16 @@ class _GuidedActorCameraPageState extends State<GuidedActorCameraPage>
         }
       }
     } catch (e) {
-      if (saved != null) {
-        _captures.remove(saved);
+      if (saved != null && !_captures.contains(saved)) {
         try { await File(saved).delete(); } catch (_) {}
       }
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Capture unsuccessful: $e')),
       );
     } finally {
+      if (cameraOriginal != null) {
+        try { await File(cameraOriginal).delete(); } catch (_) {}
+      }
       _capturing = false;
       if (mounted && !_completed && !_reviewing && _controller == camera) {
         try { await camera.startImageStream(_onFrame); } catch (e) {
@@ -371,7 +393,9 @@ class _GuidedActorCameraPageState extends State<GuidedActorCameraPage>
       _streak = 0;
       _instruction = ActorPoseGate.instruction(_poses[index]);
     });
-    await _start();
+    // Wait for the *previous* controller disposal before starting a retake.
+    await _stopCamera();
+    if (mounted && !_disposed) await _start();
   }
 
   void _confirmActor() {
