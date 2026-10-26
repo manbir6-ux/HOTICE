@@ -22,7 +22,14 @@ class StudioAvatar {
   final String name;
   final String style;
   final String identityNotes;
-  const StudioAvatar(this.name, this.style, {this.identityNotes = ''});
+  /// Temporary on-device capture references, cleared at next app start.
+  /// Not cloud-synced, encrypted, or a reconstructed 3D identity.
+  final List<String> capturePaths;
+  const StudioAvatar(
+    this.name, this.style, {
+    this.identityNotes = '',
+    this.capturePaths = const <String>[],
+  });
 }
 
 class StoryboardShot {
@@ -212,14 +219,16 @@ class HotIceStore extends ChangeNotifier {
   }
 
   /// Avoid duplicate values in the avatar dropdown.
-  bool addAvatar(String name, String style, {String identityNotes = ''}) {
+  bool addAvatar(String name, String style, {String identityNotes = '', List<String> capturePaths = const []}) {
     final trimmed = name.trim();
     if (trimmed.isEmpty ||
         trimmed.toLowerCase() == 'none' ||
         avatars.any((a) => a.name.toLowerCase() == trimmed.toLowerCase())) {
       return false;
     }
-    avatars.insert(0, StudioAvatar(trimmed, style, identityNotes: identityNotes.trim()));
+    avatars.insert(0, StudioAvatar(trimmed, style,
+        identityNotes: identityNotes.trim(),
+        capturePaths: List.unmodifiable(capturePaths)));
     notifyListeners();
     return true;
   }
@@ -233,7 +242,9 @@ class HotIceStore extends ChangeNotifier {
             a.name.toLowerCase() == name.toLowerCase())) {
       return false;
     }
-    avatars[index] = StudioAvatar(name, style, identityNotes: identityNotes.trim());
+    avatars[index] = StudioAvatar(name, style,
+        identityNotes: identityNotes.trim(),
+        capturePaths: avatars[index].capturePaths);
     notifyListeners();
     return true;
   }
