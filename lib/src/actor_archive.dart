@@ -12,11 +12,13 @@ import 'state.dart';
 /// offline backups. It is sensitive face photo data, NOT a cloud transfer.
 /// Nothing is exported until the user has accepted an in-app privacy warning.
 class ActorArchiveImport {
-  const ActorArchiveImport(this.name, this.style, this.notes, this.photos);
+  const ActorArchiveImport(this.name, this.style, this.notes, this.photos,
+      {this.autoTouchUp = false});
   final String name;
   final String style;
   final String notes;
   final List<Uint8List> photos;
+  final bool autoTouchUp;
 }
 
 class ActorArchiveCodec {
@@ -43,6 +45,7 @@ class ActorArchiveCodec {
     required String style,
     required String notes,
     required List<Uint8List> photos,
+    bool autoTouchUp = false,
   }) {
     if (name.trim().isEmpty || name.length > 60 || notes.length > 350 ||
         style.isEmpty || style.length > 50 ||
@@ -70,6 +73,7 @@ class ActorArchiveCodec {
       'notes': notes,
       'images': images,
       'encrypted': false,
+      'autoTouchUp': autoTouchUp,
     });
     archive.addFile(ArchiveFile.string('manifest.json', manifest));
     final zip = ZipEncoder().encodeBytes(archive);
@@ -119,6 +123,7 @@ class ActorArchiveCodec {
     if (parsed is! Map<String, dynamic> ||
         parsed['format'] != 'HOTICE_ACTOR' || parsed['version'] != 1 ||
         parsed['encrypted'] != false ||
+        (parsed['autoTouchUp'] != null && parsed['autoTouchUp'] is! bool) ||
         parsed['name'] is! String ||
         parsed['style'] is! String ||
         parsed['notes'] is! String ||
@@ -148,7 +153,8 @@ class ActorArchiveCodec {
       _validatePhoto(data);
       photos.add(data);
     }
-    return ActorArchiveImport(name, style, notes, List.unmodifiable(photos));
+    return ActorArchiveImport(name, style, notes, List.unmodifiable(photos),
+        autoTouchUp: parsed['autoTouchUp'] == true);
   }
 
   static Future<Uint8List> exportActor(StudioAvatar actor) async {
@@ -166,6 +172,7 @@ class ActorArchiveCodec {
     return encode(
       name: actor.name, style: actor.style,
       notes: actor.identityNotes, photos: photos,
+      autoTouchUp: actor.autoTouchUp,
     );
   }
 
