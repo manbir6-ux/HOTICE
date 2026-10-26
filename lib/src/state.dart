@@ -22,16 +22,20 @@ class StudioAvatar {
   final String name;
   final String style;
   final String identityNotes;
-  /// Temporary on-device capture references, cleared at next app start.
-  /// Not cloud-synced, encrypted, or a reconstructed 3D identity.
+  /// Temporary decrypted JPG paths for the active session. A saved vault
+  /// copy may persist encrypted at rest; the temp cache is purged at launch.
+  /// Not cloud-synced or a reconstructed 3D identity.
   final List<String> capturePaths;
   /// Optional appearance-only reference adjustment; originals are untouched.
   final bool autoTouchUp;
+  /// Stable private vault record ID, absent for unsaved demo Actors.
+  final String? vaultId;
   const StudioAvatar(
     this.name, this.style, {
     this.identityNotes = '',
     this.capturePaths = const <String>[],
     this.autoTouchUp = false,
+    this.vaultId,
   });
 }
 
@@ -226,7 +230,7 @@ class HotIceStore extends ChangeNotifier {
   }
 
   /// Avoid duplicate values in the avatar dropdown.
-  bool addAvatar(String name, String style, {String identityNotes = '', List<String> capturePaths = const [], bool autoTouchUp = false}) {
+  bool addAvatar(String name, String style, {String identityNotes = '', List<String> capturePaths = const [], bool autoTouchUp = false, String? vaultId}) {
     final trimmed = name.trim();
     if (trimmed.isEmpty ||
         trimmed.toLowerCase() == 'none' ||
@@ -236,7 +240,7 @@ class HotIceStore extends ChangeNotifier {
     avatars.insert(0, StudioAvatar(trimmed, style,
         identityNotes: identityNotes.trim(),
         capturePaths: List.unmodifiable(capturePaths),
-        autoTouchUp: autoTouchUp));
+        autoTouchUp: autoTouchUp, vaultId: vaultId));
     notifyListeners();
     return true;
   }
@@ -253,7 +257,8 @@ class HotIceStore extends ChangeNotifier {
     avatars[index] = StudioAvatar(name, style,
         identityNotes: identityNotes.trim(),
         capturePaths: avatars[index].capturePaths,
-         autoTouchUp: autoTouchUp ?? avatars[index].autoTouchUp);
+         autoTouchUp: autoTouchUp ?? avatars[index].autoTouchUp,
+        vaultId: avatars[index].vaultId);
     notifyListeners();
     return true;
   }
