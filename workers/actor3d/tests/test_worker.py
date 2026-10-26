@@ -51,6 +51,29 @@ folder.mkdir(parents=True, exist_ok=True)
         self.assertFalse(list((self.engine / 'examples/results').glob('hotice_*')))
         self.assertTrue(mesh.exists())
 
+    def test_does_not_copy_symlinked_mesh_sidecars(self):
+        secret = self.root / "private-secret.txt"
+        secret.write_text("DO NOT COPY")
+        with (self.engine / "demo.py").open("a") as script:
+            script.write("\\n(folder / (name + '_obj.png')).symlink_to(" +
+                         repr(str(secret)) + ")\\n")
+        with self.assertRaisesRegex(RuntimeError, 'Unsafe symbolic link'):
+            run_reconstruction(self.front, self.engine, self.output,
+                               consent=True)
+        self.assertFalse(list(self.output.glob("*")))
+        self.assertFalse(list((self.engine / "examples/results").glob("hotice_*")))
+
+    def test_rejects_oversized_output_before_reading_entire_obj(self):
+        with (self.engine / "demo.py").open("a") as script:
+            script.write(
+                "\\nwith (folder / (name + '_obj.obj')).open('ab') as mesh:\\n"
+                "    mesh.truncate(41 * 1024 * 1024)\\n"
+            )
+        with self.assertRaisesRegex(RuntimeError, 'Unsafe reconstructed geometry'):
+            run_reconstruction(self.front, self.engine, self.output,
+                               consent=True)
+        self.assertFalse(list(self.output.glob("*")))
+
     def test_refuses_engine_directory_as_public_output(self):
         with self.assertRaisesRegex(ValueError, 'private folder'):
             run_reconstruction(self.front, self.engine, self.engine / "private",
