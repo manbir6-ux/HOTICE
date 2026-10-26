@@ -97,7 +97,7 @@ class ActorArchiveCodec {
           path.contains('..') || path.contains('\\') ||
           path.startsWith('/') || path.contains(':') ||
           (path != 'manifest.json' &&
-            !RegExp(r'^images/angle_[0-9]{2}\\.jpg$').hasMatch(path))) {
+            !RegExp(r'^images/angle_[0-9]{2}[.]jpg$').hasMatch(path))) {
         throw const FormatException('Unsafe Actor archive file or path.');
       }
       if (entries.containsKey(path) || entry.size < 0 ||
