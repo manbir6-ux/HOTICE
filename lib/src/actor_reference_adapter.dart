@@ -101,7 +101,15 @@ class ActorReferenceAdapter {
             sceneName: actor.sceneName,
             actorName: preset.name,
             path: paths[i],
-            angle: i == 0 ? 'front' : i == 1 ? 'left' : i == 2 ? 'right' : 'angle-${i + 1}',
+            angle: i == 0
+                ? 'front'
+                : i == 1 ? 'left'
+                : i == 2 ? 'right'
+                : i == 3 ? 'left-profile'
+                : i == 4 ? 'right-profile'
+                : i == 5 ? 'chin-up'
+                : i == 6 ? 'chin-down'
+                : 'angle-${i + 1}',
           ),
       ]);
     }
