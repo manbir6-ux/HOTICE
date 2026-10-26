@@ -463,7 +463,8 @@ class _AvatarsPageState extends State<AvatarsPage> {
                         ClipRRect(
                           borderRadius: BorderRadius.circular(12),
                           child: Image.file(
-                            File(path), height: 105, width: 86,
+                            File(path), cacheWidth: 320,
+                            height: 105, width: 86,
                             fit: BoxFit.cover,
                             errorBuilder: (_, __, ___) =>
                                 const SizedBox(width: 86, height: 105,
