@@ -13,6 +13,13 @@ if manifest.exists():
         raw = re.sub(r'(<manifest[^>]*>)',
             lambda m: m.group(1) + '\n    <uses-permission android:name="android.permission.CAMERA" />',
             raw, count=1)
+    # The Actor AES key lives in the Android Keystore; copying vault files
+    # through app Auto Backup without the device key would create undecryptable
+    # records on a different phone. Keep both encrypted vault and camera
+    # working photos off Android's cloud-backup channel until explicit secured
+    # user-owned restore/key migration is implemented.
+    if '<application' in raw and 'android:allowBackup=' not in raw:
+        raw = raw.replace('<application', '<application android:allowBackup="false"', 1)
     manifest.write_text(raw)
 
 gradle = Path("android/app/build.gradle.kts")
