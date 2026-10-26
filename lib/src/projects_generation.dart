@@ -98,6 +98,33 @@ class ProjectsPage extends StatelessWidget {
   }
 }
 
+/// Snapshot of one project's incomplete editor so its Actor identities,
+/// attachments and advanced controls cannot silently follow another film.
+class _ProjectEditorDraft {
+  _ProjectEditorDraft({
+    required this.prompt,
+    required this.modelId,
+    required this.ratio,
+    required this.seconds,
+    required this.actors,
+    required this.references,
+    required this.negativePrompt,
+    required this.seed,
+    required this.soundEnabled,
+    required this.selectedTemplate,
+  });
+  final String prompt;
+  final String modelId;
+  final String ratio;
+  final int seconds;
+  final List<SceneActor> actors;
+  final List<SceneReference> references;
+  final String negativePrompt;
+  final String seed;
+  final bool soundEnabled;
+  final InspirationTemplate? selectedTemplate;
+}
+
 class GenerationPage extends StatefulWidget {
   final HotIceStore store;
   final String? initialProjectId;
@@ -117,7 +144,7 @@ class GenerationPage extends StatefulWidget {
 class _GenerationPageState extends State<GenerationPage> {
   final prompt = TextEditingController();
   // Each in-progress scene belongs to one film project in this demo session.
-  final Map<String, String> _unsavedPrompts = {};
+  final Map<String, _ProjectEditorDraft> _unsavedProjects = {};
   String? project;
   String model = 'cinematic_demo';
 
@@ -131,6 +158,7 @@ class _GenerationPageState extends State<GenerationPage> {
   bool soundEnabled = false;
   bool advancedOpen = false;
   InspirationTemplate? selectedTemplate;
+  bool _savingDraft = false;
 
   @override
   void initState() {
@@ -162,9 +190,36 @@ class _GenerationPageState extends State<GenerationPage> {
 
   void _selectProject(String? next) {
     if (project == next) return;
-    if (project != null) _unsavedPrompts[project!] = prompt.text;
+    if (project != null) {
+      _unsavedProjects[project!] = _ProjectEditorDraft(
+        prompt: prompt.text,
+        modelId: model,
+        ratio: ratio,
+        seconds: seconds,
+        actors: List<SceneActor>.of(sceneActors),
+        references: List<SceneReference>.of(references),
+        negativePrompt: negativePrompt.text,
+        seed: seedText.text,
+        soundEnabled: soundEnabled,
+        selectedTemplate: selectedTemplate,
+      );
+    }
     project = next;
-    prompt.text = next == null ? '' : (_unsavedPrompts[next] ?? '');
+    final previous = next == null ? null : _unsavedProjects[next];
+    prompt.text = previous?.prompt ?? '';
+    model = previous?.modelId ?? demoVideoModels.first.id;
+    seconds = previous?.seconds ?? 8;
+    ratio = previous?.ratio ?? '16:9';
+    sceneActors
+      ..clear()
+      ..addAll(previous?.actors ?? const <SceneActor>[]);
+    references
+      ..clear()
+      ..addAll(previous?.references ?? const <SceneReference>[]);
+    negativePrompt.text = previous?.negativePrompt ?? '';
+    seedText.text = previous?.seed ?? '';
+    soundEnabled = previous?.soundEnabled ?? false;
+    selectedTemplate = previous?.selectedTemplate;
   }
 
   @override
@@ -225,6 +280,7 @@ class _GenerationPageState extends State<GenerationPage> {
   }
 
   Future<void> save() async {
+    if (_savingDraft) return;
     if (prompt.text.trim().isEmpty || project == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Choose a project and describe your scene.')),
@@ -272,6 +328,8 @@ class _GenerationPageState extends State<GenerationPage> {
       );
       return;
     }
+    setState(() => _savingDraft = true);
+    String? generatedSheetPath;
     try {
       var source = prompt.text.trim();
       if (selectedTemplate != null && selectedTemplate!.prompt == source) {
@@ -309,6 +367,7 @@ class _GenerationPageState extends State<GenerationPage> {
         final jpegPath = await ActorContactSheet.saveToTemporaryFile(
           adapterPlan,
         );
+        generatedSheetPath = jpegPath;
         if (!mounted) return;
         preparedRefs.add(SceneReference(
           type: VideoAttachment.image,
@@ -360,9 +419,38 @@ class _GenerationPageState extends State<GenerationPage> {
         const SnackBar(content: Text('Scene and model-compatible Actor references saved locally. No AI request sent.')),
       );
     } on StateError catch (error) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(error.message)),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(error.message)),
+        );
+      }
+      if (generatedSheetPath != null) {
+        try { await File(generatedSheetPath).delete(); } catch (_) {}
+      }
+    } on FileSystemException {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text(
+            'Could not read or prepare Actor photo files. Recapture and retry.',
+          )),
+        );
+      }
+      if (generatedSheetPath != null) {
+        try { await File(generatedSheetPath).delete(); } catch (_) {}
+      }
+    } on FormatException {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text(
+            'An Actor reference image has an unsupported format.',
+          )),
+        );
+      }
+      if (generatedSheetPath != null) {
+        try { await File(generatedSheetPath).delete(); } catch (_) {}
+      }
+    } finally {
+      if (mounted) setState(() => _savingDraft = false);
     }
   }
 
@@ -565,7 +653,7 @@ class _GenerationPageState extends State<GenerationPage> {
           PrimaryButton(
             label: 'Save generation draft',
             icon: Icons.auto_awesome,
-            onPressed: save,
+            onPressed: _savingDraft ? null : save,
           ),
         ],
       ),
