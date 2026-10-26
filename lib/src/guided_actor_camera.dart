@@ -475,6 +475,7 @@ class _GuidedActorCameraPageState extends State<GuidedActorCameraPage>
                             borderRadius: BorderRadius.circular(14),
                             child: Image.file(
                               File(_captures[i]),
+                              cacheWidth: 384, // decode thumbnail, not full HD face
                               width: 128,
                               height: 160,
                               fit: BoxFit.cover,
