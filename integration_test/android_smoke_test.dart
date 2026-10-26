@@ -2,6 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:hotice/main.dart';
+import 'package:hotice/src/actor_archive.dart';
+import 'package:hotice/src/actor_vault.dart';
+import 'package:hotice/src/state.dart';
+import 'package:image/image.dart' as image;
+import 'dart:typed_data';
+import 'dart:io';
 
 /// Runs as a genuine Flutter Android application on a booted Android emulator.
 /// It checks navigation with real Android view metrics, not just fake test size.
@@ -58,5 +64,76 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Accounts'), findsWidgets);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('Encrypted Actor vault: Keystore-backed device roundtrip',
+      (tester) async {
+    // A synthetic colour patch is used, never a real person's face.
+    final synthetic = image.Image(width: 80, height: 100);
+    image.fill(synthetic, color: image.ColorRgb8(80, 130, 180));
+    final jpeg = Uint8List.fromList(image.encodeJpg(synthetic));
+    final archive = ActorArchiveImport(
+      'Vault CI Actor', 'Photorealistic', 'Synthetic image test',
+      [jpeg, jpeg, jpeg],
+    );
+    final account = 'android-vault-ci@hotice.demo';
+    final vault = ActorLocalVault.instance;
+    final first = await vault.load(account);
+    // Idempotent cleanup in case a persistent emulator is reused.
+    for (final actor in first.actors) {
+      await vault.delete(account, actor.name);
+      for (final p in actor.capturePaths) {
+        try { await File(p).delete(); } catch (_) {}
+      }
+    }
+    final paths = await ActorArchiveCodec.importToTemporaryFolder(archive);
+    final actor = StudioAvatar(
+      archive.name, archive.style,
+      identityNotes: archive.notes,
+      capturePaths: paths,
+      autoTouchUp: true,
+    );
+    try {
+      await vault.save(account, actor);
+      final restored = await vault.load(account);
+      expect(restored.failedEntries, 0);
+      expect(restored.actors.single.name, 'Vault CI Actor');
+      expect(restored.actors.single.autoTouchUp, isTrue);
+      expect(restored.actors.single.capturePaths.length, 3);
+      for (final path in restored.actors.single.capturePaths) {
+        expect(File(path).existsSync(), isTrue);
+        expect(File(path).readAsBytesSync(), orderedEquals(jpeg));
+      }
+      final renamed = StudioAvatar(
+        'Vault CI Actor Renamed', actor.style,
+        identityNotes: 'Updated encrypted metadata',
+        capturePaths: restored.actors.single.capturePaths,
+        autoTouchUp: false,
+      );
+      await vault.save(account, renamed, formerName: actor.name);
+      final afterRename = await vault.load(account);
+      expect(afterRename.actors.single.name, 'Vault CI Actor Renamed');
+      expect(afterRename.actors.single.autoTouchUp, isFalse);
+
+      // Account-bound storage must never restore another demo workspace's
+      // encrypted Actor, even on the same physical installation.
+      final other = await vault.load('vault-other-ci@hotice.demo');
+      expect(other.actors, isEmpty);
+      await vault.load(account);
+      await vault.delete(account, 'Vault CI Actor Renamed');
+      final afterDeletion = await vault.load(account);
+      expect(afterDeletion.actors, isEmpty);
+    } finally {
+      for (final path in paths) {
+        try { await File(path).delete(); } catch (_) {}
+      }
+      final last = await vault.load(account);
+      for (final remaining in last.actors) {
+        await vault.delete(account, remaining.name);
+        for (final p in remaining.capturePaths) {
+          try { await File(p).delete(); } catch (_) {}
+        }
+      }
+    }
   });
 }
