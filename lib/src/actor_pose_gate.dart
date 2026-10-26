@@ -10,6 +10,14 @@ class PoseAssessment {
 }
 
 class ActorPoseGate {
+  /// ML Kit's raw yaw can be reversed relative to the *user's own*
+  /// left/right direction on the mirrored front camera. Normalise it once
+  /// for both preview and the actual captured still. Physical devices must
+  /// still verify camera-manufacturer orientation behaviour.
+  static double? selfieYaw(double? raw, {bool mirroredFront = true}) =>
+      raw == null ? null : (mirroredFront ? -raw : raw);
+
+
   static PoseAssessment evaluate({
     required ScanPose pose,
     required int faceCount,
