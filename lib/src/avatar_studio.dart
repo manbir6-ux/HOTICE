@@ -58,22 +58,19 @@ class _AvatarsPageState extends State<AvatarsPage> {
         return;
       }
       for (final actor in loaded.actors) {
-        final existing = widget.store.avatars.where(
+        // A user switching back to this account may still have an old
+        // in-memory Actor record. The vault has just decrypted fresh session
+        // photos; replace stale paths rather than rejecting a duplicate name
+        // and deleting the only usable new references.
+        final previous = widget.store.avatars.where(
           (a) => a.name.toLowerCase() == actor.name.toLowerCase(),
-        );
-        if (existing.isNotEmpty && existing.first.capturePaths.isEmpty) {
-          // Replace the stock text-only "Nova" demo if a real photo actor
-          // with that name was previously saved in this local vault.
-          widget.store.removeAvatar(existing.first.name);
-        }
-        if (!widget.store.addAvatar(
-          actor.name, actor.style,
-          identityNotes: actor.identityNotes,
-          capturePaths: actor.capturePaths,
-          autoTouchUp: actor.autoTouchUp,
-        )) {
-          for (final path in actor.capturePaths) {
-            try { await File(path).delete(); } catch (_) {}
+        ).toList();
+        widget.store.restoreAvatar(actor);
+        for (final original in previous) {
+          for (final path in original.capturePaths) {
+            if (!actor.capturePaths.contains(path)) {
+              try { await File(path).delete(); } catch (_) {}
+            }
           }
         }
       }
