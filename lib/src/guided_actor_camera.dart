@@ -3,8 +3,10 @@ import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
+import 'package:image/image.dart' as img;
 import 'package:path_provider/path_provider.dart';
 import 'actor_pose_gate.dart';
+import 'actor_photo_quality.dart';
 
 /// Android/iOS capture only. Images stay on-device in a dedicated *temporary*
 /// directory and are never uploaded by this feature. No depth/3D model is built.
@@ -60,6 +62,7 @@ class _GuidedActorCameraPageState extends State<GuidedActorCameraPage>
   );
   CameraController? _controller;
   final List<String> _captures = [];
+  final Map<int, List<String>> _qualityWarnings = {};
   bool _agreed = false;
   bool _resumed = true;
   bool _initializing = false;
@@ -289,6 +292,23 @@ class _GuidedActorCameraPageState extends State<GuidedActorCameraPage>
       await File(photo.path).copy(file.path);
       await File(photo.path).delete().catchError((_) => File(photo.path));
       saved = file.path;
+      // Advisory only. A well-framed face can legitimately be captured
+      // in creative low-key lighting, so quality never silently rejects
+      // or beautifies the user's original photo.
+      var warnings = <String>[];
+      try {
+        if (await file.length() <= 16 * 1024 * 1024) {
+          final decoded = img.decodeImage(await file.readAsBytes());
+          if (decoded != null) {
+            warnings = ActorPhotoQuality.assess(decoded).warnings;
+          }
+        } else {
+          warnings = ['Large photo — check sharpness before continuing.'];
+        }
+      } catch (_) {
+        warnings = ['Could not assess photo quality; review this angle.'];
+      }
+      _qualityWarnings[_step] = warnings;
       if (_retaking) {
         final previous = _captures[_step];
         _captures[_step] = saved;
@@ -439,6 +459,16 @@ class _GuidedActorCameraPageState extends State<GuidedActorCameraPage>
                           Text(_labels[i],
                               textAlign: TextAlign.center,
                               style: const TextStyle(fontSize: 11)),
+                          if ((_qualityWarnings[i] ?? const <String>[]).isNotEmpty)
+                            for (final message in _qualityWarnings[i]!)
+                              Text(
+                                message,
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(
+                                  fontSize: 11,
+                                  color: Colors.orangeAccent,
+                                ),
+                              ),
                           OutlinedButton(
                             onPressed: () => _retake(i),
                             child: const Text('Retake'),
