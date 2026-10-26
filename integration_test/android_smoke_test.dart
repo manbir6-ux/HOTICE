@@ -117,8 +117,13 @@ void main() {
 
       // Account-bound storage must never restore another demo workspace's
       // encrypted Actor, even on the same physical installation.
+      final oldDecryptedPath = afterRename.actors.single.capturePaths.first;
+      expect(await File(oldDecryptedPath).exists(), isTrue);
       final other = await vault.load('vault-other-ci@hotice.demo');
       expect(other.actors, isEmpty);
+      // Switching accounts must remove plaintext from the previous account,
+      // leaving only its encrypted vault records available for later restore.
+      expect(await File(oldDecryptedPath).exists(), isFalse);
       await vault.load(account);
       await vault.delete(account, 'Vault CI Actor Renamed');
       final afterDeletion = await vault.load(account);
