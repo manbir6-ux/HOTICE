@@ -328,17 +328,32 @@ class _GenerationPageState extends State<GenerationPage> {
       );
       return;
     }
+    final savingProjectId = project;
+    final pending = _ProjectEditorDraft(
+      prompt: prompt.text,
+      modelId: model,
+      ratio: ratio,
+      seconds: seconds,
+      actors: List<SceneActor>.of(sceneActors),
+      references: List<SceneReference>.of(references),
+      negativePrompt: negativePrompt.text,
+      seed: seedText.text,
+      soundEnabled: soundEnabled,
+      selectedTemplate: selectedTemplate,
+    );
+    final savingModel = demoModelById(pending.modelId);
     setState(() => _savingDraft = true);
     String? generatedSheetPath;
+    var savedSuccessfully = false;
     try {
-      var source = prompt.text.trim();
-      if (selectedTemplate != null && selectedTemplate!.prompt == source) {
-        source = InspirationPromptBuilder.compile(selectedTemplate!, sceneActors);
+      var source = pending.prompt.trim();
+      if (pending.selectedTemplate != null && pending.selectedTemplate!.prompt == source) {
+        source = InspirationPromptBuilder.compile(pending.selectedTemplate!, pending.actors);
       }
       // Detect unresolved placeholders even when the user has edited the text.
       final roleTokens = RegExp(r'\{\{Actor[0-9]+\}\}').allMatches(source).toList();
       if (roleTokens.isNotEmpty) {
-        if (sceneActors.length < roleTokens.length) {
+        if (pending.actors.length < roleTokens.length) {
           throw StateError('Assign the named actors before saving.');
         }
         final seen = <String>{};
@@ -348,14 +363,14 @@ class _GenerationPageState extends State<GenerationPage> {
             seen.add(token);
           }
           final index = seen.toList().indexOf(token);
-          return sceneActors[index].sceneName;
+          return pending.actors[index].sceneName;
         });
       }
       final adapterPlan = ActorReferenceAdapter.plan(
-        model: profile,
-        cast: sceneActors,
+        model: savingModel,
+        cast: pending.actors,
         library: widget.store.avatars,
-        otherImageAttachments: references.where(
+        otherImageAttachments: pending.references.where(
           (item) => item.type == VideoAttachment.image,
         ).length,
         otherVideoAttachments: references.where(
@@ -389,32 +404,33 @@ class _GenerationPageState extends State<GenerationPage> {
           ));
         }
       }
-      final attachments = [...references, ...preparedRefs];
-      if (profile.validateInputs(attachments.map((r) => r.type)) != null) {
+      final attachments = [...pending.references, ...preparedRefs];
+      if (savingModel.validateInputs(attachments.map((r) => r.type)) != null) {
         throw StateError('Actor and extra photos exceed this model limit.');
       }
-      if (!mounted) return;
+      if (!mounted || project != savingProjectId) return;
       final selected = matches.first;
       widget.store.queueDraft(GenerationDraft(
         projectId: selected.id,
-        modelId: profile.id,
+        modelId: savingModel.id,
         project: selected.title,
         prompt: AvatarPromptComposer.composeActors(
           scenePrompt: source,
-          cast: List<SceneActor>.unmodifiable(sceneActors),
+          cast: List<SceneActor>.unmodifiable(pending.actors),
           library: widget.store.avatars,
-          model: profile,
+          model: savingModel,
         ),
-        model: profile.label,
-        aspectRatio: ratio,
-        durationSeconds: seconds,
-        actors: List<SceneActor>.unmodifiable(sceneActors),
+        model: savingModel.label,
+        aspectRatio: pending.ratio,
+        durationSeconds: pending.seconds,
+        actors: List<SceneActor>.unmodifiable(pending.actors),
         referenceFiles: List<SceneReference>.unmodifiable(attachments),
-        negativePrompt: negativePrompt.text.trim(),
+        negativePrompt: pending.negativePrompt.trim(),
         seed: seed,
-        soundEnabled: soundEnabled,
+        soundEnabled: pending.soundEnabled,
         createdAt: DateTime.now(),
       ));
+      savedSuccessfully = true;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Scene and model-compatible Actor references saved locally. No AI request sent.')),
       );
@@ -424,9 +440,7 @@ class _GenerationPageState extends State<GenerationPage> {
           SnackBar(content: Text(error.message)),
         );
       }
-      if (generatedSheetPath != null) {
-        try { await File(generatedSheetPath).delete(); } catch (_) {}
-      }
+
     } on FileSystemException {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -435,9 +449,7 @@ class _GenerationPageState extends State<GenerationPage> {
           )),
         );
       }
-      if (generatedSheetPath != null) {
-        try { await File(generatedSheetPath).delete(); } catch (_) {}
-      }
+
     } on FormatException {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -446,10 +458,11 @@ class _GenerationPageState extends State<GenerationPage> {
           )),
         );
       }
-      if (generatedSheetPath != null) {
+
+    } finally {
+      if (!savedSuccessfully && generatedSheetPath != null) {
         try { await File(generatedSheetPath).delete(); } catch (_) {}
       }
-    } finally {
       if (mounted) setState(() => _savingDraft = false);
     }
   }
@@ -463,8 +476,10 @@ class _GenerationPageState extends State<GenerationPage> {
     // Remove stale cast entries if an actor preset was deleted.
     sceneActors.removeWhere((cast) =>
         !widget.store.avatars.any((actor) => actor.name == cast.avatarName));
-    final editor = StudioPanel(
-      child: Column(
+    final editor = AbsorbPointer(
+      absorbing: _savingDraft,
+      child: StudioPanel(
+        child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text('Scene composer',
@@ -656,6 +671,7 @@ class _GenerationPageState extends State<GenerationPage> {
             onPressed: _savingDraft ? null : save,
           ),
         ],
+      ),
       ),
     );
     final preview = Column(children: [
