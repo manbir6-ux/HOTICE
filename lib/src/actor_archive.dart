@@ -177,9 +177,10 @@ class ActorArchiveCodec {
   }
 
   static Future<List<String>> importToTemporaryFolder(
-      ActorArchiveImport actor) async {
+      ActorArchiveImport actor, {Directory? cacheRoot}) async {
+    final root = cacheRoot ?? await getTemporaryDirectory();
     final folder = Directory(
-        '${(await getTemporaryDirectory()).path}/hotice_actor_capture');
+        '${root.path}/hotice_actor_capture');
     await folder.create(recursive: true);
     final stamp = DateTime.now().microsecondsSinceEpoch;
     final saved = <String>[];
