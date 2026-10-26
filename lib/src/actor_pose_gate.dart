@@ -21,6 +21,11 @@ class ActorPoseGate {
   static double? selfieYaw(double? raw, {bool mirroredFront = true}) =>
       raw == null ? null : (mirroredFront ? -raw : raw);
 
+  /// Some front-camera/OEM sensor orientations reverse X rotation.
+  /// This is an explicit camera QA calibration toggle, not identity analysis.
+  static double? selfiePitch(double? raw, {bool reversed = false}) =>
+      raw == null ? null : (reversed ? -raw : raw);
+
   static String instruction(ScanPose pose) => switch (pose) {
         ScanPose.front => 'Look straight at the camera',
         ScanPose.left => 'Turn your head slightly LEFT',
