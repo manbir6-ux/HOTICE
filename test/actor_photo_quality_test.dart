@@ -1,8 +1,31 @@
+import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:image/image.dart' as img;
 import 'package:hotice/src/actor_photo_quality.dart';
 
 void main() {
+  test('isolated JPEG review flags darkness without editing original bytes',
+      () async {
+    final photo = img.Image(width: 80, height: 100);
+    img.fill(photo, color: img.ColorRgb8(10, 15, 20));
+    final jpeg = Uint8List.fromList(img.encodeJpg(photo));
+    final preserved = Uint8List.fromList(jpeg);
+    final warnings = await ActorPhotoQuality.reviewCameraJpeg(jpeg);
+    expect(warnings.join(' '), contains('dark'));
+    expect(jpeg, orderedEquals(preserved));
+  });
+
+  test('isolated JPEG review rejects invalid/oversized headers', () async {
+    await expectLater(
+      ActorPhotoQuality.reviewCameraJpeg(Uint8List.fromList([1, 2, 3])),
+      throwsFormatException,
+    );
+    await expectLater(
+      ActorPhotoQuality.reviewCameraJpeg(Uint8List(16 * 1024 * 1024 + 1)),
+      throwsFormatException,
+    );
+  });
+
   test('rejects invalid image dimensions before analysis', () {
     expect(() => ActorPhotoQuality.assess(
       img.Image(width: 0, height: 1),
