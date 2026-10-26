@@ -1,4 +1,6 @@
 import 'dart:io';
+import 'package:file_picker/file_picker.dart';
+import 'actor_archive.dart';
 import 'package:flutter/material.dart';
 import 'guided_actor_camera.dart';
 import 'package:flutter/services.dart';
@@ -22,6 +24,7 @@ class _AvatarsPageState extends State<AvatarsPage> {
   String style = 'Photorealistic';
   String? editingName;
   bool _scanInProgress = false;
+  bool _transferBusy = false;
   Future<void> scanActor() async {
     final actorName = name.text.trim();
     if (actorName.isEmpty) {
@@ -81,7 +84,7 @@ class _AvatarsPageState extends State<AvatarsPage> {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
       content: Text(saved
-          ? 'Actor created with 3 temporary camera references. No upload.'
+          ? 'Actor created with ${result.paths.length} temporary camera photos. No upload.'
           : 'Could not save Actor. Camera captures were discarded.'),
     ));
   }
@@ -154,6 +157,119 @@ class _AvatarsPageState extends State<AvatarsPage> {
         name.clear();
         identityNotes.clear();
       });
+    }
+  }
+
+  Future<bool> _confirmFaceTransfer(String action) async {
+    if (!mounted) return false;
+    final agreed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text('$action Actor photos?'),
+        content: const Text(
+          'Actor packages contain recognizable face photos. This testing '
+          'format is an UNENCRYPTED ZIP. Anyone who obtains the exported '
+          'file can view the photos. Share only with consent, store it '
+          'privately, and delete unwanted copies. No cloud upload is made.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('I understand'),
+          ),
+        ],
+      ),
+    );
+    return agreed == true;
+  }
+
+  void _feedback(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
+  }
+
+  Future<void> _exportActor(StudioAvatar actor) async {
+    if (_transferBusy) return;
+    if (actor.capturePaths.isEmpty) {
+      _feedback('This demo Actor has no guided photos to export.');
+      return;
+    }
+    if (!await _confirmFaceTransfer('Export') || !mounted) return;
+    setState(() => _transferBusy = true);
+    try {
+      final zipped = await ActorArchiveCodec.exportActor(actor);
+      final safeName = actor.name.replaceAll(
+          RegExp(r'[^a-zA-Z0-9_-]'), '_');
+      final saved = await FilePicker.saveFile(
+        dialogTitle: 'Save sensitive HOTICE Actor archive',
+        fileName: 'HOTICE_${safeName}.hoticeactor',
+        bytes: zipped,
+      );
+      if (!mounted) return;
+      _feedback(saved == null
+          ? 'Export cancelled.'
+          : 'Actor exported. Protect the unencrypted file.');
+    } catch (_) {
+      _feedback('Could not export this Actor. Check the captured photos.');
+    } finally {
+      if (mounted) setState(() => _transferBusy = false);
+    }
+  }
+
+  Future<void> _importActor() async {
+    if (_transferBusy) return;
+    if (!await _confirmFaceTransfer('Import') || !mounted) return;
+    setState(() => _transferBusy = true);
+    List<String> created = [];
+    try {
+      final picked = await FilePicker.pickFile(
+        type: FileType.custom,
+        allowedExtensions: const ['hoticeactor', 'zip'],
+      );
+      if (picked == null) return;
+      final length = picked.lengthSync() ?? await picked.length();
+      if (length == null || length < 1 ||
+          length > ActorArchiveCodec.maxArchiveBytes) {
+        throw const FormatException('Actor package exceeds safety size limit.');
+      }
+      final profile = ActorArchiveCodec.decode(await picked.readAsBytes());
+      if (!mounted) return;
+      var actorName = profile.name;
+      var n = 2;
+      while (widget.store.avatars.any(
+          (a) => a.name.toLowerCase() == actorName.toLowerCase())) {
+        final suffix = ' ($n)';
+        actorName = profile.name.substring(
+            0, profile.name.length > 60 - suffix.length
+              ? 60 - suffix.length : profile.name.length) + suffix;
+        n++;
+        if (n > 999) throw StateError('Too many duplicate Actor names.');
+      }
+      created = await ActorArchiveCodec.importToTemporaryFolder(profile);
+      if (!mounted) return;
+      final success = widget.store.addAvatar(
+        actorName, profile.style,
+        identityNotes: profile.notes, capturePaths: created,
+      );
+      if (!success) {
+        throw StateError('Actor profile could not be saved.');
+      }
+      created = [];
+      _feedback('Actor imported with ${profile.photos.length} real photos. '
+          'Temporary until app restart.');
+    } catch (_) {
+      _feedback('Import rejected. Check ZIP safety, format and photos.');
+    } finally {
+      for (final path in created) {
+        try { await File(path).delete(); } catch (_) {}
+      }
+      if (mounted) setState(() => _transferBusy = false);
     }
   }
 
@@ -292,7 +408,7 @@ class _AvatarsPageState extends State<AvatarsPage> {
                 const SizedBox(height: 13),
                 if (editingName == null) ...[
                   const Text(
-                    'Next: guided front-camera capture (front, left and right). '
+                    'Next: guided front-camera capture (7 face angles). '
                     'HOTICE creates the Actor only after the capture is complete.',
                   ),
                   const SizedBox(height: 12),
@@ -338,6 +454,15 @@ class _AvatarsPageState extends State<AvatarsPage> {
             ],
           ),
           const SizedBox(height: 12),
+          OutlinedButton.icon(
+            onPressed: _transferBusy ? null : _importActor,
+            icon: const Icon(Icons.file_download_outlined),
+            label: const Text('Import Actor (.hoticeactor)'),
+          ),
+          const SizedBox(height: 10),
+          const Text('Exports contain private face photos in an unencrypted testing ZIP.',
+            style: TextStyle(fontSize: 12)),
+          const SizedBox(height: 12),
           if (widget.store.avatars.isEmpty)
             const StudioPanel(
               child: Text('No characters yet. Create one above to start your library.'),
@@ -366,12 +491,15 @@ class _AvatarsPageState extends State<AvatarsPage> {
                     onSelected: (action) {
                       if (action == 'edit') {
                         startEditing(avatar);
+                      } else if (action == 'export') {
+                        _exportActor(avatar);
                       } else if (action == 'delete') {
                         deleteAvatar(avatar);
                       }
                     },
                     itemBuilder: (ctx) => const [
                       PopupMenuItem(value: 'edit', child: Text('Edit actor')),
+                      PopupMenuItem(value: 'export', child: Text('Export Actor ZIP')),
                       PopupMenuItem(value: 'delete', child: Text('Delete actor')),
                     ],
                   ),
