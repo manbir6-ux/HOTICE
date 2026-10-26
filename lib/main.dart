@@ -15,8 +15,13 @@ Future<void> main() async {
   // These are not permanent biometric records or cloud-backed references.
   try {
     final temp = await getTemporaryDirectory();
-    final folder = Directory('${temp.path}/hotice_actor_capture');
-    if (await folder.exists()) await folder.delete(recursive: true);
+    for (final subfolder in const [
+      'hotice_actor_capture',
+      'hotice_actor_reference_sheets',
+    ]) {
+      final folder = Directory('${temp.path}/$subfolder');
+      if (await folder.exists()) await folder.delete(recursive: true);
+    }
   } catch (_) {
     // A storage failure must never prevent app startup.
   }
