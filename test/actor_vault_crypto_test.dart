@@ -5,6 +5,31 @@ import 'package:hotice/src/actor_vault.dart';
 import 'package:hotice/src/state.dart';
 
 void main() {
+  test('vault restore prunes deleted/corrupt cached Actors without erasing presets',
+      () {
+    final store = HotIceStore();
+    addTearDown(store.dispose);
+    expect(store.addAvatar('Deleted on disk', 'Cinematic',
+        capturePaths: ['unavailable.jpg']), isTrue);
+    expect(store.addAvatar('Saved on disk', 'Photorealistic',
+        capturePaths: ['old.jpg']), isTrue);
+    store.reconcileVaultActors(const [
+      StudioAvatar('Saved on disk', 'Cinematic',
+          capturePaths: ['decrypted-fresh.jpg']),
+    ]);
+    expect(store.avatars.any((a) => a.name == 'Deleted on disk'), isFalse);
+    expect(store.avatars.singleWhere((a) => a.name == 'Saved on disk')
+        .capturePaths, ['decrypted-fresh.jpg']);
+    expect(store.avatars.any((a) => a.name == 'Nova'), isTrue);
+    expect(
+      () => store.reconcileVaultActors(const [
+        StudioAvatar('Duplicate', 'Cinematic'),
+        StudioAvatar('duplicate', 'Cinematic'),
+      ]),
+      throwsStateError,
+    );
+  });
+
   test('restoring an Actor replaces stale decrypted paths in same workspace', () {
     final store = HotIceStore();
     addTearDown(store.dispose);
