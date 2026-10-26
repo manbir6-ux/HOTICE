@@ -212,7 +212,7 @@ class _GuidedActorCameraPageState extends State<GuidedActorCameraPage>
       final assessment = ActorPoseGate.evaluate(
         pose: _pose,
         faceCount: faces.length,
-        yaw: face?.headEulerAngleY,
+        yaw: ActorPoseGate.selfieYaw(face?.headEulerAngleY),
         roll: face?.headEulerAngleZ,
         faceWidthFraction: box == null ? 0 : box.width / width,
         faceHeightFraction: box == null ? 0 : box.height / height,
@@ -254,15 +254,16 @@ class _GuidedActorCameraPageState extends State<GuidedActorCameraPage>
         InputImage.fromFilePath(photo.path),
       );
       final latest = faces.isEmpty ? null : faces.first;
-      final angleOk = latest != null && latest.headEulerAngleY != null &&
+      final userYaw = ActorPoseGate.selfieYaw(latest?.headEulerAngleY);
+      final angleOk = latest != null && userYaw != null &&
           latest.headEulerAngleZ != null &&
           latest.headEulerAngleZ!.abs() <= 18 &&
           switch (_pose) {
-            ScanPose.front => latest.headEulerAngleY!.abs() < 13,
-            ScanPose.left => latest.headEulerAngleY! <= -16 &&
-                latest.headEulerAngleY! >= -50,
-            ScanPose.right => latest.headEulerAngleY! >= 16 &&
-                latest.headEulerAngleY! <= 50,
+            ScanPose.front => userYaw.abs() < 13,
+            ScanPose.left => userYaw <= -16 &&
+                userYaw >= -50,
+            ScanPose.right => userYaw >= 16 &&
+                userYaw <= 50,
           };
       if (faces.length != 1 || !angleOk) {
         try { await File(photo.path).delete(); } catch (_) {}
@@ -378,11 +379,35 @@ class _GuidedActorCameraPageState extends State<GuidedActorCameraPage>
                 ),
                 clipBehavior: Clip.antiAlias,
                 child: AspectRatio(
-                  aspectRatio: active ? camera.value.aspectRatio : 3 / 4,
+                  aspectRatio: 3 / 4,
                   child: Stack(
                     fit: StackFit.expand,
                     children: [
-                      if (active) CameraPreview(camera)
+                      if (active)
+                        LayoutBuilder(
+                          builder: (context, bounds) {
+                            final nativeSize = camera.value.previewSize;
+                            if (nativeSize == null) {
+                              return const Center(
+                                child: CircularProgressIndicator(),
+                              );
+                            }
+                            // Preview comes from landscape sensor coordinates.
+                            // Portrait viewport uses swapped dimensions, and
+                            // BoxFit.cover crops without ever stretching face.
+                            return ClipRect(
+                              child: FittedBox(
+                                fit: BoxFit.cover,
+                                alignment: Alignment.center,
+                                child: SizedBox(
+                                  width: nativeSize.height,
+                                  height: nativeSize.width,
+                                  child: CameraPreview(camera),
+                                ),
+                              ),
+                            );
+                          },
+                        )
                       else const Center(child: CircularProgressIndicator()),
                       Center(
                         child: FractionallySizedBox(
