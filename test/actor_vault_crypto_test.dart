@@ -2,8 +2,32 @@ import 'dart:typed_data';
 import 'package:cryptography/cryptography.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hotice/src/actor_vault.dart';
+import 'package:hotice/src/state.dart';
 
 void main() {
+  test('restoring an Actor replaces stale decrypted paths in same workspace', () {
+    final store = HotIceStore();
+    addTearDown(store.dispose);
+    expect(store.addAvatar('Original Hero', 'Cinematic',
+        capturePaths: ['expired-temp.jpg']), isTrue);
+    store.restoreAvatar(const StudioAvatar(
+        'Original Hero', 'Photorealistic',
+        identityNotes: 'New metadata',
+        capturePaths: ['fresh-decrypted.jpg'],
+        autoTouchUp: true,
+    ));
+    expect(store.avatars.where((a) => a.name == 'Original Hero').length, 1);
+    expect(store.avatars.single.capturePaths, ['fresh-decrypted.jpg']);
+    expect(store.avatars.single.autoTouchUp, isTrue);
+
+    store.addAccount('second-actor@hotice.demo');
+    store.restoreAvatar(const StudioAvatar('Second', 'Cinematic',
+        capturePaths: ['second.jpg']));
+    store.switchAccount('creator@hotice.demo');
+    expect(store.avatars.single.name, 'Original Hero');
+    expect(store.avatars.single.capturePaths, ['fresh-decrypted.jpg']);
+  });
+
   test('AES-256-GCM vault payload survives authenticated roundtrip', () async {
     final key = await ActorVaultCrypto.newKey();
     expect((await key.extractBytes()).length, 32);
