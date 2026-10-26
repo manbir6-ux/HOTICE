@@ -1,14 +1,26 @@
 # HOTICE guided Actor camera — implementation and QA contract
 
+## 26 October 2026 — V1.1 implementation update (feature branch PR #17)
+
+- **Name first:** Actors Studio no longer presents a Quick Actor / manual new-Actor save path. Enter Actor name and optional appearance notes, then explicitly continue to the permission-gated guided camera; the keyboard is dismissed before navigation.
+- **Seven guided reference views:** front, left 25–35°, right 25–35°, left 40–60°, right 40–60°, chin up and chin down. The last four pose types are new and their pitch/yaw sign must be verified on physical Android/iOS hardware.
+- **Review before save:** After all seven real photos pass capture-time pose checks, HOTICE shows thumbnails with a **Retake** action for each angle. An Actor is added only after explicit **Save Actor with 7 views** confirmation. Cancellation removes incomplete temporary photos.
+- **Model adapter:** Seven positions are now named accurately (front, left, right, left-profile, right-profile, chin-up, chin-down) for later image-slot planning.
+- **Automated checks:** new Flutter tests cover seven-angle pose boundaries and that the Actor-creation page has only the guided-camera path (no direct `Save actor`). Automated camera hardware, retake fidelity and biometric accuracy remain untested.
+- **Known unsupported items:** Optional beauty/touch-up, encrypted persistent Actor vault, real 3D reconstruction, import/export, automatic exposure/blur score and real-provider connection still remain **planned**, not delivered.
+- **Important safety:** Never claim this photo-capture system produces a perfect 3D model. Do not export/retain identity photos until explicit informed consent, durable encryption and deletion/export policies are in place.
+
+
+
 **26 October 2026 — code implementation under review, NOT production sign-off.**
 
 ## What this feature really does
 - Opens the device **front camera** on Android/iOS only after a clear on-screen consent action.
 - Uses Flutter camera preview and **native Google ML Kit Face Detection** on image frames, with analysis throttling and a one-face policy.
-- Guides the user through **front / left / right** angles and estimates framing, face size, position and head yaw/roll.
+- Guides the user through **seven requested angles** (front, left/right slight + profile, chin up/down) and estimates framing, face size, position and head yaw/roll.
 - Turns red/green after four consecutive acceptable analysed frames, giving system click audio and haptic cues.
 - **User presses Capture** on green. The captured still image is rechecked for exactly one detectable face and expected yaw before advancing. Retakes remain available.
-- When all three images are accepted, creates a named Actor profile and shows three temporary device-local photo thumbnails in Actors Studio. No upload.
+- After seven images are captured and the review is explicitly confirmed, creates a named Actor profile and shows seven temporary device-local photo thumbnails in Actors Studio. No upload.
 - Discards incomplete photos when capture is cancelled; deletes Actor reference photos when Actor is deleted; clears stale capture folder at next app launch.
 
 **This is camera-assisted 2D multi-angle photo capture, not depth mapping, 3D reconstruction, guaranteed actor identity matching, face recognition, liveness verification or an AI provider integration.**
