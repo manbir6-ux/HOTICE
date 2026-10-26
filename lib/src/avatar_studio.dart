@@ -22,16 +22,6 @@ class _AvatarsPageState extends State<AvatarsPage> {
   String style = 'Photorealistic';
   String? editingName;
   bool showScanGuide = false;
-  int poseIndex = 0;
-
-  static const poses = <({String title, String hint, IconData icon})>[
-    (title: 'Front portrait', hint: 'Even lighting, neutral expression and no face filters.', icon: Icons.face_outlined),
-    (title: 'Left profile', hint: 'Turn about 45 degrees. Keep the camera at eye level.', icon: Icons.rotate_left_rounded),
-    (title: 'Right profile', hint: 'Turn about 45 degrees to the other side.', icon: Icons.rotate_right_rounded),
-    (title: 'Expression', hint: 'Keep lighting consistent; capture a natural smile later.', icon: Icons.sentiment_satisfied_alt_outlined),
-    (title: 'Full-body reference', hint: 'Use a clear outfit and consistent body proportions.', icon: Icons.accessibility_new_rounded),
-  ];
-
   Future<void> scanActor() async {
     final actorName = name.text.trim();
     if (actorName.isEmpty) {
