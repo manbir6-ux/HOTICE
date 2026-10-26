@@ -262,6 +262,7 @@ class _AvatarsPageState extends State<AvatarsPage> {
       final success = widget.store.addAvatar(
         actorName, profile.style,
         identityNotes: profile.notes, capturePaths: created,
+        autoTouchUp: profile.autoTouchUp,
       );
       if (!success) {
         throw StateError('Actor profile could not be saved.');
