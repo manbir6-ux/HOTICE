@@ -1,4 +1,6 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'guided_actor_camera.dart';
 import 'package:flutter/services.dart';
 import 'avatar_identity.dart';
 import 'design.dart';
@@ -20,15 +22,56 @@ class _AvatarsPageState extends State<AvatarsPage> {
   String style = 'Photorealistic';
   String? editingName;
   bool showScanGuide = false;
-  int poseIndex = 0;
-
-  static const poses = <({String title, String hint, IconData icon})>[
-    (title: 'Front portrait', hint: 'Even lighting, neutral expression and no face filters.', icon: Icons.face_outlined),
-    (title: 'Left profile', hint: 'Turn about 45 degrees. Keep the camera at eye level.', icon: Icons.rotate_left_rounded),
-    (title: 'Right profile', hint: 'Turn about 45 degrees to the other side.', icon: Icons.rotate_right_rounded),
-    (title: 'Expression', hint: 'Keep lighting consistent; capture a natural smile later.', icon: Icons.sentiment_satisfied_alt_outlined),
-    (title: 'Full-body reference', hint: 'Use a clear outfit and consistent body proportions.', icon: Icons.accessibility_new_rounded),
-  ];
+  Future<void> scanActor() async {
+    final actorName = name.text.trim();
+    if (actorName.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Enter an Actor name before scanning.')),
+      );
+      return;
+    }
+    if (editingName != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Finish editing before creating a new scanned Actor.')),
+      );
+      return;
+    }
+    if (widget.store.avatars.any((a) =>
+        a.name.toLowerCase() == actorName.toLowerCase())) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('This Actor already exists. Choose another name.')),
+      );
+      return;
+    }
+    final result = await Navigator.of(context).push<ActorCameraResult>(
+      MaterialPageRoute(
+        builder: (_) => GuidedActorCameraPage(actorName: actorName),
+      ),
+    );
+    if (result == null) return;
+    if (!mounted) {
+      for (final path in result.paths) {
+        try { await File(path).delete(); } catch (_) {}
+      }
+      return;
+    }
+    final saved = widget.store.addAvatar(actorName, style,
+        identityNotes: identityNotes.text, capturePaths: result.paths);
+    if (!saved) {
+      for (final path in result.paths) {
+        try { await File(path).delete(); } catch (_) {}
+      }
+    } else {
+      name.clear();
+      identityNotes.clear();
+    }
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(saved
+          ? 'Actor created with 3 temporary camera references. No upload.'
+          : 'Could not save Actor. Camera captures were discarded.'),
+    ));
+  }
 
   @override
   void dispose() {
@@ -90,6 +133,10 @@ class _AvatarsPageState extends State<AvatarsPage> {
     );
     if (!mounted || confirmed != true) return;
     widget.store.removeAvatar(avatar.name);
+    for (final path in avatar.capturePaths) {
+      try { await File(path).delete(); } catch (_) {}
+    }
+    if (!mounted) return;
     if (editingName == avatar.name) {
       setState(() {
         editingName = null;
@@ -120,8 +167,32 @@ class _AvatarsPageState extends State<AvatarsPage> {
                 SelectableText(card),
                 const SizedBox(height: 16),
                 const DemoNotice(
-                  'HOTICE can add these notes to demo video prompts. Real 3D scanning, facial matching and provider-specific references are not active.',
+                  'Camera references stay on this device temporarily, not cloud-synced. '
+                  'They are not 3D meshes, biometric identity verification or guaranteed '
+                  'AI face-locking.',
                 ),
+                if (avatar.capturePaths.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  Text('${avatar.capturePaths.length} captured camera angles (session only)'),
+                  const SizedBox(height: 9),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      for (final path in avatar.capturePaths)
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(12),
+                          child: Image.file(
+                            File(path), height: 105, width: 86,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, __, ___) =>
+                                const SizedBox(width: 86, height: 105,
+                                    child: Icon(Icons.broken_image_outlined)),
+                          ),
+                        ),
+                    ],
+                  ),
+                ],
                 const SizedBox(height: 14),
                 FilledButton.icon(
                   onPressed: () async {
@@ -152,7 +223,7 @@ class _AvatarsPageState extends State<AvatarsPage> {
             subtitle: 'Create once. Reuse the same character description across your shots.',
           ),
           const DemoNotice(
-            'Testing mode: character descriptions work as local presets. No face images, camera scans, biometric data or 3D meshes are collected or stored.',
+            'Actors can be created from appearance notes or live guided front-camera photos on Android/iOS. Photos remain temporary on-device references; no 3D reconstruction or upload.',
           ),
           const SizedBox(height: 20),
           Wrap(
@@ -167,7 +238,7 @@ class _AvatarsPageState extends State<AvatarsPage> {
               ),
               ChoiceChip(
                 avatar: const Icon(Icons.face_retouching_natural_rounded, size: 18),
-                label: const Text('3D face-scan guide'),
+                label: const Text('Guided camera'),
                 selected: showScanGuide,
                 onSelected: (_) => setState(() => showScanGuide = true),
               ),
@@ -179,81 +250,26 @@ class _AvatarsPageState extends State<AvatarsPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('Face capture preparation',
+                  Text('Guided face capture',
                       style: Theme.of(context).textTheme.titleLarge),
-                  const SizedBox(height: 7),
+                  const SizedBox(height: 8),
                   const Text(
-                    'Preview the planned multi-angle capture process. Camera capture, depth reconstruction and facial embeddings will be built and tested in a later phase.',
-                  ),
-                  const SizedBox(height: 18),
-                  Center(
-                    child: Container(
-                      width: 244,
-                      height: 220,
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(28),
-                        gradient: const LinearGradient(
-                          colors: [Color(0xFF182B50), Color(0xFF47306F), Color(0xFF112D43)],
-                        ),
-                      ),
-                      child: Stack(
-                        alignment: Alignment.center,
-                        children: [
-                          Container(
-                            width: 165,
-                            height: 185,
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(70),
-                              border: Border.all(color: const Color(0xFF84E8F7), width: 2),
-                            ),
-                          ),
-                          Icon(poses[poseIndex].icon, color: Colors.white, size: 118),
-                          Positioned(
-                            top: 12,
-                            right: 12,
-                            child: Text(
-                              'GUIDE ' + (poseIndex + 1).toString() + '/5',
-                              style: const TextStyle(
-                                fontWeight: FontWeight.bold, color: Colors.white, fontSize: 11),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 15),
-                  Text(poses[poseIndex].title,
-                      style: Theme.of(context).textTheme.titleMedium),
-                  const SizedBox(height: 6),
-                  Text(poses[poseIndex].hint),
-                  const SizedBox(height: 17),
-                  Row(
-                    children: [
-                      OutlinedButton.icon(
-                        onPressed: poseIndex == 0
-                            ? null
-                            : () => setState(() => poseIndex--),
-                        icon: const Icon(Icons.chevron_left),
-                        label: const Text('Back'),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: FilledButton.icon(
-                          onPressed: poseIndex == poses.length - 1
-                              ? () => setState(() => poseIndex = 0)
-                              : () => setState(() => poseIndex++),
-                          icon: Icon(poseIndex == poses.length - 1
-                              ? Icons.replay_rounded : Icons.chevron_right),
-                          label: Text(poseIndex == poses.length - 1
-                              ? 'Review again' : 'Next angle'),
-                        ),
-                      ),
-                    ],
+                    'Give your Actor a name in the form below, then open the '
+                    'front camera. HOTICE checks one visible face, distance, '
+                    'centering and front/left/right angles with red/green cues. '
+                    'A click and vibration indicate stable alignment.',
                   ),
                   const SizedBox(height: 12),
-                  const Text(
-                    'No images are being captured. This walkthrough is a design preview, not a completed scan.',
-                    style: TextStyle(fontSize: 12),
+                  const DemoNotice(
+                    'This records three real photos with your consent, '
+                    'not a biometric 3D scan. Captures are temporarily stored '
+                    'on this device and cleared at next app launch.',
+                  ),
+                  const SizedBox(height: 15),
+                  FilledButton.icon(
+                    onPressed: scanActor,
+                    icon: const Icon(Icons.camera_front_outlined),
+                    label: const Text('Start real guided camera'),
                   ),
                 ],
               ),
@@ -362,9 +378,11 @@ class _AvatarsPageState extends State<AvatarsPage> {
                   title: Text(avatar.name,
                       maxLines: 1, overflow: TextOverflow.ellipsis),
                   subtitle: Text(avatar.style +
-                      ' · ' + (avatar.identityNotes.isEmpty
-                          ? 'Add identity notes later'
-                          : 'Identity notes ready for prompts')),
+                      ' · ' + (avatar.capturePaths.isNotEmpty
+                          ? '3 guided angle photos · temporary'
+                          : avatar.identityNotes.isEmpty
+                              ? 'Add identity notes later'
+                              : 'Identity notes ready for prompts')),
                   isThreeLine: false,
                   trailing: PopupMenuButton<String>(
                     tooltip: 'Character options',

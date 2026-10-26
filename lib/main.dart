@@ -1,4 +1,6 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:path_provider/path_provider.dart';
 import 'src/state.dart';
 import 'src/design.dart';
 import 'src/pages.dart';
@@ -7,8 +9,17 @@ import 'src/diagnostics.dart';
 import 'src/inspiration_catalog.dart';
 import 'src/inspiration_page.dart';
 
-void main() {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // Remove abandoned temporary capture photos from previous sessions.
+  // These are not permanent biometric records or cloud-backed references.
+  try {
+    final temp = await getTemporaryDirectory();
+    final folder = Directory('${temp.path}/hotice_actor_capture');
+    if (await folder.exists()) await folder.delete(recursive: true);
+  } catch (_) {
+    // A storage failure must never prevent app startup.
+  }
   HoticeDiagnostics.install();
   runApp(const HotIceApp());
 }
