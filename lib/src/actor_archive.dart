@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:archive/archive.dart';
@@ -181,13 +182,18 @@ class ActorArchiveCodec {
     final folder = Directory(
         '${(await getTemporaryDirectory()).path}/hotice_actor_capture');
     await folder.create(recursive: true);
-    final stamp = DateTime.now().microsecondsSinceEpoch;
+    // Each import receives an unguessable basename. Track a file before
+    // writing because disk-full failures can leave partial plaintext JPGs.
+    final random = Random.secure();
+    final token = List.generate(16, (_) =>
+        random.nextInt(256).toRadixString(16).padLeft(2, '0')).join();
     final saved = <String>[];
     try {
       for (var i = 0; i < actor.photos.length; i++) {
-        final file = File('${folder.path}/import_${stamp}_$i.jpg');
-        await file.writeAsBytes(actor.photos[i], flush: true);
+        _validatePhoto(actor.photos[i]);
+        final file = File('${folder.path}/import_${token}_$i.jpg');
         saved.add(file.path);
+        await file.writeAsBytes(actor.photos[i], flush: true);
       }
       return saved;
     } catch (_) {
