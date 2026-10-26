@@ -73,6 +73,7 @@ class _GuidedActorCameraPageState extends State<GuidedActorCameraPage>
   bool _reviewing = false;
   bool _retaking = false;
   bool _swapDirections = false;
+  bool _swapPitch = false;
   String? _error;
   String _instruction = 'Starting front camera...';
   bool _ready = false;
@@ -103,7 +104,7 @@ class _GuidedActorCameraPageState extends State<GuidedActorCameraPage>
       }
       final camera = front.first;
       final controller = CameraController(
-        camera, ResolutionPreset.medium, enableAudio: false,
+        camera, ResolutionPreset.high, enableAudio: false,
         imageFormatGroup: Platform.isAndroid
             ? ImageFormatGroup.nv21 : ImageFormatGroup.bgra8888,
       );
@@ -232,7 +233,8 @@ class _GuidedActorCameraPageState extends State<GuidedActorCameraPage>
         yaw: ActorPoseGate.selfieYaw(face?.headEulerAngleY,
           mirroredFront: !_swapDirections),
         roll: face?.headEulerAngleZ,
-        pitch: face?.headEulerAngleX,
+        pitch: ActorPoseGate.selfiePitch(face?.headEulerAngleX,
+            reversed: _swapPitch),
         faceWidthFraction: box == null ? 0 : box.width / width,
         faceHeightFraction: box == null ? 0 : box.height / height,
         horizontalCenterOffset: box == null ? 1 : box.center.dx / width - .5,
@@ -279,7 +281,8 @@ class _GuidedActorCameraPageState extends State<GuidedActorCameraPage>
         pose: _pose,
         yaw: userYaw,
         roll: latest?.headEulerAngleZ,
-        pitch: latest?.headEulerAngleX,
+        pitch: ActorPoseGate.selfiePitch(latest?.headEulerAngleX,
+            reversed: _swapPitch),
       );
       if (faces.length != 1 || !angleOk) {
         try { await File(photo.path).delete(); } catch (_) {}
@@ -584,6 +587,22 @@ class _GuidedActorCameraPageState extends State<GuidedActorCameraPage>
                 onChanged: _capturing ? null : (value) {
                   setState(() {
                     _swapDirections = value;
+                    _streak = 0;
+                    _ready = false;
+                    _instruction = ActorPoseGate.instruction(_pose);
+                  });
+                },
+              ),
+              SwitchListTile.adaptive(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Swap chin up/down directions'),
+                subtitle: const Text(
+                  'Enable if this phone guides chin movement in reverse.',
+                ),
+                value: _swapPitch,
+                onChanged: _capturing ? null : (value) {
+                  setState(() {
+                    _swapPitch = value;
                     _streak = 0;
                     _ready = false;
                     _instruction = ActorPoseGate.instruction(_pose);
