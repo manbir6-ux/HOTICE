@@ -19,8 +19,11 @@ check(count($p['input']) === 1, 'unexpected refs');
 check($p['response_format']['aspect_ratio'] === '9:16', 'wrong ratio');
 check(!isset($p['generation_config']), 'unexpected advanced setting');
 
-$photo = ['data' => base64_encode('fake-image-binary'),
-          'mime_type' => 'image/jpeg'];
+// Real 1x1 PNG fixture: reject fake JPEG labels and arbitrary base64.
+$photo = [
+    'data' => 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO8F0WQAAAAASUVORK5CYII=',
+    'mime_type' => 'image/png',
+];
 $p = GeminiOmniPayload::prepare('A cinematic shot', '16:9',
     [$photo, $photo], 'reference_to_video');
 check(count($p['input']) === 3, 'two images and a text prompt expected');
@@ -31,6 +34,11 @@ refuses(fn() => GeminiOmniPayload::prepare('Scene', '1:1'));
 refuses(fn() => GeminiOmniPayload::prepare('Scene', '9:16',
     [$photo, $photo, $photo]));
 refuses(fn() => GeminiOmniPayload::prepare('Scene', '16:9',
-    [['data' => 'bad$$!', 'mime_type' => 'image/jpeg']]));
+    [['data' => base64_encode('fake-image-binary'),
+      'mime_type' => 'image/png']]));
+refuses(fn() => GeminiOmniPayload::prepare('Scene', '16:9',
+    [['data' => $photo['data'], 'mime_type' => 'image/jpeg']]));
+refuses(fn() => GeminiOmniPayload::prepare('Scene', '16:9',
+    [['data' => 'bad$!', 'mime_type' => 'image/jpeg']]));
 refuses(fn() => GeminiOmniPayload::prepare('Scene', '16:9', [], 'not_real'));
 echo "Gemini Omni server-only payload contract checks passed.\n";
