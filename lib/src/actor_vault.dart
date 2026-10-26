@@ -161,7 +161,6 @@ class ActorLocalVault {
     final key = await _key(create: false);
     final hash = await _accountHash(account);
     final actors = <StudioAvatar>[];
-    final temporary = <String>[];
     var failed = 0;
     for (final file in records) {
       try {
@@ -178,7 +177,6 @@ class ActorLocalVault {
           throw const FormatException('Duplicate Actor name in vault.');
         }
         final paths = await ActorArchiveCodec.importToTemporaryFolder(profile);
-        temporary.addAll(paths);
         _nameToFile[lower] = file.path;
         actors.add(StudioAvatar(
           profile.name, profile.style,
@@ -223,12 +221,20 @@ class ActorLocalVault {
     try {
       await temp.writeAsBytes(encrypted, flush: true);
       await temp.rename(path);
+      // Commit the name index only once old data has been deleted.
+      // If deletion fails, roll the new copy back to avoid conflicting
+      // versions being restored in arbitrary directory order next launch.
+      if (oldPath != null && oldPath != path) {
+        try {
+          final previous = File(oldPath);
+          if (await previous.exists()) await previous.delete();
+        } catch (_) {
+          try { await File(path).delete(); } catch (_) {}
+          rethrow;
+        }
+      }
       _nameToFile.remove(_normalize(formerName ?? actor.name));
       _nameToFile[_normalize(actor.name)] = path;
-      if (oldPath != null && oldPath != path) {
-        final previous = File(oldPath);
-        if (await previous.exists()) await previous.delete();
-      }
     } finally {
       if (await temp.exists()) await temp.delete();
     }
