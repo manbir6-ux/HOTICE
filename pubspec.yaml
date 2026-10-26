@@ -12,6 +12,7 @@ dependencies:
   google_mlkit_face_detection: ^0.15.1
   path_provider: ^2.1.6
   image: ^4.10.2
+  archive: ^4.5.2
   flutter:
     sdk: flutter
 
