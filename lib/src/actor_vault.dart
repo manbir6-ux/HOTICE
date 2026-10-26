@@ -138,7 +138,25 @@ class ActorLocalVault {
   Future<ActorVaultLoad> load(String account) =>
       _serial(() => _loadInternal(account));
 
+  Future<void> _purgePreviousAccountSession() async {
+    // Never leave recognizable plaintext face photos available under the
+    // previous demo workspace after the user switches accounts. Encrypted
+    // originals remain intact in application-support storage for re-restore.
+    final root = await getTemporaryDirectory();
+    for (final name in const [
+      'hotice_actor_capture',
+      'hotice_actor_reference_sheets',
+      'hotice_actor_touchups',
+    ]) {
+      final folder = Directory('${root.path}/$name');
+      if (await folder.exists()) await folder.delete(recursive: true);
+    }
+  }
+
   Future<ActorVaultLoad> _loadInternal(String account) async {
+    if (_loadedAccount != null && _loadedAccount != account) {
+      await _purgePreviousAccountSession();
+    }
     final folder = await _directoryFor(account);
     _nameToFile.clear();
     _loadedAccount = null;
