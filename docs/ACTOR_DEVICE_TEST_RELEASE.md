@@ -1,13 +1,13 @@
 # HOTICE Actor Scanner v0.2.0 — Android Device Test Checklist
 
-**Date:** 26 October 2026 · **Feature branch:** `fix/full-code-audit-2026-10-26` · **PR:** [#19](https://github.com/parmtech/HOTICE/pull/19)
+**Updated:** 27 October 2026 · **Active Actor test branch:** `feat/actor-backup-v2` · **PR:** [#24](https://github.com/parmtech/HOTICE/pull/24) (stacked on #21 → #20 → #19)
 
 ## Encrypted local Actor vault — new feature PR #20
 
 - **Mobile-only local persistence:** newly captured and ZIP-imported Actors, style, notes, original JPGs and Auto touch-up preference are persisted in app-private **AES-256-GCM authenticated encrypted** files on Android/iOS. Random filenames contain no Actor name. Encryption keys are kept using `flutter_secure_storage` (Android Keystore-/iOS Keychain-backed plugin).
 - **Restart workflow:** before Flutter starts, the previous temporary plaintext camera/preview copies are cleared. When Actors Studio loads, it decrypts available saved Actor archives and reconstructs short-lived local copies for preview, scene composition and export. Metadata edits and deletion also update/delete the encrypted local record.
 - **Security boundaries:** demo email accounts are **NOT authenticated users**. This device-wide vault key and demo account scoping do not isolate a malicious local user, rooted/jailbroken device or someone who can sign into another demo email. The feature does NOT offer biometric authentication, cloud sync, backups, secure cross-device transfer or guaranteed hardware-based key protection.
-- **Privacy:** PNG/JPEG archive exports remain **unencrypted ZIP** with explicit consent warning. Decrypted face photos still exist under app-private **temporary** storage while running (not in encrypted RAM); another process with elevated/root access could copy them. Android OS automatic app-data backup is disabled; **iOS OS backup behavior needs explicit release QA/configuration**, despite HOTICE making no direct cloud uploads.
+- **Portable backup privacy:** New `.hoticeactor` exports are now **password-encrypted** (PBKDF2-HMAC-SHA256 + AES-256-GCM), with passwords chosen by the user. Older **unencrypted ZIP imports** require a separate explicit consent warning. Decrypted face photos still exist under app-private **temporary** storage while running (not in encrypted RAM); another process with elevated/root access could copy them. Android OS automatic app-data backup is disabled; **iOS OS backup behavior needs explicit release QA/configuration**, despite HOTICE making no direct cloud uploads.
 - **Key loss:** uninstall, device migration or an OS recovery without the associated Keystore/Keychain key can render encrypted profiles unrecoverable. Export privately if you need a portable backup.
 - **Device acceptance checks:** scan a consenting person, Save Actor, force close, reopen and check seven restored images and metadata; edit/rename, restart, then delete and restart to verify removal. Create two demo email workspaces and check no UI cross-account Actor leakage. Test disabled/locked secure storage, corrupted vault files and uninstall behavior.
 - **Tests:** Crypto regression covers roundtrip, fresh AES-GCM nonce, wrong key/account AAD and ciphertext tampering. Widget tests and emulator still need to pass on the latest branch; no actual physical-device encrypted-store persistence proof yet.
@@ -21,8 +21,15 @@
 5. **Review / Retake:** every photo is shown in the review gallery with its own Retake button; the named Actor is created only after final confirmation. Basic dark/overexposed/low-detail advisories are non-blocking.
 6. **Model-specific Actor references:** if one image slot remains, HOTICE makes a real composite JPEG for multiple Actors; multi-image presets select separate angles. Face consistency with real providers has **not** been demonstrated.
 7. **Optional Auto touch-up:** default OFF; when enabled, scene references get separate mild, non-destructive lighting/color corrected JPEG copies. Natural scanned photos remain unchanged. **Not face-only skin retouching or AI beauty reconstruction.**
-8. **Actor export / import:** intentional user action exports a versioned `.hoticeactor` ZIP, including metadata, up to 12 original JPGs and touch-up preference; import checks manifest, all paths, duplicates, JPG signatures/dimensions and compressed/expanded size budgets before writing to a temporary private device folder. Duplicate names are suffixed rather than overwritten.
-9. **Privacy:** face photos and touched-up references are temporarily decrypted for active use; their encrypted Actor archive is now persisted on mobile and restored next app start. *Export ZIP is UNENCRYPTED* and shows a warning/confirmation before exporting/importing. No backend upload, cloud backup, third-party telemetry or provider API key is used by these demo operations.
+8. **Actor export / import:** new `.hoticeactor` exports use a password-derived authenticated encryption envelope around a versioned ZIP with up to 12 original JPGs. Imports verify password/authentication and then ZIP structure/limits; old unencrypted ZIPs require explicit legacy import consent. Duplicate names are suffixed rather than overwritten.
+9. **Privacy:** face photos and touched-up references are temporarily decrypted for active use; their encrypted Actor archive is now persisted on mobile and restored next app start. *New portable backups are encrypted*, and password entry plus privacy confirmation are required. The old legacy ZIP format remains unencrypted if a user specifically imports one. No backend upload, cloud backup, third-party telemetry or provider API key is used by these demo operations.
+
+## 27 October 2026 — Account-bound operations and logout privacy (PR #24)
+
+- Face scan, Actor edit, password-protected export and import now snapshot the active demo workspace before awaiting camera/file dialogs. The save operation refuses to switch account ownership mid-operation, preventing photos being committed under a newly selected demo email.
+- The OS-key-backed vault now exposes `lockSession()`: on sign-out, HOTICE queues deletion of temporary face JPEGs, Actor sheets and touch-up previews and releases its cached key reference. The encrypted master files remain for a future sign-in.
+- An Android emulator regression restores a synthetic Actor after vault lock, checks old plaintext JPG copies have gone, and confirms another demo workspace cannot see the Actor.
+- **Still mandatory:** verify physical Android face-angle/pitch, app sign-out/re-login, interrupted scans, out-of-storage and password recovery limitations. Demo emails are not authenticated accounts.
 
 ## 26 October 2026 — Performance and vault restore hardening (PR #21)
 
@@ -42,7 +49,7 @@
 - [ ] Test no face, two faces, too dark, overexposure, tilting and out-of-frame. Confirm low-detail warning appears in review, and it does not silently change natural photos.
 - [ ] Retake the **third** angle in review, confirm earlier photos remain correct; then Save Actor. Test back/cancel during scanning and no leftover half-finished profile.
 - [ ] Create Actor with Auto touch-up OFF, then ON. Save a scene with two Actors and check image-slot planning and local adjusted reference paths. Never describe this as real AI generation.
-- [ ] Export Actor to `.hoticeactor`; verify privacy warning, ZIP exists and contains expected photos. Import; verify duplicate Actor name is safely renamed and 7 preview photos display. Test malformed ZIP and unexpected archive entries are rejected without crash.
+- [ ] Export Actor to `.hoticeactor` with a strong password, verify it cannot open as a plain ZIP, import it using the correct password, and verify all 7 face views. Test wrong passwords, damaged ciphertext, unexpected archive entries and explicitly warned legacy unencrypted imports.
 - [ ] Force-close/reopen app and verify the seven photos **return from the encrypted vault** while old temporary file copies were cleared. Export a private copy before uninstall/device migration. Check delete persists after restart.
 - [ ] Deny/revoke camera permission, background/resume during scan, and phone low-storage scenarios; report the **FIRST** HOTICE diagnostic exception if the app fails.
 
