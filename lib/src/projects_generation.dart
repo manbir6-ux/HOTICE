@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'actor_reference_adapter.dart';
+import 'actor_touchup.dart';
 import 'state.dart';
 import 'video_models.dart';
 import 'avatar_identity.dart';
@@ -344,6 +345,7 @@ class _GenerationPageState extends State<GenerationPage> {
     final savingModel = demoModelById(pending.modelId);
     setState(() => _savingDraft = true);
     String? generatedSheetPath;
+    final generatedTouchups = <String>[];
     var savedSuccessfully = false;
     try {
       var source = pending.prompt.trim();
@@ -392,7 +394,11 @@ class _GenerationPageState extends State<GenerationPage> {
         ));
       } else {
         for (final sourceRef in adapterPlan.sources) {
-          final file = File(sourceRef.path);
+          final localPath = sourceRef.autoTouchUp
+              ? await ActorTouchUp.prepareCopy(sourceRef.path)
+              : sourceRef.path;
+          if (sourceRef.autoTouchUp) generatedTouchups.add(localPath);
+          final file = File(localPath);
           if (!await file.exists()) {
             throw StateError('Actor photo is missing; recapture this Actor.');
           }
@@ -400,7 +406,7 @@ class _GenerationPageState extends State<GenerationPage> {
             type: VideoAttachment.image,
             fileName: '${sourceRef.sceneName}_${sourceRef.angle}.jpg',
             bytes: await file.length(),
-            localPath: sourceRef.path,
+            localPath: localPath,
           ));
         }
       }
@@ -462,6 +468,11 @@ class _GenerationPageState extends State<GenerationPage> {
     } finally {
       if (!savedSuccessfully && generatedSheetPath != null) {
         try { await File(generatedSheetPath).delete(); } catch (_) {}
+      }
+      if (!savedSuccessfully) {
+        for (final path in generatedTouchups) {
+          try { await File(path).delete(); } catch (_) {}
+        }
       }
       if (mounted) setState(() => _savingDraft = false);
     }
