@@ -57,23 +57,19 @@ class _AvatarsPageState extends State<AvatarsPage> {
         }
         return;
       }
-      for (final actor in loaded.actors) {
-        // A user switching back to this account may still have an old
-        // in-memory Actor record. The vault has just decrypted fresh session
-        // photos; replace stale paths rather than rejecting a duplicate name
-        // and deleting the only usable new references.
-        final previous = widget.store.avatars.where(
-          (a) => a.name.toLowerCase() == actor.name.toLowerCase(),
-        ).toList();
-        widget.store.restoreAvatar(actor);
-        for (final original in previous) {
-          for (final path in original.capturePaths) {
-            if (!actor.capturePaths.contains(path)) {
-              try { await File(path).delete(); } catch (_) {}
-            }
-          }
-        }
+      // Drop old session-only paths for deleted/corrupt entries while
+      // atomically replacing restored Actor photos in this demo workspace.
+      final previousPaths = widget.store.avatars
+          .expand((actor) => actor.capturePaths)
+          .toSet();
+      widget.store.reconcileVaultActors(loaded.actors);
+      final newPaths = loaded.actors
+          .expand((actor) => actor.capturePaths)
+          .toSet();
+      for (final oldPath in previousPaths.difference(newPaths)) {
+        try { await File(oldPath).delete(); } catch (_) {}
       }
+      if (!mounted || widget.store.selectedAccount != account) return;
       if (mounted) {
         setState(() {
           _vaultReady = true;
