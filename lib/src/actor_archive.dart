@@ -83,10 +83,88 @@ class ActorArchiveCodec {
     return zip;
   }
 
+
+  /// Inspect the ZIP directory before inflating potentially hostile archives.
+  static void _preflightZip(Uint8List zip) {
+    if (zip.length < 22) throw const FormatException('Invalid ZIP footer.');
+    final data = ByteData.sublistView(zip);
+    const eocd = 0x06054b50;
+    const central = 0x02014b50;
+    final earliest = zip.length > 65557 ? zip.length - 65557 : 0;
+    var footer = -1;
+    for (var i = zip.length - 22; i >= earliest; i--) {
+      if (data.getUint32(i, Endian.little) == eocd &&
+          i + 22 + data.getUint16(i + 20, Endian.little) == zip.length) {
+        footer = i;
+        break;
+      }
+    }
+    if (footer < 0) {
+      throw const FormatException('ZIP central directory is missing.');
+    }
+    final entries = data.getUint16(footer + 10, Endian.little);
+    final size = data.getUint32(footer + 12, Endian.little);
+    final offset = data.getUint32(footer + 16, Endian.little);
+    if (data.getUint16(footer + 4, Endian.little) != 0 ||
+        data.getUint16(footer + 6, Endian.little) != 0 ||
+        data.getUint16(footer + 8, Endian.little) != entries ||
+        entries < 2 || entries > maxPhotos + 1 ||
+        offset == 0xFFFFFFFF || size == 0xFFFFFFFF ||
+        offset + size > footer) {
+      throw const FormatException('Unsupported ZIP directory.');
+    }
+    var pointer = offset;
+    var totalExpanded = 0;
+    var totalCompressed = 0;
+    final names = <String>{};
+    for (var index = 0; index < entries; index++) {
+      if (pointer + 46 > footer ||
+          data.getUint32(pointer, Endian.little) != central) {
+        throw const FormatException('ZIP contains malformed entries.');
+      }
+      final flags = data.getUint16(pointer + 8, Endian.little);
+      final method = data.getUint16(pointer + 10, Endian.little);
+      final compressed = data.getUint32(pointer + 20, Endian.little);
+      final expanded = data.getUint32(pointer + 24, Endian.little);
+      final nameLength = data.getUint16(pointer + 28, Endian.little);
+      final extraLength = data.getUint16(pointer + 30, Endian.little);
+      final commentLength = data.getUint16(pointer + 32, Endian.little);
+      final next = pointer + 46 + nameLength + extraLength + commentLength;
+      if (next > offset + size || next > footer ||
+          nameLength < 1 || nameLength > 64 ||
+          compressed == 0xFFFFFFFF || expanded == 0xFFFFFFFF ||
+          (flags & 1) != 0 || (method != 0 && method != 8)) {
+        throw const FormatException('Unsupported or encrypted ZIP entry.');
+      }
+      final nameBytes = zip.sublist(pointer + 46, pointer + 46 + nameLength);
+      if (nameBytes.any((v) => v < 32 || v > 126)) {
+        throw const FormatException('Unsupported Actor ZIP filename.');
+      }
+      final name = ascii.decode(nameBytes);
+      if (!names.add(name) ||
+          (name != 'manifest.json' &&
+           !RegExp(r'^images/angle_[0-9]{2}[.]jpg$').hasMatch(name)) ||
+          expanded > (name == 'manifest.json' ? 8192 : maxPhotoBytes)) {
+        throw const FormatException('Actor ZIP entry is unsafe or oversized.');
+      }
+      totalExpanded += expanded;
+      totalCompressed += compressed;
+      if (totalExpanded > maxTotalDecodedBytes ||
+          totalCompressed > maxArchiveBytes) {
+        throw const FormatException('Actor ZIP exceeds decompression budget.');
+      }
+      pointer = next;
+    }
+    if (pointer != offset + size || !names.contains('manifest.json')) {
+      throw const FormatException('Actor ZIP directory count is inconsistent.');
+    }
+  }
+
   static ActorArchiveImport decode(Uint8List zip) {
     if (zip.isEmpty || zip.length > maxArchiveBytes) {
       throw const FormatException('Actor ZIP file is empty or too large.');
     }
+    _preflightZip(zip);
     final archive = ZipDecoder().decodeBytes(zip, verify: true);
     if (archive.length < 2 || archive.length > maxPhotos + 1) {
       throw const FormatException('Unexpected number of files in Actor ZIP.');
@@ -177,9 +255,9 @@ class ActorArchiveCodec {
   }
 
   static Future<List<String>> importToTemporaryFolder(
-      ActorArchiveImport actor) async {
-    final folder = Directory(
-        '${(await getTemporaryDirectory()).path}/hotice_actor_capture');
+      ActorArchiveImport actor, {Directory? cacheRoot}) async {
+    final root = cacheRoot ?? await getTemporaryDirectory();
+    final folder = Directory('${root.path}/hotice_actor_capture');
     await folder.create(recursive: true);
     final stamp = DateTime.now().microsecondsSinceEpoch;
     final saved = <String>[];
