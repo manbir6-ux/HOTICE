@@ -17,6 +17,18 @@
 - **Privacy limitation:** photos are short-lived application-private **unencrypted temporary files**, and Actor records are session-only; next launch cleans abandoned files. This is not secure permanent biometric storage.
 - **Tracking:** [Issue #13](https://github.com/parmtech/HOTICE/issues/13) remains open for real-device validation and production safeguards.
 
+## 26 October 2026 — Actor Identity Engine + Gemini Omni integration foundation
+
+- **New development branch:** `feat/actor-identity-model-adapters-v1`, [PR #17](https://github.com/parmtech/HOTICE/pull/17) (DRAFT, stacked on PR #16 → PR #11). **Not merged into main.**
+- Verified from official Google docs: Google Flow's reusable named **Characters** are bundles of references and optional voice, not an externally documented downloadable GLB. Personal Flow Avatar `@me` is internal/private. Gemini **Omni Flash** provides the `gemini-omni-1.1-flash` Interactions developer API for text/image/video workflows; provider keys still must stay behind the future HOTICE backend.
+- Implemented a model-aware local Actor reference adapter: chooses a fair number of front/side images depending on image limits and already-selected attachments; for multiple Actors and one remaining image slot, actually creates one on-device JPEG contact sheet. This does **not** guarantee each AI model will identify faces reliably.
+- Connected reference planning to demo scene draft saving; added conservative **Gemini Omni Flash integration-preview** model (NO live API/verified cost), plus a validated PHP server-only request builder with no HTTP endpoint or keys.
+- Added optional private 3D **OBJ** reconstruction worker wrapper for an independently installed, audited **3DDFA_V2** engine and a Blender OBJ → GLB converter. Neither 3DDFA models/weights nor Blender are installed or run by this branch. **No 3D head has actually been reconstructed/tested**; the optional worker uses a mocked engine in CI.
+- Added Flutter actor-reference tests; Python worker consent/staging tests; PHP Omni payload tests. Fixed selfie-camera left/right yaw mapping and changed preview to portrait centre crop without stretching (phone retest needed). Added temporary reference-sheet cleanup.
+- 3D licensing research: [3DDFA_V2](https://github.com/cleardusk/3DDFA_V2) code MIT (independently audit weights/dependencies), [Google GNM](https://github.com/google/GNM) Apache-2.0, **DECA noncommercial research only**. Do not ship restricted model weights without a suitable license.
+- Exact latest CI results/artifact must be rechecked on [PR #17](https://github.com/parmtech/HOTICE/pull/17) before merging. All generated media stays in the app's **unencrypted temporary storage** until production encryption, consent/deletion and backend protections exist.
+- Full plan and implementation map: [Actor Identity Engine](https://github.com/parmtech/HOTICE/blob/feat/actor-identity-model-adapters-v1/docs/ACTOR_IDENTITY_ENGINE.md). Open blockers: actual 3D inference and GLB quality, persistent secure Actor vault, officially verified model limits/prices, central admin/MFA/backend, media uploads and real paid video generation, physical-phone camera QA.
+
 ## 1. GitHub status verified today
 
 | Track | Status | Evidence |
