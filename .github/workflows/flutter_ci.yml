@@ -116,3 +116,5 @@ jobs:
         run: node --check web/public/assets/site.js
       - name: Verify public-site assets, prompts and rights metadata
         run: python3 tools/check_web.py
+      - name: Validate optional private 3D worker consent and cleanup contract
+        run: python3 -m unittest discover -s workers/actor3d/tests -v
