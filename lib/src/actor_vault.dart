@@ -153,6 +153,18 @@ class ActorLocalVault {
     }
   }
 
+  /// Called on sign-out. Execute after pending vault operations and before
+  /// the next profile's restore so decrypted face photos cannot survive the
+  /// login screen or leak into another demo workspace. Sealed records remain.
+  Future<void> lockSession() => _serial(() async {
+    await _purgePreviousAccountSession();
+    _nameToFile.clear();
+    _loadedAccount = null;
+    // The OS retains the secure key; remove the session's in-memory reference.
+    // Dart GC is not a guaranteed secure-memory zeroization mechanism.
+    _cachedKey = null;
+  });
+
   Future<ActorVaultLoad> _loadInternal(String account) async {
     if (_loadedAccount != null && _loadedAccount != account) {
       await _purgePreviousAccountSession();
