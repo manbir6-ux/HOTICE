@@ -136,4 +136,69 @@ void main() {
       }
     }
   });
+
+  testWidgets('Encrypted Actor vault serializes writes and protects names',
+      (tester) async {
+    final sample = image.Image(width: 64, height: 80);
+    image.fill(sample, color: image.ColorRgb8(65, 100, 125));
+    final jpeg = Uint8List.fromList(image.encodeJpg(sample));
+    final account = 'vault-race-ci@hotice.demo';
+    final vault = ActorLocalVault.instance;
+    final tempPaths = <String>{};
+
+    final old = await vault.load(account);
+    for (final actor in old.actors) {
+      tempPaths.addAll(actor.capturePaths);
+      await vault.delete(account, actor.name);
+    }
+    final source = ActorArchiveImport('Test', 'Cinematic', '',
+        [jpeg, jpeg, jpeg]);
+    final paths = await ActorArchiveCodec.importToTemporaryFolder(source);
+    tempPaths.addAll(paths);
+    final first = StudioAvatar(
+      'Race Actor A', 'Cinematic', capturePaths: paths,
+    );
+    final second = StudioAvatar(
+      'Race Actor B', 'Cinematic', capturePaths: paths,
+    );
+    try {
+      // Two concurrent writes formerly raced on one global vault index.
+      await Future.wait([
+        vault.save(account, first),
+        vault.save(account, second),
+      ]);
+      final loaded = await vault.load(account);
+      for (final a in loaded.actors) { tempPaths.addAll(a.capturePaths); }
+      expect(loaded.failedEntries, 0);
+      expect(loaded.actors.map((a) => a.name).toSet(),
+          {'Race Actor A', 'Race Actor B'});
+
+      await expectLater(
+        vault.save(account, StudioAvatar(
+          second.name, second.style, capturePaths: paths,
+        ), formerName: first.name),
+        throwsA(isA<StateError>()),
+      );
+      final preserved = await vault.load(account);
+      for (final a in preserved.actors) { tempPaths.addAll(a.capturePaths); }
+      expect(preserved.actors.map((a) => a.name).toSet(),
+          {'Race Actor A', 'Race Actor B'});
+
+      await Future.wait([
+        vault.delete(account, 'Race Actor A'),
+        vault.delete(account, 'Race Actor B'),
+      ]);
+      final after = await vault.load(account);
+      expect(after.actors, isEmpty);
+    } finally {
+      final remainder = await vault.load(account);
+      for (final actor in remainder.actors) {
+        tempPaths.addAll(actor.capturePaths);
+        await vault.delete(account, actor.name);
+      }
+      for (final path in tempPaths) {
+        try { await File(path).delete(); } catch (_) {}
+      }
+    }
+  });
 }
