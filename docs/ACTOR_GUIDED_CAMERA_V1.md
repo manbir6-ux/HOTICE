@@ -7,7 +7,8 @@
 - **Review before save:** After all seven real photos pass capture-time pose checks, HOTICE shows thumbnails with a **Retake** action for each angle. An Actor is added only after explicit **Save Actor with 7 views** confirmation. Cancellation removes incomplete temporary photos.
 - **Model adapter:** Seven positions are now named accurately (front, left, right, left-profile, right-profile, chin-up, chin-down) for later image-slot planning.
 - **Automated checks:** new Flutter tests cover seven-angle pose boundaries and that the Actor-creation page has only the guided-camera path (no direct `Save actor`). Automated camera hardware, retake fidelity and biometric accuracy remain untested.
-- **Known unsupported items:** Optional beauty/touch-up, encrypted persistent Actor vault, real 3D reconstruction, import/export, automatic exposure/blur score and real-provider connection still remain **planned**, not delivered.
+- **Photo QA advisory now implemented:** on-device sampled luminance, contrast and edge-detail heuristics flag overly dark, overexposed or low-detail photos in the seven-angle review, while allowing the user to Retake manually. Original images are never modified. These lightweight heuristics are **not calibrated focus/blur or biometric quality measurements**.
+- **Known unsupported items:** Optional beauty/touch-up, encrypted persistent Actor vault, real 3D reconstruction, import/export, calibrated optical focus/exposure checks and real-provider connection still remain **planned**, not delivered.
 - **Important safety:** Never claim this photo-capture system produces a perfect 3D model. Do not export/retain identity photos until explicit informed consent, durable encryption and deletion/export policies are in place.
 
 
