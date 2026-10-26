@@ -40,6 +40,18 @@
 - **Still blocked:** optional beauty/touch-up, actor ZIP import/export, calibrated optical focus/lighting verification, encrypted persistent Actor identity vault, actual installed/licence-audited 3D reconstruction/GLB worker, provider API calls and secure Namecheap control-plane.
 - **Tracking:** [PR #17](https://github.com/parmtech/HOTICE/pull/17) · [Camera QA plan](https://github.com/parmtech/HOTICE/blob/feat/actor-identity-model-adapters-v1/docs/ACTOR_GUIDED_CAMERA_V1.md) · [Issue #13](https://github.com/parmtech/HOTICE/issues/13).
 
+## 26 October 2026 — Full code audit pass 2 (PR #19)
+
+- **Code review branch:** `fix/full-code-audit-2026-10-26` and [PR #19](https://github.com/parmtech/HOTICE/pull/19) (DRAFT, stacked on PR #17 → #16 → #11; **NOT in main**).
+- **HIGH fixed — project-scoped scene data:** switching projects previously preserved only the prompt, allowing an Actor cast, reference image names, negative prompts, seed, model and other advanced settings from another film to remain selected. The updated editor snapshots all project-specific state, and a new widget test checks isolation and restoration.
+- **HIGH fixed — asynchronous scene saves:** duplicate save and navigation during Actor JPEG contact-sheet creation could mix editor state or leave temporary composite images. Added an immutable save snapshot, UI interaction lock, project check before writing, clean-up on aborted saves and user-friendly file failure handling.
+- **MEDIUM fixed — browser editor:** changing clip order selected the wrong clip, and stale metadata listeners could affect later clip previews. Added a pure timeline operation with Node tests and cleans up failed metadata probes. Local editor remains a preview; export is intentionally disabled.
+- **HIGH hardened — PHP input:** the Gemini Omni request builder previously accepted arbitrary base64 under a JPEG/PNG MIME claim; now checks actual bytes/MIME and image pixel/dimension limits, with negative tests. This remains an **offline builder, not a secured/active provider endpoint**.
+- **HIGH hardened — optional 3D worker:** refuses symlinked and oversized mesh/sidecar outputs with worker regression tests. Actual 3D inference is not deployed; code/model-weight licensing, sandbox isolation, secure private storage and model quality still require independent validation.
+- **CI improvement:** new per-PR concurrency policy cancels obsolete emulator/APK builds when rapid new commits arrive. An earlier main emulator run failed while downloading Android SDK ZIP; no indication it was an app runtime assertion.
+- **Verified automation:** [run 40283778534](https://github.com/parmtech/HOTICE/actions/runs/40283778534) passed **55/55 Flutter tests**, Node web-editor regression, six static approved templates, six Python worker tests, and PHP media validation. Android emulator/APK were still in progress at the last verification; the final status of the latest audit commit must be checked separately. Analyzer still reports **41 nonfatal info/lint issues**.
+- **Audit report:** [Full Code Audit Pass 2](https://github.com/parmtech/HOTICE/blob/fix/full-code-audit-2026-10-26/docs/CODE_AUDIT_FULL_PASS2_2026-10-26.md). **Production blockers remain:** server authentication/MFA/provider key vault, real model API, verified billing/capabilities, encrypted Actor vault, real-phone selfie face/pose QA, true installed 3D reconstruction and secure Actor import/export.
+
 ## 1. GitHub status verified today
 
 | Track | Status | Evidence |
