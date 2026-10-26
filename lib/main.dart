@@ -18,6 +18,7 @@ Future<void> main() async {
     for (final subfolder in const [
       'hotice_actor_capture',
       'hotice_actor_reference_sheets',
+      'hotice_actor_touchups',
     ]) {
       final folder = Directory('${temp.path}/$subfolder');
       if (await folder.exists()) await folder.delete(recursive: true);
