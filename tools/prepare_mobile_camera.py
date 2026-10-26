@@ -13,14 +13,16 @@ if manifest.exists():
         raw = re.sub(r'(<manifest[^>]*>)',
             lambda m: m.group(1) + '\n    <uses-permission android:name="android.permission.CAMERA" />',
             raw, count=1)
-    # Android app backup must not copy ciphertext without its
-    # hardware-backed key, then restore an unusable Actor vault.
-    if 'android:allowBackup=' in raw:
-        raw = re.sub(r'android:allowBackup\\s*=\\s*["\\\'][^"\\\']+["\\\']',
-            'android:allowBackup="false"', raw)
-    else:
-        raw = re.sub(r'<application\\b',
-            '<application android:allowBackup="false"', raw, count=1)
+    # Prevent device backups from restoring encrypted photos without their
+    # Android Keystore key. Flutter's generated manifest is always XML
+    # with a single <application> element.
+    raw = raw.replace('android:allowBackup="true"',
+                      'android:allowBackup="false"')
+    raw = raw.replace("android:allowBackup='true'",
+                      'android:allowBackup="false"')
+    if 'android:allowBackup=' not in raw:
+        raw = raw.replace('<application',
+            '<application android:allowBackup="false"', 1)
     manifest.write_text(raw)
 
 gradle = Path("android/app/build.gradle.kts")
