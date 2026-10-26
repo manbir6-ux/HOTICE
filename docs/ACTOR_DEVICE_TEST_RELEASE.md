@@ -2,6 +2,16 @@
 
 **Date:** 26 October 2026 · **Feature branch:** `fix/full-code-audit-2026-10-26` · **PR:** [#19](https://github.com/parmtech/HOTICE/pull/19)
 
+## Encrypted local Actor vault — new feature PR #20
+
+- **Mobile-only local persistence:** newly captured and ZIP-imported Actors, style, notes, original JPGs and Auto touch-up preference are persisted in app-private **AES-256-GCM authenticated encrypted** files on Android/iOS. Random filenames contain no Actor name. Encryption keys are kept using `flutter_secure_storage` (Android Keystore-/iOS Keychain-backed plugin).
+- **Restart workflow:** before Flutter starts, the previous temporary plaintext camera/preview copies are cleared. When Actors Studio loads, it decrypts available saved Actor archives and reconstructs short-lived local copies for preview, scene composition and export. Metadata edits and deletion also update/delete the encrypted local record.
+- **Security boundaries:** demo email accounts are **NOT authenticated users**. This device-wide vault key and demo account scoping do not isolate a malicious local user, rooted/jailbroken device or someone who can sign into another demo email. The feature does NOT offer biometric authentication, cloud sync, backups, secure cross-device transfer or guaranteed hardware-based key protection.
+- **Privacy:** PNG/JPEG archive exports remain **unencrypted ZIP** with explicit consent warning. Decrypted face photos still exist under app-private **temporary** storage while running (not in encrypted RAM); another process with elevated/root access could copy them. Android OS automatic app-data backup is disabled; **iOS OS backup behavior needs explicit release QA/configuration**, despite HOTICE making no direct cloud uploads.
+- **Key loss:** uninstall, device migration or an OS recovery without the associated Keystore/Keychain key can render encrypted profiles unrecoverable. Export privately if you need a portable backup.
+- **Device acceptance checks:** scan a consenting person, Save Actor, force close, reopen and check seven restored images and metadata; edit/rename, restart, then delete and restart to verify removal. Create two demo email workspaces and check no UI cross-account Actor leakage. Test disabled/locked secure storage, corrupted vault files and uninstall behavior.
+- **Tests:** Crypto regression covers roundtrip, fresh AES-GCM nonce, wrong key/account AAD and ciphertext tampering. Widget tests and emulator still need to pass on the latest branch; no actual physical-device encrypted-store persistence proof yet.
+
 ## Implemented in this device-test build
 
 1. **Actors Studio guided-only creation.** Name/style/optional notes and **Auto touch-up** setting are entered before launching the camera. New live Actors cannot be saved through the old Quick Actor bypass.
@@ -12,7 +22,7 @@
 6. **Model-specific Actor references:** if one image slot remains, HOTICE makes a real composite JPEG for multiple Actors; multi-image presets select separate angles. Face consistency with real providers has **not** been demonstrated.
 7. **Optional Auto touch-up:** default OFF; when enabled, scene references get separate mild, non-destructive lighting/color corrected JPEG copies. Natural scanned photos remain unchanged. **Not face-only skin retouching or AI beauty reconstruction.**
 8. **Actor export / import:** intentional user action exports a versioned `.hoticeactor` ZIP, including metadata, up to 12 original JPGs and touch-up preference; import checks manifest, all paths, duplicates, JPG signatures/dimensions and compressed/expanded size budgets before writing to a temporary private device folder. Duplicate names are suffixed rather than overwritten.
-9. **Privacy:** face photos and touched-up references are temporary and cleared on next app start. *Export ZIP is UNENCRYPTED* and shows a warning/confirmation before exporting/importing. No backend upload, cloud backup, third-party telemetry or provider API key is used by these demo operations.
+9. **Privacy:** face photos and touched-up references are temporarily decrypted for active use; their encrypted Actor archive is now persisted on mobile and restored next app start. *Export ZIP is UNENCRYPTED* and shows a warning/confirmation before exporting/importing. No backend upload, cloud backup, third-party telemetry or provider API key is used by these demo operations.
 
 ## Required phone acceptance tests
 
@@ -25,12 +35,12 @@
 - [ ] Retake the **third** angle in review, confirm earlier photos remain correct; then Save Actor. Test back/cancel during scanning and no leftover half-finished profile.
 - [ ] Create Actor with Auto touch-up OFF, then ON. Save a scene with two Actors and check image-slot planning and local adjusted reference paths. Never describe this as real AI generation.
 - [ ] Export Actor to `.hoticeactor`; verify privacy warning, ZIP exists and contains expected photos. Import; verify duplicate Actor name is safely renamed and 7 preview photos display. Test malformed ZIP and unexpected archive entries are rejected without crash.
-- [ ] Force-close/reopen app and verify temporary photos have been cleared. Export a copy first if you need to preserve them across test sessions; ZIP must be kept privately.
+- [ ] Force-close/reopen app and verify the seven photos **return from the encrypted vault** while old temporary file copies were cleared. Export a private copy before uninstall/device migration. Check delete persists after restart.
 - [ ] Deny/revoke camera permission, background/resume during scan, and phone low-storage scenarios; report the **FIRST** HOTICE diagnostic exception if the app fails.
 
 ## What remains NOT production ready
 
-- A real cryptographically **encrypted and persistent on-device Actor vault**; secured backups/sync and multi-device account ownership.
+- **Production-grade biometric vault security** (secure memory, audited backups, OS key-loss recovery, user authentication, hardware attestation, permissions and forensic deletion). A **basic AES-GCM encrypted local persistence implementation now exists** but still needs real-device QA and security review.
 - Full beauty segmentation/blemish removal and user-controlled reversible variants (only subtle global light/colour correction implemented).
 - Certified face quality/liveness, AR/TrueDepth measurement, true 3D geometry reconstruction, fully rigged actor model, working 3DDFA weights, Blender GLB QA and turntable rendering.
 - Real Gemini Omni/Veo and other provider generation; server auth, pricing, admin MFA, secure media vault and controlled worker processing.
