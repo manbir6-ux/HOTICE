@@ -25,10 +25,13 @@ class StudioAvatar {
   /// Temporary on-device capture references, cleared at next app start.
   /// Not cloud-synced, encrypted, or a reconstructed 3D identity.
   final List<String> capturePaths;
+  /// Optional appearance-only reference adjustment; originals are untouched.
+  final bool autoTouchUp;
   const StudioAvatar(
     this.name, this.style, {
     this.identityNotes = '',
     this.capturePaths = const <String>[],
+    this.autoTouchUp = false,
   });
 }
 
@@ -223,7 +226,7 @@ class HotIceStore extends ChangeNotifier {
   }
 
   /// Avoid duplicate values in the avatar dropdown.
-  bool addAvatar(String name, String style, {String identityNotes = '', List<String> capturePaths = const []}) {
+  bool addAvatar(String name, String style, {String identityNotes = '', List<String> capturePaths = const [], bool autoTouchUp = false}) {
     final trimmed = name.trim();
     if (trimmed.isEmpty ||
         trimmed.toLowerCase() == 'none' ||
@@ -232,13 +235,14 @@ class HotIceStore extends ChangeNotifier {
     }
     avatars.insert(0, StudioAvatar(trimmed, style,
         identityNotes: identityNotes.trim(),
-        capturePaths: List.unmodifiable(capturePaths)));
+        capturePaths: List.unmodifiable(capturePaths),
+        autoTouchUp: autoTouchUp));
     notifyListeners();
     return true;
   }
 
   bool editAvatar(String originalName, String newName, String style,
-      {String identityNotes = ''}) {
+      {String identityNotes = '', bool? autoTouchUp}) {
     final index = avatars.indexWhere((a) => a.name == originalName);
     final name = newName.trim();
     if (index < 0 || name.isEmpty || name.toLowerCase() == 'none' ||
@@ -248,7 +252,8 @@ class HotIceStore extends ChangeNotifier {
     }
     avatars[index] = StudioAvatar(name, style,
         identityNotes: identityNotes.trim(),
-        capturePaths: avatars[index].capturePaths);
+        capturePaths: avatars[index].capturePaths,
+         autoTouchUp: autoTouchUp ?? avatars[index].autoTouchUp);
     notifyListeners();
     return true;
   }
