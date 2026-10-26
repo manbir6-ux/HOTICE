@@ -39,7 +39,7 @@
 - Real server-side ingestion, remote admin, permission-reviewed video embeds, user project synchronization and production media exports are **not implemented**.
 
 ### Documentation already in the feature branch
-- [HOTICE Inspire roadmap](../feat/actors-web-studio-v1/docs/HOTICE_INSPIRE_ROADMAP.md) (branch-relative GitHub link may not resolve as a regular file path; use the canonical link below).
+- [HOTICE Inspire roadmap](https://github.com/parmtech/HOTICE/blob/feat/actors-web-studio-v1/docs/HOTICE_INSPIRE_ROADMAP.md).
 - [Inspiration Library research and rights](https://github.com/parmtech/HOTICE/blob/feat/actors-web-studio-v1/docs/INSPIRATION_LIBRARY.md).
 - [Development progress (feature branch)](https://github.com/parmtech/HOTICE/blob/feat/actors-web-studio-v1/docs/PROGRESS.md).
 - [Source audit](CODE_AUDIT_2026-10-26.md).
