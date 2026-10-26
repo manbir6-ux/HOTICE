@@ -6,6 +6,18 @@
 
 > **Do not confuse requirements, prototypes and production features.** "Implemented" means source code exists; "CI verified" means GitHub Actions passed for a specified commit; "production ready" additionally requires security, deployment and real-device tests. This document is not a claim that video AI, a real 3D face scanner, live payments or an administrator backend are active.
 
+
+## 26 October 2026 — Encrypted on-device Actor Vault (PR #22)
+
+- **Feature branch:** `feat/encrypted-actor-vault-v1` in [draft PR #22](https://github.com/parmtech/HOTICE/pull/22), stacked on PR #19 → PR #17 → PR #16 → PR #11; **NOT merged into main**.
+- **Implemented:** AES-256-GCM authenticated encryption of each Actor's original ZIP-format portrait package, bound to the device's OS-secured key and the account+record ID as AAD. Encrypted `.hav` files live in the application support directory. On startup, old temporary photos are purged, and stored Actors can be decrypted to app-private working JPEGs after demo sign-in. Import, scan, edit and delete paths now write/remove sealed Actor records; if secure key storage fails, users see a **session-only fallback warning**, not a false persistence claim.
+- **Security:** cross-account directories are hashed rather than email-named; corrupted or tampered records are not silently trusted or overwritten. Android Auto Backup is disabled pending genuine key-migration/cloud recovery support.
+- **ZIP import hardening:** inspect ZIP32 central-directory entry sizes, names, compression flags and expanded-image budgets **before** full decode; added ZIP-bomb and encrypted-entry negative tests. This is an additional defence, not a claim that arbitrary archives are perfectly safe.
+- **Verified CI so far:** [run 40311312852](https://github.com/parmtech/HOTICE/actions/runs/40311312852) passed **70/70 Flutter tests** and existing static web/PHP/Python checks at commit `5fb17fb`. The Android APK and emulator jobs were still in progress at the last verification; do not claim they passed until the artifact/job readback.
+- **Important limitations:** demo account emails are **not authenticated**; encrypted data is protected at rest, not from another person using an already-unlocked app. Decrypted working photos remain temporary on device. Explicit exported `.hoticeactor` ZIPs remain **unencrypted** and must be stored privately. No certified liveness, real installed 3D head reconstruction, real AI video generation, public backend login or billing. Physical Android/iOS camera QA remains open.
+- **Dependencies:** `cryptography` and `flutter_secure_storage` with Android minimum SDK 24 configured. Keep key lifecycle, device recovery, deletion and backups in security acceptance criteria.
+
+
 ## 26 October 2026 — New Guided Actor Camera v1 (PR #16, draft)
 
 - **Implementation branch:** `feat/real-guided-actor-camera-v1`, stacked on unmerged PR #11. [Review PR #16](https://github.com/parmtech/HOTICE/pull/16). **Not part of stable `main` yet.**
