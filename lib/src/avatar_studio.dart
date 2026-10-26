@@ -111,7 +111,7 @@ class _AvatarsPageState extends State<AvatarsPage> {
       );
       return;
     }
-    if (_scanInProgress || _vaultBusy || !_vaultReady) {
+    if (_scanInProgress || _transferBusy || _vaultBusy || !_vaultReady) {
       _feedback('Secure Actor vault is not ready. Try reopening Actors Studio.');
       return;
     }
@@ -259,6 +259,7 @@ class _AvatarsPageState extends State<AvatarsPage> {
   }
 
   Future<void> deleteAvatar(StudioAvatar avatar) async {
+    if (_transferBusy || _scanInProgress || _vaultBusy || !_vaultReady) return;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -336,7 +337,7 @@ class _AvatarsPageState extends State<AvatarsPage> {
   }
 
   Future<void> _exportActor(StudioAvatar actor) async {
-    if (_transferBusy || !_vaultReady) return;
+    if (_transferBusy || _vaultBusy || !_vaultReady) return;
     if (actor.capturePaths.isEmpty) {
       _feedback('This demo Actor has no guided photos to export.');
       return;
@@ -364,7 +365,7 @@ class _AvatarsPageState extends State<AvatarsPage> {
   }
 
   Future<void> _importActor() async {
-    if (_transferBusy || !_vaultReady) return;
+    if (_transferBusy || _vaultBusy || !_vaultReady) return;
     if (!await _confirmFaceTransfer('Import') || !mounted) return;
     setState(() => _transferBusy = true);
     List<String> created = [];
@@ -405,6 +406,13 @@ class _AvatarsPageState extends State<AvatarsPage> {
         autoTouchUp: profile.autoTouchUp,
       );
       if (!success) {
+        if (_deviceVaultAvailable) {
+          try {
+            await ActorLocalVault.instance.delete(
+              widget.store.selectedAccount, actorName,
+            );
+          } catch (_) {}
+        }
         throw StateError('Actor profile could not be saved.');
       }
       created = [];
