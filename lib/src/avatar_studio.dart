@@ -1,6 +1,9 @@
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:file_picker/file_picker.dart';
 import 'actor_archive.dart';
+import 'actor_transfer_cipher.dart';
+import 'actor_backup_password_dialog.dart';
 import 'actor_vault.dart';
 import 'package:flutter/material.dart';
 import 'guided_actor_camera.dart';
@@ -301,12 +304,15 @@ class _AvatarsPageState extends State<AvatarsPage> {
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: Text('$action Actor photos?'),
-        content: const Text(
-          'Actor packages contain recognizable face photos. This testing '
-          'format is an UNENCRYPTED ZIP. Anyone who obtains the exported '
-          'file can view the photos. Share only with consent, store it '
-          'privately, and delete unwanted copies. No cloud upload is made.',
-        ),
+        content: Text(action == 'Export'
+            ? 'This backup contains recognizable face photos. HOTICE will '
+              'encrypt the file with a password you choose. A lost password '
+              'cannot be recovered. Keep the password separate from the '
+              'backup; nothing will be uploaded.'
+            : 'Only import face photos with the person\'s consent. HOTICE '
+              'supports password-encrypted Actor backups and older '
+              'UNENCRYPTED ZIP files; old files can expose private faces. '
+              'Nothing will be uploaded.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext, false),
@@ -336,22 +342,29 @@ class _AvatarsPageState extends State<AvatarsPage> {
       return;
     }
     if (!await _confirmFaceTransfer('Export') || !mounted) return;
+    final password = await requestActorBackupPassword(
+      context, creatingBackup: true,
+    );
+    if (password == null || !mounted) return;
     setState(() => _transferBusy = true);
     try {
       final zipped = await ActorArchiveCodec.exportActor(actor);
+      final encrypted = await ActorTransferCipher.encrypt(
+        zipped, password: password,
+      );
       final safeName = actor.name.replaceAll(
           RegExp(r'[^a-zA-Z0-9_-]'), '_');
       final saved = await FilePicker.saveFile(
-        dialogTitle: 'Save sensitive HOTICE Actor archive',
+        dialogTitle: 'Save encrypted HOTICE Actor backup',
         fileName: 'HOTICE_${safeName}.hoticeactor',
-        bytes: zipped,
+        bytes: encrypted,
       );
       if (!mounted) return;
       _feedback(saved == null
           ? 'Export cancelled.'
-          : 'Actor exported. Protect the unencrypted file.');
+          : 'Actor backup encrypted. Keep your password safe.');
     } catch (_) {
-      _feedback('Could not export this Actor. Check the captured photos.');
+      _feedback('Could not encrypt/export Actor backup. Check photos and storage.');
     } finally {
       if (mounted) setState(() => _transferBusy = false);
     }
@@ -370,10 +383,48 @@ class _AvatarsPageState extends State<AvatarsPage> {
       if (picked == null) return;
       final length = picked.lengthSync() ?? await picked.length();
       if (length == null || length < 1 ||
-          length > ActorArchiveCodec.maxArchiveBytes) {
+          length > ActorArchiveCodec.maxArchiveBytes + 64) {
         throw const FormatException('Actor package exceeds safety size limit.');
       }
-      final profile = ActorArchiveCodec.decode(await picked.readAsBytes());
+      final archiveBytes = await picked.readAsBytes();
+      Uint8List decodedZip;
+      if (ActorTransferCipher.isEncrypted(archiveBytes)) {
+        if (!mounted) return;
+        final password = await requestActorBackupPassword(
+          context, creatingBackup: false,
+        );
+        if (password == null || !mounted) return;
+        decodedZip = await ActorTransferCipher.decrypt(
+          archiveBytes, password: password,
+        );
+      } else if (ActorTransferCipher.isLegacyZip(archiveBytes)) {
+        if (!mounted) return;
+        final allowLegacy = await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('Unencrypted older Actor backup'),
+            content: const Text(
+              'This older ZIP has no password protection. Anyone with a '
+              'copy can view the face photos. Import only with consent.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('Import legacy ZIP'),
+              ),
+            ],
+          ),
+        );
+        if (allowLegacy != true || !mounted) return;
+        decodedZip = archiveBytes;
+      } else {
+        throw const FormatException('Unknown Actor backup format.');
+      }
+      final profile = ActorArchiveCodec.decode(decodedZip);
       if (!mounted) return;
       var actorName = profile.name;
       var n = 2;
@@ -412,7 +463,7 @@ class _AvatarsPageState extends State<AvatarsPage> {
       _feedback('Actor imported with ${profile.photos.length} photos. '
           'Encrypted on this mobile device.');
     } catch (_) {
-      _feedback('Import rejected. Check ZIP safety, format and photos.');
+      _feedback('Import rejected. Verify password, file integrity and Actor photos.');
     } finally {
       for (final path in created) {
         try { await File(path).delete(); } catch (_) {}
@@ -628,7 +679,7 @@ class _AvatarsPageState extends State<AvatarsPage> {
             label: const Text('Import Actor (.hoticeactor)'),
           ),
           const SizedBox(height: 10),
-          const Text('Exports contain private face photos in an unencrypted testing ZIP.',
+          const Text('New backups are password-encrypted. Legacy Actor ZIPs remain unencrypted.',
             style: TextStyle(fontSize: 12)),
           const SizedBox(height: 12),
           if (widget.store.avatars.isEmpty)
@@ -667,7 +718,7 @@ class _AvatarsPageState extends State<AvatarsPage> {
                     },
                     itemBuilder: (ctx) => const [
                       PopupMenuItem(value: 'edit', child: Text('Edit actor')),
-                      PopupMenuItem(value: 'export', child: Text('Export Actor ZIP')),
+                      PopupMenuItem(value: 'export', child: Text('Export encrypted Actor backup')),
                       PopupMenuItem(value: 'delete', child: Text('Delete actor')),
                     ],
                   ),
