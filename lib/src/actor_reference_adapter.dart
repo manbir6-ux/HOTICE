@@ -220,7 +220,9 @@ class ActorContactSheet {
       if (decoded.width > 6000 || decoded.height > 6000) {
         throw StateError('Actor image dimensions exceed safe processing limits.');
       }
-      portraits.add(decoded);
+      // Camera JPEGs commonly carry EXIF rotation. Bake it before montage
+      // so the provider receives upright faces regardless of camera OEM.
+      portraits.add(img.bakeOrientation(decoded));
     }
     final rendered = compose(portraits: portraits);
     final folder = Directory(
