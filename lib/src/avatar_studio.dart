@@ -8,6 +8,7 @@ import 'actor_vault.dart';
 import 'package:flutter/material.dart';
 import 'guided_actor_camera.dart';
 import 'package:flutter/services.dart';
+import 'package:path_provider/path_provider.dart';
 import 'avatar_identity.dart';
 import 'design.dart';
 import 'state.dart';
@@ -260,7 +261,11 @@ class _AvatarsPageState extends State<AvatarsPage> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text('Delete ' + avatar.name + '?'),
-        content: const Text('This removes the local character preset. Previous scene drafts remain historical snapshots.'),
+        content: const Text(
+          'This permanently removes the encrypted Actor record, local face '
+          'photos and saved scene/music drafts containing this Actor. '
+          'Previously exported backups are not deleted.',
+        ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false),
               child: const Text('Keep character')),
@@ -271,19 +276,41 @@ class _AvatarsPageState extends State<AvatarsPage> {
     );
     if (!mounted || confirmed != true) return;
     if (_vaultBusy || !_vaultReady) return;
+    final account = widget.store.selectedAccount;
+    // Collect derived reference JPEGs *before* removing draft metadata.
+    final derivedPaths = widget.store.drafts
+        .where((draft) =>
+            draft.avatarName.toLowerCase() == avatar.name.toLowerCase() ||
+            draft.actors.any((a) =>
+                a.avatarName.toLowerCase() == avatar.name.toLowerCase()))
+        .expand((draft) => draft.referenceFiles)
+        .map((ref) => ref.localPath)
+        .whereType<String>()
+        .toSet();
     setState(() => _vaultBusy = true);
     try {
       if (_deviceVaultAvailable && avatar.capturePaths.isNotEmpty) {
-        await ActorLocalVault.instance.delete(
-          widget.store.selectedAccount, avatar.name,
-        );
+        await ActorLocalVault.instance.delete(account, avatar.name);
       }
     } catch (_) {
       _feedback('Could not remove encrypted Actor. Nothing was deleted.');
       if (mounted) setState(() => _vaultBusy = false);
       return;
     }
-    widget.store.removeAvatar(avatar.name);
+    if (mounted && widget.store.selectedAccount == account) {
+      widget.store.removeAvatar(avatar.name);
+    }
+    // Only delete files from HOTICE-owned generated asset directories.
+    // Never follow arbitrary draft paths into a user's personal files.
+    try {
+      final temp = (await getTemporaryDirectory()).absolute.path;
+      for (final path in derivedPaths) {
+        if (path.startsWith('$temp/hotice_actor_reference_sheets/') ||
+            path.startsWith('$temp/hotice_actor_touchups/')) {
+          try { await File(path).delete(); } catch (_) {}
+        }
+      }
+    } catch (_) {}
     for (final path in avatar.capturePaths) {
       try { await File(path).delete(); } catch (_) {}
     }
