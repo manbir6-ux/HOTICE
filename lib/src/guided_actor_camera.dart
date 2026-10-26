@@ -3,7 +3,6 @@ import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
-import 'package:image/image.dart' as img;
 import 'package:path_provider/path_provider.dart';
 import 'actor_pose_gate.dart';
 import 'actor_photo_quality.dart';
@@ -323,16 +322,16 @@ class _GuidedActorCameraPageState extends State<GuidedActorCameraPage>
       // or beautifies the user's original photo.
       var warnings = <String>[];
       try {
-        if (await file.length() <= 16 * 1024 * 1024) {
-          final decoded = img.decodeImage(await file.readAsBytes());
-          if (decoded != null) {
-            warnings = ActorPhotoQuality.assess(decoded).warnings;
-          }
-        } else {
-          warnings = ['Large photo — check sharpness before continuing.'];
-        }
+        warnings = await ActorPhotoQuality.reviewCameraJpeg(
+          await file.readAsBytes(),
+        );
       } catch (_) {
         warnings = ['Could not assess photo quality; review this angle.'];
+      }
+      if (_disposed || !mounted) {
+        await file.delete().catchError((_) => file);
+        saved = null;
+        return;
       }
       _qualityWarnings[_step] = warnings;
       if (_retaking) {
