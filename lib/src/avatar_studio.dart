@@ -22,6 +22,7 @@ class _AvatarsPageState extends State<AvatarsPage> {
   final name = TextEditingController();
   final identityNotes = TextEditingController();
   String style = 'Photorealistic';
+  bool _autoTouchUp = false;
   String? editingName;
   bool _scanInProgress = false;
   bool _transferBusy = false;
@@ -70,7 +71,8 @@ class _AvatarsPageState extends State<AvatarsPage> {
       return;
     }
     final saved = widget.store.addAvatar(actorName, style,
-        identityNotes: identityNotes.text, capturePaths: result.paths);
+        identityNotes: identityNotes.text, capturePaths: result.paths,
+        autoTouchUp: _autoTouchUp);
     if (!saved) {
       for (final path in result.paths) {
         try { await File(path).delete(); } catch (_) {}
@@ -79,6 +81,7 @@ class _AvatarsPageState extends State<AvatarsPage> {
       setState(() {
         name.clear();
         identityNotes.clear();
+        _autoTouchUp = false;
       });
     }
     if (!mounted) return;
@@ -103,6 +106,7 @@ class _AvatarsPageState extends State<AvatarsPage> {
     final created = widget.store.editAvatar(
       editingName!, name.text, style,
       identityNotes: identityNotes.text,
+      autoTouchUp: _autoTouchUp,
     );
     if (created) {
       FocusManager.instance.primaryFocus?.unfocus();
@@ -110,6 +114,7 @@ class _AvatarsPageState extends State<AvatarsPage> {
         editingName = null;
         name.clear();
         identityNotes.clear();
+        _autoTouchUp = false;
       });
     }
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -125,6 +130,7 @@ class _AvatarsPageState extends State<AvatarsPage> {
       name.text = avatar.name;
       style = avatar.style;
       identityNotes.text = avatar.identityNotes;
+      _autoTouchUp = avatar.autoTouchUp;
     });
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Edit the character in the form above.')),
@@ -406,6 +412,17 @@ class _AvatarsPageState extends State<AvatarsPage> {
                   ),
                 ),
                 const SizedBox(height: 13),
+                SwitchListTile.adaptive(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Auto touch-up (optional)'),
+                  subtitle: const Text(
+                    'Gentle light/colour correction on scene references. '
+                    'Natural captured photos remain unchanged.',
+                  ),
+                  value: _autoTouchUp,
+                  onChanged: (value) => setState(() => _autoTouchUp = value),
+                ),
+                const SizedBox(height: 10),
                 if (editingName == null) ...[
                   const Text(
                     'Next: guided front-camera capture (7 face angles). '
@@ -431,6 +448,7 @@ class _AvatarsPageState extends State<AvatarsPage> {
                       editingName = null;
                       name.clear();
                       identityNotes.clear();
+                    _autoTouchUp = false;
                     }),
                     child: const Text('Cancel editing'),
                   ),
