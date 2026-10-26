@@ -10,6 +10,13 @@ on:
 permissions:
   contents: read
 
+# Repeated commits used to launch multiple parallel 1GB emulator/SDK builds,
+# causing resource contention and flaky Android SDK downloads. Run only the
+# newest commit for each PR/ref; releases still get their own run.
+concurrency:
+  group: hotice-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   validate:
     name: Flutter analysis and unit/widget tests
