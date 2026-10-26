@@ -43,6 +43,68 @@ void main() {
     );
   });
 
+  test('JPEG parser blocks excessive dimensions before image decode', () {
+    final original = jpg(40);
+    final dimensions = ActorArchiveCodec.inspectPhotoHeader(original);
+    expect(dimensions.$1, 64);
+    expect(dimensions.$2, 80);
+
+    final oversized = Uint8List.fromList(original);
+    for (var i = 2; i < oversized.length - 9; i++) {
+      if (oversized[i] == 0xff &&
+          (oversized[i + 1] == 0xc0 ||
+           oversized[i + 1] == 0xc1 ||
+           oversized[i + 1] == 0xc2)) {
+        // SOF precision, height, width; advertise 65,535 x 65,535.
+        oversized[i + 5] = 0xff;
+        oversized[i + 6] = 0xff;
+        oversized[i + 7] = 0xff;
+        oversized[i + 8] = 0xff;
+        break;
+      }
+    }
+    expect(() => ActorArchiveCodec.inspectPhotoHeader(oversized),
+        throwsFormatException);
+    expect(() => ActorArchiveCodec.encode(
+      name: 'Unsafe', style: 'Cinematic', notes: '',
+      photos: [oversized],
+    ), throwsFormatException);
+  });
+
+  test('ZIP bomb preflight rejects massive claimed size before inflation', () {
+    final encoded = ActorArchiveCodec.encode(
+      name: 'Portrait', style: 'Cinematic', notes: '',
+      photos: [jpg(60)],
+    );
+    final tampered = Uint8List.fromList(encoded);
+    int? central;
+    for (var i = 0; i <= tampered.length - 46; i++) {
+      if (tampered[i] == 0x50 && tampered[i + 1] == 0x4b &&
+          tampered[i + 2] == 0x01 && tampered[i + 3] == 0x02) {
+        central = i;
+        break;
+      }
+    }
+    expect(central, isNotNull);
+    // Deliberately advertise 2 GiB expanded data in a tiny photo archive.
+    final sizeField = central! + 24;
+    tampered[sizeField] = 0x00;
+    tampered[sizeField + 1] = 0x00;
+    tampered[sizeField + 2] = 0x00;
+    tampered[sizeField + 3] = 0x80;
+    expect(() => ActorArchiveCodec.decode(tampered), throwsFormatException);
+  });
+
+  test('valid archive remains readable under ZIP directory limits', () {
+    final archive = ActorArchiveCodec.encode(
+      name: 'Valid', style: 'Photorealistic',
+      notes: 'Preserves all 7 angles',
+      photos: List.generate(7, (index) => jpg(index + 11)),
+    );
+    final decoded = ActorArchiveCodec.decode(archive);
+    expect(decoded.photos.length, 7);
+  });
+
   test('import rejects traversal, symlink and unrelated package files', () {
     final archive = Archive();
     archive.addFile(ArchiveFile.string('../secret.txt', 'attack'));

@@ -241,6 +241,48 @@ class HotIceStore extends ChangeNotifier {
     return true;
   }
 
+  /// Replace a vault-restored Actor in the *currently selected workspace*.
+  /// Returning to an account may already have an in-memory profile with
+  /// transient paths from an earlier session; use freshly decrypted paths
+  /// instead of silently retaining stale or missing images.
+  void restoreAvatar(StudioAvatar restored) {
+    final index = avatars.indexWhere((actor) =>
+        actor.name.toLowerCase() == restored.name.toLowerCase());
+    if (index >= 0) {
+      avatars[index] = restored;
+    } else {
+      avatars.insert(0, restored);
+    }
+    notifyListeners();
+  }
+
+  /// Reconcile an authenticated vault restore with a workspace that may
+  /// contain stale decrypted cache references from a previous sign-in.
+  /// Keep intentional text-only demo presets; never display a deleted,
+  /// corrupted, or missing encrypted Actor as if its face assets survived.
+  void reconcileVaultActors(List<StudioAvatar> restored) {
+    final names = <String>{};
+    for (final actor in restored) {
+      final key = actor.name.trim().toLowerCase();
+      if (key.isEmpty || !names.add(key)) {
+        throw StateError('Encrypted Actor restore contains duplicate names.');
+      }
+    }
+    avatars.removeWhere((existing) =>
+        existing.capturePaths.isNotEmpty &&
+        !names.contains(existing.name.trim().toLowerCase()));
+    for (final actor in restored) {
+      final index = avatars.indexWhere((existing) =>
+          existing.name.toLowerCase() == actor.name.toLowerCase());
+      if (index >= 0) {
+        avatars[index] = actor;
+      } else {
+        avatars.insert(0, actor);
+      }
+    }
+    notifyListeners();
+  }
+
   bool editAvatar(String originalName, String newName, String style,
       {String identityNotes = '', bool? autoTouchUp}) {
     final index = avatars.indexWhere((a) => a.name == originalName);

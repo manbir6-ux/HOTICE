@@ -1,6 +1,10 @@
 import 'dart:math' as math;
+import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart';
 import 'package:image/image.dart' as img;
+
+import 'actor_archive.dart';
 
 /// Small, device-local heuristic QA for a *saved* Actor portrait.
 /// This is not a calibrated photography/biometric quality score.
@@ -13,6 +17,17 @@ class ActorPhotoQuality {
     required this.edgeContrast,
     required this.warnings,
   });
+
+  /// Decode and assess a camera JPEG off the UI isolate. Seven high-
+  /// resolution photos must not block the shutter or the review screen.
+  /// Reject dangerous pixel dimensions via header inspection BEFORE the
+  /// decoder allocates a full image buffer.
+  static Future<List<String>> reviewCameraJpeg(Uint8List bytes) async {
+    if (bytes.isEmpty || bytes.length > 16 * 1024 * 1024) {
+      throw const FormatException('Camera photo is empty or exceeds size limit.');
+    }
+    return compute(_assessCapturedJpeg, bytes);
+  }
 
   final double meanLuma;
   final double lumaStdDev;
@@ -78,4 +93,15 @@ class ActorPhotoQuality {
       warnings: List.unmodifiable(warnings),
     );
   }
+}
+
+List<String> _assessCapturedJpeg(Uint8List bytes) {
+  // A forged 1px JPEG with a 50,000px SOF dimension may otherwise allocate
+  // gigabytes when fully decoded. The archive preflight bounds 18MP.
+  ActorArchiveCodec.inspectPhotoHeader(bytes);
+  final image = img.decodeJpg(bytes);
+  if (image == null) {
+    throw const FormatException('Camera JPEG cannot be decoded.');
+  }
+  return ActorPhotoQuality.assess(image).warnings;
 }

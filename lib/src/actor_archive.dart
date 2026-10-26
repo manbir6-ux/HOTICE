@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:archive/archive.dart';
@@ -27,16 +28,51 @@ class ActorArchiveCodec {
   static const maxTotalDecodedBytes = 72 * 1024 * 1024;
   static const maxPhotos = 12;
 
-  static void _validatePhoto(Uint8List bytes) {
-    if (bytes.isEmpty || bytes.length > maxPhotoBytes ||
-        bytes.length < 4 || bytes[0] != 0xFF || bytes[1] != 0xD8) {
+  /// Check JPEG SOF dimensions before allocating an untrusted image decoder.
+  static (int width, int height) inspectPhotoHeader(Uint8List bytes) {
+    if (bytes.length < 10 || bytes.length > maxPhotoBytes ||
+        bytes[0] != 0xff || bytes[1] != 0xd8) {
       throw const FormatException('Expected a valid JPG face photo.');
     }
+    var offset = 2;
+    while (offset + 4 <= bytes.length) {
+      if (bytes[offset] != 0xff) break;
+      while (offset < bytes.length && bytes[offset] == 0xff) {
+        offset++;
+      }
+      if (offset >= bytes.length) break;
+      final marker = bytes[offset++];
+      if (marker == 0xd9 || marker == 0xda) break;
+      if (marker == 0x01 || (marker >= 0xd0 && marker <= 0xd7)) {
+        continue;
+      }
+      if (offset + 2 > bytes.length) break;
+      final size = bytes[offset] * 256 + bytes[offset + 1];
+      if (size < 2 || offset + size > bytes.length) break;
+      final frame = (marker >= 0xc0 && marker <= 0xcf) &&
+          marker != 0xc4 && marker != 0xc8 && marker != 0xcc;
+      if (frame) {
+        if (size < 8) break;
+        final height = bytes[offset + 3] * 256 + bytes[offset + 4];
+        final width = bytes[offset + 5] * 256 + bytes[offset + 6];
+        if (width < 32 || height < 32 ||
+            width > 6500 || height > 6500 ||
+            width * height > 18000000) {
+          throw const FormatException('Actor JPEG pixel dimensions are unsafe.');
+        }
+        return (width, height);
+      }
+      offset += size;
+    }
+    throw const FormatException('JPEG dimensions could not be verified.');
+  }
+
+  static void _validatePhoto(Uint8List bytes) {
+    final (width, height) = inspectPhotoHeader(bytes);
     final decoded = img.decodeJpg(bytes);
-    if (decoded == null || decoded.width < 32 || decoded.height < 32 ||
-        decoded.width > 6500 || decoded.height > 6500 ||
-        decoded.width * decoded.height > 18000000) {
-      throw const FormatException('Actor photo has invalid dimensions or encoding.');
+    if (decoded == null || decoded.width != width ||
+        decoded.height != height) {
+      throw const FormatException('Actor photo has invalid encoding.');
     }
   }
 
@@ -83,10 +119,87 @@ class ActorArchiveCodec {
     return zip;
   }
 
+  /// Bounds ZIP expanded size BEFORE inflating any untrusted entry.
+  /// Accept only ordinary single-disk ZIP32 stored/deflated Actor archives;
+  /// reject encrypted/ZIP64 archives and mismatched directory metadata.
+  static void _preflightZip(Uint8List zip) {
+    if (zip.length < 22) {
+      throw const FormatException('Actor ZIP has no end-of-directory record.');
+    }
+    final bytes = ByteData.sublistView(zip);
+    int u16(int at) => bytes.getUint16(at, Endian.little);
+    int u32(int at) => bytes.getUint32(at, Endian.little);
+    var end = -1;
+    final floor = zip.length > 65557 ? zip.length - 65557 : 0;
+    for (var at = zip.length - 22; at >= floor; at--) {
+      if (u32(at) == 0x06054b50 &&
+          at + 22 + u16(at + 20) == zip.length) {
+        end = at;
+        break;
+      }
+    }
+    if (end < 0 || u16(end + 4) != 0 || u16(end + 6) != 0 ||
+        u16(end + 8) != u16(end + 10)) {
+      throw const FormatException('Unsupported multi-disk or malformed Actor ZIP.');
+    }
+    final count = u16(end + 10);
+    final directoryBytes = u32(end + 12);
+    final directoryStart = u32(end + 16);
+    if (count < 2 || count > maxPhotos + 1 ||
+        directoryBytes == 0 || directoryStart > end ||
+        directoryBytes > end - directoryStart) {
+      throw const FormatException('Actor ZIP directory is unsafe.');
+    }
+    var cursor = directoryStart;
+    var expandedTotal = 0;
+    final seen = <String>{};
+    for (var i = 0; i < count; i++) {
+      if (cursor > end - 46 || u32(cursor) != 0x02014b50) {
+        throw const FormatException('Malformed Actor ZIP central header.');
+      }
+      final flags = u16(cursor + 8);
+      final method = u16(cursor + 10);
+      final packed = u32(cursor + 20);
+      final unpacked = u32(cursor + 24);
+      final nameLength = u16(cursor + 28);
+      final extraLength = u16(cursor + 30);
+      final commentLength = u16(cursor + 32);
+      final start = cursor + 46;
+      final next = start + nameLength + extraLength + commentLength;
+      if ((flags & 1) != 0 || (method != 0 && method != 8) ||
+          packed == 0xffffffff || unpacked == 0xffffffff ||
+          nameLength == 0 || next > directoryStart + directoryBytes ||
+          next > end || u32(cursor + 42) >= directoryStart) {
+        throw const FormatException('Unsupported or unsafe Actor ZIP entry.');
+      }
+      final name = utf8.decode(zip.sublist(start, start + nameLength),
+          allowMalformed: false);
+      if (!seen.add(name) ||
+          (name != 'manifest.json' &&
+              !RegExp(r'^images/angle_[0-9]{2}[.]jpg$').hasMatch(name)) ||
+          (name == 'manifest.json' && unpacked > 8192) ||
+          (name != 'manifest.json' && unpacked > maxPhotoBytes) ||
+          (packed == 0 && unpacked != 0) ||
+          (packed > 0 && unpacked > packed * 128)) {
+        throw const FormatException('Actor ZIP entry exceeds safety limits.');
+      }
+      expandedTotal += unpacked;
+      if (expandedTotal > maxTotalDecodedBytes) {
+        throw const FormatException('Actor ZIP expands beyond the safe limit.');
+      }
+      cursor = next;
+    }
+    if (cursor != directoryStart + directoryBytes ||
+        seen.length != count || !seen.contains('manifest.json')) {
+      throw const FormatException('Actor ZIP directory does not match manifest.');
+    }
+  }
+
   static ActorArchiveImport decode(Uint8List zip) {
     if (zip.isEmpty || zip.length > maxArchiveBytes) {
       throw const FormatException('Actor ZIP file is empty or too large.');
     }
+    _preflightZip(zip);
     final archive = ZipDecoder().decodeBytes(zip, verify: true);
     if (archive.length < 2 || archive.length > maxPhotos + 1) {
       throw const FormatException('Unexpected number of files in Actor ZIP.');
@@ -181,13 +294,16 @@ class ActorArchiveCodec {
     final folder = Directory(
         '${(await getTemporaryDirectory()).path}/hotice_actor_capture');
     await folder.create(recursive: true);
-    final stamp = DateTime.now().microsecondsSinceEpoch;
+    final random = Random.secure();
+    final token = List.generate(16, (_) =>
+        random.nextInt(256).toRadixString(16).padLeft(2, '0')).join();
     final saved = <String>[];
     try {
       for (var i = 0; i < actor.photos.length; i++) {
-        final file = File('${folder.path}/import_${stamp}_$i.jpg');
-        await file.writeAsBytes(actor.photos[i], flush: true);
+        _validatePhoto(actor.photos[i]);
+        final file = File('${folder.path}/import_${token}_$i.jpg');
         saved.add(file.path);
+        await file.writeAsBytes(actor.photos[i], flush: true);
       }
       return saved;
     } catch (_) {

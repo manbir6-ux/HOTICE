@@ -57,26 +57,19 @@ class _AvatarsPageState extends State<AvatarsPage> {
         }
         return;
       }
-      for (final actor in loaded.actors) {
-        final existing = widget.store.avatars.where(
-          (a) => a.name.toLowerCase() == actor.name.toLowerCase(),
-        );
-        if (existing.isNotEmpty && existing.first.capturePaths.isEmpty) {
-          // Replace the stock text-only "Nova" demo if a real photo actor
-          // with that name was previously saved in this local vault.
-          widget.store.removeAvatar(existing.first.name);
-        }
-        if (!widget.store.addAvatar(
-          actor.name, actor.style,
-          identityNotes: actor.identityNotes,
-          capturePaths: actor.capturePaths,
-          autoTouchUp: actor.autoTouchUp,
-        )) {
-          for (final path in actor.capturePaths) {
-            try { await File(path).delete(); } catch (_) {}
-          }
-        }
+      // Drop old session-only paths for deleted/corrupt entries while
+      // atomically replacing restored Actor photos in this demo workspace.
+      final previousPaths = widget.store.avatars
+          .expand((actor) => actor.capturePaths)
+          .toSet();
+      widget.store.reconcileVaultActors(loaded.actors);
+      final newPaths = loaded.actors
+          .expand((actor) => actor.capturePaths)
+          .toSet();
+      for (final oldPath in previousPaths.difference(newPaths)) {
+        try { await File(oldPath).delete(); } catch (_) {}
       }
+      if (!mounted || widget.store.selectedAccount != account) return;
       if (mounted) {
         setState(() {
           _vaultReady = true;
@@ -466,7 +459,8 @@ class _AvatarsPageState extends State<AvatarsPage> {
                         ClipRRect(
                           borderRadius: BorderRadius.circular(12),
                           child: Image.file(
-                            File(path), height: 105, width: 86,
+                            File(path), cacheWidth: 320,
+                            height: 105, width: 86,
                             fit: BoxFit.cover,
                             errorBuilder: (_, __, ___) =>
                                 const SizedBox(width: 86, height: 105,

@@ -2,8 +2,59 @@ import 'dart:typed_data';
 import 'package:cryptography/cryptography.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hotice/src/actor_vault.dart';
+import 'package:hotice/src/state.dart';
 
 void main() {
+  test('vault restore prunes deleted/corrupt cached Actors without erasing presets',
+      () {
+    final store = HotIceStore();
+    addTearDown(store.dispose);
+    expect(store.addAvatar('Deleted on disk', 'Cinematic',
+        capturePaths: ['unavailable.jpg']), isTrue);
+    expect(store.addAvatar('Saved on disk', 'Photorealistic',
+        capturePaths: ['old.jpg']), isTrue);
+    store.reconcileVaultActors(const [
+      StudioAvatar('Saved on disk', 'Cinematic',
+          capturePaths: ['decrypted-fresh.jpg']),
+    ]);
+    expect(store.avatars.any((a) => a.name == 'Deleted on disk'), isFalse);
+    expect(store.avatars.singleWhere((a) => a.name == 'Saved on disk')
+        .capturePaths, ['decrypted-fresh.jpg']);
+    expect(store.avatars.any((a) => a.name == 'Nova'), isTrue);
+    expect(
+      () => store.reconcileVaultActors(const [
+        StudioAvatar('Duplicate', 'Cinematic'),
+        StudioAvatar('duplicate', 'Cinematic'),
+      ]),
+      throwsStateError,
+    );
+  });
+
+  test('restoring an Actor replaces stale decrypted paths in same workspace', () {
+    final store = HotIceStore();
+    addTearDown(store.dispose);
+    expect(store.addAvatar('Original Hero', 'Cinematic',
+        capturePaths: ['expired-temp.jpg']), isTrue);
+    store.restoreAvatar(const StudioAvatar(
+        'Original Hero', 'Photorealistic',
+        identityNotes: 'New metadata',
+        capturePaths: ['fresh-decrypted.jpg'],
+        autoTouchUp: true,
+    ));
+    expect(store.avatars.where((a) => a.name == 'Original Hero').length, 1);
+    final hero = store.avatars.singleWhere((a) => a.name == 'Original Hero');
+    expect(hero.capturePaths, ['fresh-decrypted.jpg']);
+    expect(hero.autoTouchUp, isTrue);
+
+    store.addAccount('second-actor@hotice.demo');
+    store.restoreAvatar(const StudioAvatar('Second', 'Cinematic',
+        capturePaths: ['second.jpg']));
+    store.switchAccount('creator@hotice.demo');
+    final restored = store.avatars.singleWhere(
+        (a) => a.name == 'Original Hero');
+    expect(restored.capturePaths, ['fresh-decrypted.jpg']);
+  });
+
   test('AES-256-GCM vault payload survives authenticated roundtrip', () async {
     final key = await ActorVaultCrypto.newKey();
     expect((await key.extractBytes()).length, 32);
