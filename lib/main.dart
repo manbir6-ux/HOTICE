@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import 'src/state.dart';
+import 'src/actor_vault.dart';
 import 'src/design.dart';
 import 'src/pages.dart';
 import 'src/generation_hub.dart';
@@ -39,6 +40,10 @@ class HotIceApp extends StatefulWidget {
 
 class _HotIceAppState extends State<HotIceApp> {
   final HotIceStore store = HotIceStore();
+  final ActorVault _vault = ActorVault();
+  final Set<String> _loadedAccounts = {};
+  final Set<String> _loadingAccounts = {};
+  final GlobalKey<ScaffoldMessengerState> _messages = GlobalKey<ScaffoldMessengerState>();
   bool showLogin = false;
 
   late ThemeMode _lastThemeMode;
@@ -52,6 +57,64 @@ class _HotIceAppState extends State<HotIceApp> {
     _lastAccent = store.accent;
     _lastFont = store.font;
     store.addListener(_handleAppearanceChanged);
+    store.addListener(_restoreAccountActors);
+  }
+
+  void _restoreAccountActors() {
+    if (!store.signedIn) return;
+    final account = store.selectedAccount;
+    if (_loadedAccounts.contains(account) ||
+        !_loadingAccounts.add(account)) return;
+    _loadActorVault(account);
+  }
+
+  Future<void> _loadActorVault(String account) async {
+    try {
+      final loaded = await _vault.restore(account);
+      if (!mounted || !store.signedIn ||
+          store.selectedAccount != account) {
+        // Never insert another account's decrypted Actor images into the
+        // currently visible workspace after an async profile switch.
+        for (final actor in loaded.actors) {
+          for (final path in actor.capturePaths) {
+            try { await File(path).delete(); } catch (_) {}
+          }
+        }
+        return;
+      }
+      for (final actor in loaded.actors) {
+        if (store.avatars.any((a) =>
+            a.name.toLowerCase() == actor.name.toLowerCase())) {
+          // Avoid overwriting a newly created Actor while loading.
+          for (final path in actor.capturePaths) {
+            try { await File(path).delete(); } catch (_) {}
+          }
+          continue;
+        }
+        store.addAvatar(actor.name, actor.style,
+          identityNotes: actor.identityNotes,
+          capturePaths: actor.capturePaths,
+          autoTouchUp: actor.autoTouchUp,
+          vaultId: actor.vaultId,
+        );
+      }
+      _loadedAccounts.add(account);
+      if (loaded.failedRecords > 0) {
+        _messages.currentState?.showSnackBar(SnackBar(
+          content: Text('${loaded.failedRecords} encrypted Actor record(s) '
+              'could not be restored. No data was overwritten.'),
+        ));
+      }
+    } catch (_) {
+      if (mounted && store.selectedAccount == account) {
+        _messages.currentState?.showSnackBar(const SnackBar(
+          content: Text('Could not unlock the local Actor vault. '
+              'Check secure device storage. Encrypted files remain untouched.'),
+        ));
+      }
+    } finally {
+      _loadingAccounts.remove(account);
+    }
   }
 
   // Keep the Navigator/MaterialApp stable while demo accounts, projects and
@@ -74,6 +137,7 @@ class _HotIceAppState extends State<HotIceApp> {
   @override
   void dispose() {
     store.removeListener(_handleAppearanceChanged);
+    store.removeListener(_restoreAccountActors);
     store.dispose();
     super.dispose();
   }
@@ -82,6 +146,7 @@ class _HotIceAppState extends State<HotIceApp> {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'HOTICE',
+      scaffoldMessengerKey: _messages,
       debugShowCheckedModeBanner: false,
       themeMode: store.themeMode,
       theme: HotIceDesign.theme(
@@ -95,7 +160,7 @@ class _HotIceAppState extends State<HotIceApp> {
       home: AnimatedBuilder(
         animation: store,
         builder: (context, _) => store.signedIn
-            ? StudioShell(key: ValueKey(store.selectedAccount), store: store)
+            ? StudioShell(key: ValueKey(store.selectedAccount), store: store, vault: _vault)
             : showLogin
                 ? LoginPage(
                     onBack: () => setState(() => showLogin = false),
@@ -112,7 +177,8 @@ class _HotIceAppState extends State<HotIceApp> {
 
 class StudioShell extends StatefulWidget {
   final HotIceStore store;
-  const StudioShell({super.key, required this.store});
+  final ActorVault vault;
+  const StudioShell({super.key, required this.store, required this.vault});
 
   @override
   State<StudioShell> createState() => _StudioShellState();
@@ -274,7 +340,7 @@ class _StudioShellState extends State<StudioShell> {
                           initialTemplate: selectedTemplate,
                           templateRevision: templateRevision,
                         ),
-                        AvatarsPage(store: store),
+                        AvatarsPage(store: store, vault: widget.vault),
                         CreditsPage(store: store),
                         SettingsPage(store: store),
                         AccountsPage(store: store),
