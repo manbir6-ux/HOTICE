@@ -8,6 +8,14 @@
 
 
 
+## 26 October 2026 — High-resolution Actor capture and restart-restore fixes
+
+- **PR #21 update:** [source branch](https://github.com/parmtech/HOTICE/pull/21), commit `60757d3d`, remains unmerged into `main`.
+- **Performance:** offloaded post-capture JPEG exposure/detail checks from the Flutter camera UI isolate. Validate maximum encoded bytes and JPEG header dimensions before decoding, preserving untouched original captures. If camera route closes during the asynchronous check, discard the partially captured image without updating disposed Flutter widgets.
+- **Actor vault consistency:** reconcile authenticated encrypted records against stale in-memory demo Actor profiles. Deleted, corrupt or inaccessible encrypted photos no longer leave phantom scanned Actors after account switching; preserve built-in text-only demo presets and reject duplicate restore identities.
+- **Automated verification:** [run 40315187806](https://github.com/parmtech/HOTICE/actions/runs/40315187806) passed **73/73 Flutter tests** plus web, Python 3D contract and PHP model-payload validation at this checkpoint. Android compilation and emulator device smoke results were still pending; do not label its APK verified until those jobs and the artifact have completed successfully.
+- **Still blocked:** physical-device camera orientation/yaw/pitch QA, real model-based 3D head reconstruction, licensed weights, secure production user auth/remote sync and live Gemini video generation. The separate PR #22 remains a competing vault implementation and **must not be blindly merged** with PR #20/21.
+
 ## 26 October 2026 — Actor scanner/vault reliability hardening (PR #21)
 
 - **Active follow-up:** [PR #21](https://github.com/parmtech/HOTICE/pull/21) on `fix/actor-camera-vault-hardening-v2`, stacked on [PR #20](https://github.com/parmtech/HOTICE/pull/20) → PR #19 → #17 → #16 → #11. Source is **NOT merged into stable main**.
