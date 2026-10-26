@@ -19,6 +19,8 @@ import sys
 import tempfile
 
 MAX_SOURCE_BYTES = 25 * 1024 * 1024
+MAX_MESH_BYTES = 40 * 1024 * 1024
+MAX_TOTAL_OUTPUT_BYTES = 64 * 1024 * 1024
 ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png"}
 
 
@@ -49,6 +51,8 @@ def run_reconstruction(
     try:
         output.mkdir(parents=True, exist_ok=True)
         target_dir = engine / "examples" / "results"
+        if target_dir.is_symlink():
+            raise ValueError("Reconstruction output folder cannot be a symlink.")
         target_dir.mkdir(parents=True, exist_ok=True)
         token = secrets.token_hex(12)
         with tempfile.TemporaryDirectory(prefix="hotice_face_") as directory:
@@ -75,14 +79,29 @@ def run_reconstruction(
                     raise RuntimeError(
                         "Reconstruction engine failed or returned no OBJ mesh."
                     )
+                if mesh.is_symlink() or mesh.stat().st_size > MAX_MESH_BYTES:
+                    raise RuntimeError("Unsafe reconstructed geometry output.")
                 obj_data = mesh.read_text(errors="replace")
                 if not any(line.startswith("v ") for line in obj_data.splitlines()):
                     raise RuntimeError("Reconstruction returned invalid geometry.")
                 destinations = []
-                for file in target_dir.glob(result_prefix + ".*"):
-                    if file.suffix.lower() not in {".obj", ".mtl", ".png", ".jpg", ".jpeg"}:
-                        continue
+                total_size = 0
+                files = [
+                    file for file in target_dir.glob(result_prefix + ".*")
+                    if file.suffix.lower() in {".obj", ".mtl", ".png", ".jpg", ".jpeg"}
+                ]
+                # Reject the entire result *before* copying any file to avoid
+                # a partial unsafe Actor package on a failed operation.
+                for file in files:
+                    if file.is_symlink() or not file.is_file():
+                        raise RuntimeError("Unsafe symbolic link in 3D output.")
+                    total_size += file.stat().st_size
+                    if total_size > MAX_TOTAL_OUTPUT_BYTES:
+                        raise RuntimeError("3D output exceeds worker safety limit.")
+                for file in files:
                     dest = output / (result_prefix + file.suffix.lower())
+                    if dest.is_symlink() or dest.exists():
+                        raise RuntimeError("Output file already exists.")
                     shutil.copyfile(file, dest)
                     dest.chmod(0o600)
                     destinations.append(str(dest))
@@ -99,7 +118,7 @@ def run_reconstruction(
                 # 3DDFA's sample CLI writes into examples/results; purge the
                 # intermediary geometry/textures even on failure.
                 for file in target_dir.glob(result_prefix + ".*"):
-                    if file.is_file():
+                    if file.is_file() or file.is_symlink():
                         file.unlink(missing_ok=True)
     finally:
         os.umask(original_umask)

@@ -55,6 +55,18 @@ final class GeminiOmniPayload
                 base64_decode($item['data'], true) === false) {
                 throw new \InvalidArgumentException('Invalid image payload.');
             }
+            // Extension/MIME supplied by a client is not proof of an image.
+            // Verify the decoded bytes before a future provider gateway
+            // forwards sensitive media to a billed external service.
+            $binary = base64_decode($item['data'], true);
+            $details = $binary === false ? false : @getimagesizefromstring($binary);
+            if ($details === false ||
+                ($details['mime'] ?? null) !== $item['mime_type'] ||
+                $details[0] < 1 || $details[1] < 1 ||
+                $details[0] > 8192 || $details[1] > 8192 ||
+                $details[0] * $details[1] > 20_000_000) {
+                throw new \InvalidArgumentException('Image bytes, MIME or dimensions are invalid.');
+            }
             $input[] = [
                 'type' => 'image',
                 'data' => $item['data'],

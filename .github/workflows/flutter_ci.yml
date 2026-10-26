@@ -10,6 +10,13 @@ on:
 permissions:
   contents: read
 
+# Repeated commits used to launch multiple parallel 1GB emulator/SDK builds,
+# causing resource contention and flaky Android SDK downloads. Run only the
+# newest commit for each PR/ref; releases still get their own run.
+concurrency:
+  group: hotice-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   validate:
     name: Flutter analysis and unit/widget tests
@@ -113,7 +120,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Check browser JavaScript syntax
-        run: node --check web/public/assets/site.js
+        run: |
+          node --check web/public/assets/site.js
+          node --check web/public/assets/timeline_core.js
+      - name: Exercise timeline selection and reorder regression tests
+        run: node web/tests/timeline.test.cjs
       - name: Verify public-site assets, prompts and rights metadata
         run: python3 tools/check_web.py
       - name: Validate optional private 3D worker consent and cleanup contract

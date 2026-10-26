@@ -72,6 +72,7 @@ class _GuidedActorCameraPageState extends State<GuidedActorCameraPage>
   bool _completed = false;
   bool _reviewing = false;
   bool _retaking = false;
+  bool _swapDirections = false;
   String? _error;
   String _instruction = 'Starting front camera...';
   bool _ready = false;
@@ -228,7 +229,8 @@ class _GuidedActorCameraPageState extends State<GuidedActorCameraPage>
       final assessment = ActorPoseGate.evaluate(
         pose: _pose,
         faceCount: faces.length,
-        yaw: ActorPoseGate.selfieYaw(face?.headEulerAngleY),
+        yaw: ActorPoseGate.selfieYaw(face?.headEulerAngleY,
+          mirroredFront: !_swapDirections),
         roll: face?.headEulerAngleZ,
         pitch: face?.headEulerAngleX,
         faceWidthFraction: box == null ? 0 : box.width / width,
@@ -271,7 +273,8 @@ class _GuidedActorCameraPageState extends State<GuidedActorCameraPage>
         InputImage.fromFilePath(photo.path),
       );
       final latest = faces.isEmpty ? null : faces.first;
-      final userYaw = ActorPoseGate.selfieYaw(latest?.headEulerAngleY);
+      final userYaw = ActorPoseGate.selfieYaw(latest?.headEulerAngleY,
+          mirroredFront: !_swapDirections);
       final angleOk = ActorPoseGate.matchesAngle(
         pose: _pose,
         yaw: userYaw,
@@ -569,6 +572,23 @@ class _GuidedActorCameraPageState extends State<GuidedActorCameraPage>
                     ],
                   ),
                 ),
+              ),
+              const SizedBox(height: 10),
+              SwitchListTile.adaptive(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Swap left/right directions'),
+                subtitle: const Text(
+                  'Enable if this phone guides the opposite head turn.',
+                ),
+                value: _swapDirections,
+                onChanged: _capturing ? null : (value) {
+                  setState(() {
+                    _swapDirections = value;
+                    _streak = 0;
+                    _ready = false;
+                    _instruction = ActorPoseGate.instruction(_pose);
+                  });
+                },
               ),
               const SizedBox(height: 15),
               Text(ActorPoseGate.instruction(_pose),

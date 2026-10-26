@@ -3,6 +3,7 @@ import 'package:image/image.dart' as img;
 import 'package:path_provider/path_provider.dart';
 
 import 'state.dart';
+import 'actor_touchup.dart';
 import 'video_models.dart';
 
 /// A reusable HOTICE actor identity is a private *source* for adapter assets.
@@ -20,11 +21,13 @@ class ActorImageSource {
     required this.actorName,
     required this.path,
     required this.angle,
+    this.autoTouchUp = false,
   });
   final String sceneName;
   final String actorName;
   final String path;
   final String angle;
+  final bool autoTouchUp;
 }
 
 class ActorReferencePlan {
@@ -101,6 +104,7 @@ class ActorReferenceAdapter {
             sceneName: actor.sceneName,
             actorName: preset.name,
             path: paths[i],
+            autoTouchUp: preset.autoTouchUp,
             angle: i == 0
                 ? 'front'
                 : i == 1 ? 'left'
@@ -222,7 +226,10 @@ class ActorContactSheet {
       }
       // Camera JPEGs commonly carry EXIF rotation. Bake it before montage
       // so the provider receives upright faces regardless of camera OEM.
-      portraits.add(img.bakeOrientation(decoded));
+      final upright = img.bakeOrientation(decoded);
+      portraits.add(ref.autoTouchUp
+          ? ActorTouchUp.softenLighting(upright)
+          : upright);
     }
     final rendered = compose(portraits: portraits);
     final folder = Directory(

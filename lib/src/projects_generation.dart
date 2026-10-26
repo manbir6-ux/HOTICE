@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'actor_reference_adapter.dart';
+import 'actor_touchup.dart';
 import 'state.dart';
 import 'video_models.dart';
 import 'avatar_identity.dart';
@@ -98,6 +99,33 @@ class ProjectsPage extends StatelessWidget {
   }
 }
 
+/// Snapshot of one project's incomplete editor so its Actor identities,
+/// attachments and advanced controls cannot silently follow another film.
+class _ProjectEditorDraft {
+  _ProjectEditorDraft({
+    required this.prompt,
+    required this.modelId,
+    required this.ratio,
+    required this.seconds,
+    required this.actors,
+    required this.references,
+    required this.negativePrompt,
+    required this.seed,
+    required this.soundEnabled,
+    required this.selectedTemplate,
+  });
+  final String prompt;
+  final String modelId;
+  final String ratio;
+  final int seconds;
+  final List<SceneActor> actors;
+  final List<SceneReference> references;
+  final String negativePrompt;
+  final String seed;
+  final bool soundEnabled;
+  final InspirationTemplate? selectedTemplate;
+}
+
 class GenerationPage extends StatefulWidget {
   final HotIceStore store;
   final String? initialProjectId;
@@ -117,7 +145,7 @@ class GenerationPage extends StatefulWidget {
 class _GenerationPageState extends State<GenerationPage> {
   final prompt = TextEditingController();
   // Each in-progress scene belongs to one film project in this demo session.
-  final Map<String, String> _unsavedPrompts = {};
+  final Map<String, _ProjectEditorDraft> _unsavedProjects = {};
   String? project;
   String model = 'cinematic_demo';
 
@@ -131,6 +159,7 @@ class _GenerationPageState extends State<GenerationPage> {
   bool soundEnabled = false;
   bool advancedOpen = false;
   InspirationTemplate? selectedTemplate;
+  bool _savingDraft = false;
 
   @override
   void initState() {
@@ -162,9 +191,36 @@ class _GenerationPageState extends State<GenerationPage> {
 
   void _selectProject(String? next) {
     if (project == next) return;
-    if (project != null) _unsavedPrompts[project!] = prompt.text;
+    if (project != null) {
+      _unsavedProjects[project!] = _ProjectEditorDraft(
+        prompt: prompt.text,
+        modelId: model,
+        ratio: ratio,
+        seconds: seconds,
+        actors: List<SceneActor>.of(sceneActors),
+        references: List<SceneReference>.of(references),
+        negativePrompt: negativePrompt.text,
+        seed: seedText.text,
+        soundEnabled: soundEnabled,
+        selectedTemplate: selectedTemplate,
+      );
+    }
     project = next;
-    prompt.text = next == null ? '' : (_unsavedPrompts[next] ?? '');
+    final previous = next == null ? null : _unsavedProjects[next];
+    prompt.text = previous?.prompt ?? '';
+    model = previous?.modelId ?? demoVideoModels.first.id;
+    seconds = previous?.seconds ?? 8;
+    ratio = previous?.ratio ?? '16:9';
+    sceneActors
+      ..clear()
+      ..addAll(previous?.actors ?? const <SceneActor>[]);
+    references
+      ..clear()
+      ..addAll(previous?.references ?? const <SceneReference>[]);
+    negativePrompt.text = previous?.negativePrompt ?? '';
+    seedText.text = previous?.seed ?? '';
+    soundEnabled = previous?.soundEnabled ?? false;
+    selectedTemplate = previous?.selectedTemplate;
   }
 
   @override
@@ -225,6 +281,7 @@ class _GenerationPageState extends State<GenerationPage> {
   }
 
   Future<void> save() async {
+    if (_savingDraft) return;
     if (prompt.text.trim().isEmpty || project == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Choose a project and describe your scene.')),
@@ -272,15 +329,33 @@ class _GenerationPageState extends State<GenerationPage> {
       );
       return;
     }
+    final savingProjectId = project;
+    final pending = _ProjectEditorDraft(
+      prompt: prompt.text,
+      modelId: model,
+      ratio: ratio,
+      seconds: seconds,
+      actors: List<SceneActor>.of(sceneActors),
+      references: List<SceneReference>.of(references),
+      negativePrompt: negativePrompt.text,
+      seed: seedText.text,
+      soundEnabled: soundEnabled,
+      selectedTemplate: selectedTemplate,
+    );
+    final savingModel = demoModelById(pending.modelId);
+    setState(() => _savingDraft = true);
+    String? generatedSheetPath;
+    final generatedTouchups = <String>[];
+    var savedSuccessfully = false;
     try {
-      var source = prompt.text.trim();
-      if (selectedTemplate != null && selectedTemplate!.prompt == source) {
-        source = InspirationPromptBuilder.compile(selectedTemplate!, sceneActors);
+      var source = pending.prompt.trim();
+      if (pending.selectedTemplate != null && pending.selectedTemplate!.prompt == source) {
+        source = InspirationPromptBuilder.compile(pending.selectedTemplate!, pending.actors);
       }
       // Detect unresolved placeholders even when the user has edited the text.
       final roleTokens = RegExp(r'\{\{Actor[0-9]+\}\}').allMatches(source).toList();
       if (roleTokens.isNotEmpty) {
-        if (sceneActors.length < roleTokens.length) {
+        if (pending.actors.length < roleTokens.length) {
           throw StateError('Assign the named actors before saving.');
         }
         final seen = <String>{};
@@ -290,14 +365,14 @@ class _GenerationPageState extends State<GenerationPage> {
             seen.add(token);
           }
           final index = seen.toList().indexOf(token);
-          return sceneActors[index].sceneName;
+          return pending.actors[index].sceneName;
         });
       }
       final adapterPlan = ActorReferenceAdapter.plan(
-        model: profile,
-        cast: sceneActors,
+        model: savingModel,
+        cast: pending.actors,
         library: widget.store.avatars,
-        otherImageAttachments: references.where(
+        otherImageAttachments: pending.references.where(
           (item) => item.type == VideoAttachment.image,
         ).length,
         otherVideoAttachments: references.where(
@@ -309,6 +384,7 @@ class _GenerationPageState extends State<GenerationPage> {
         final jpegPath = await ActorContactSheet.saveToTemporaryFile(
           adapterPlan,
         );
+        generatedSheetPath = jpegPath;
         if (!mounted) return;
         preparedRefs.add(SceneReference(
           type: VideoAttachment.image,
@@ -318,7 +394,11 @@ class _GenerationPageState extends State<GenerationPage> {
         ));
       } else {
         for (final sourceRef in adapterPlan.sources) {
-          final file = File(sourceRef.path);
+          final localPath = sourceRef.autoTouchUp
+              ? await ActorTouchUp.prepareCopy(sourceRef.path)
+              : sourceRef.path;
+          if (sourceRef.autoTouchUp) generatedTouchups.add(localPath);
+          final file = File(localPath);
           if (!await file.exists()) {
             throw StateError('Actor photo is missing; recapture this Actor.');
           }
@@ -326,43 +406,75 @@ class _GenerationPageState extends State<GenerationPage> {
             type: VideoAttachment.image,
             fileName: '${sourceRef.sceneName}_${sourceRef.angle}.jpg',
             bytes: await file.length(),
-            localPath: sourceRef.path,
+            localPath: localPath,
           ));
         }
       }
-      final attachments = [...references, ...preparedRefs];
-      if (profile.validateInputs(attachments.map((r) => r.type)) != null) {
+      final attachments = [...pending.references, ...preparedRefs];
+      if (savingModel.validateInputs(attachments.map((r) => r.type)) != null) {
         throw StateError('Actor and extra photos exceed this model limit.');
       }
-      if (!mounted) return;
+      if (!mounted || project != savingProjectId) return;
       final selected = matches.first;
       widget.store.queueDraft(GenerationDraft(
         projectId: selected.id,
-        modelId: profile.id,
+        modelId: savingModel.id,
         project: selected.title,
         prompt: AvatarPromptComposer.composeActors(
           scenePrompt: source,
-          cast: List<SceneActor>.unmodifiable(sceneActors),
+          cast: List<SceneActor>.unmodifiable(pending.actors),
           library: widget.store.avatars,
-          model: profile,
+          model: savingModel,
         ),
-        model: profile.label,
-        aspectRatio: ratio,
-        durationSeconds: seconds,
-        actors: List<SceneActor>.unmodifiable(sceneActors),
+        model: savingModel.label,
+        aspectRatio: pending.ratio,
+        durationSeconds: pending.seconds,
+        actors: List<SceneActor>.unmodifiable(pending.actors),
         referenceFiles: List<SceneReference>.unmodifiable(attachments),
-        negativePrompt: negativePrompt.text.trim(),
+        negativePrompt: pending.negativePrompt.trim(),
         seed: seed,
-        soundEnabled: soundEnabled,
+        soundEnabled: pending.soundEnabled,
         createdAt: DateTime.now(),
       ));
+      savedSuccessfully = true;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Scene and model-compatible Actor references saved locally. No AI request sent.')),
       );
     } on StateError catch (error) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(error.message)),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(error.message)),
+        );
+      }
+
+    } on FileSystemException {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text(
+            'Could not read or prepare Actor photo files. Recapture and retry.',
+          )),
+        );
+      }
+
+    } on FormatException {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text(
+            'An Actor reference image has an unsupported format.',
+          )),
+        );
+      }
+
+    } finally {
+      if (!savedSuccessfully && generatedSheetPath != null) {
+        try { await File(generatedSheetPath).delete(); } catch (_) {}
+      }
+      if (!savedSuccessfully) {
+        for (final path in generatedTouchups) {
+          try { await File(path).delete(); } catch (_) {}
+        }
+      }
+      if (mounted) setState(() => _savingDraft = false);
     }
   }
 
@@ -375,8 +487,10 @@ class _GenerationPageState extends State<GenerationPage> {
     // Remove stale cast entries if an actor preset was deleted.
     sceneActors.removeWhere((cast) =>
         !widget.store.avatars.any((actor) => actor.name == cast.avatarName));
-    final editor = StudioPanel(
-      child: Column(
+    final editor = AbsorbPointer(
+      absorbing: _savingDraft,
+      child: StudioPanel(
+        child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text('Scene composer',
@@ -565,9 +679,10 @@ class _GenerationPageState extends State<GenerationPage> {
           PrimaryButton(
             label: 'Save generation draft',
             icon: Icons.auto_awesome,
-            onPressed: save,
+            onPressed: _savingDraft ? null : save,
           ),
         ],
+      ),
       ),
     );
     final preview = Column(children: [

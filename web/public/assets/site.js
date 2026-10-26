@@ -270,6 +270,9 @@
   function resetVideo() {
     if (!video) return;
     video.pause();
+    // A pending metadata callback from an earlier clip must not seek the
+    // next clip or retain stale scene references.
+    video.onloadedmetadata = null;
     video.removeAttribute('src');
     video.load();
     video.classList.remove('has-video');
@@ -289,12 +292,14 @@
       get('trimEnd').value = clip.end.toFixed(1);
       get('clipSpeed').value = String(clip.speed);
       video.src = clip.url;
+      // Playback rate is per clip; it must not leak from a previous clip's
+      // speed setting when browsing or auto-advancing the timeline.
+      video.playbackRate = clip.speed;
       video.classList.add('has-video');
       emptyStage.hidden = true;
-      video.addEventListener('loadedmetadata', function seekOnce() {
-        video.removeEventListener('loadedmetadata', seekOnce);
-        if (clips[activeClip] === clip) video.currentTime = clip.start;
-      });
+      video.onloadedmetadata = () => {
+        if (currentClip() === clip) video.currentTime = clip.start;
+      };
     } else {
       inspectorEmpty.hidden = false;
       inspectorEmpty.textContent = 'This is a scene placeholder; generate or import a video later.';
@@ -330,16 +335,17 @@
     });
   }
   function shift(from, distance) {
-    const to = from + distance;
-    if (to < 0 || to >= clips.length) return;
-    const [clip] = clips.splice(from, 1);
-    clips.splice(to, 0, clip);
-    activeClip = to;
+    activeClip = HoticeTimelineCore.moveClip(clips, from, distance, activeClip);
     renderClips();
   }
   const report = (message) => status('editorStatus', message);
   get('clipsInput')?.addEventListener('change', (event) => {
     const files = [...event.target.files];
+    if (files.length > 30) {
+      report('Choose at most 30 clips at a time in this browser preview.');
+      event.target.value = '';
+      return;
+    }
     for (const file of files) {
       if (!file.type.startsWith('video/')) {
         report('Please choose a video file.');
@@ -366,7 +372,11 @@
         probe.removeAttribute('src');
         probe.load();
       };
-      probe.onerror = () => report('This video codec could not be read in the browser.');
+      probe.onerror = () => {
+        probe.removeAttribute('src');
+        probe.load();
+        report('This video codec could not be read in the browser.');
+      };
     }
     if (clips.length && activeClip === -1) selectClip(0);
     renderClips();
