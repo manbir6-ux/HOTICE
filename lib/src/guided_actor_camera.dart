@@ -50,6 +50,7 @@ class _GuidedActorCameraPageState extends State<GuidedActorCameraPage>
   CameraController? _controller;
   final List<String> _captures = [];
   bool _agreed = false;
+  bool _resumed = true;
   bool _initializing = false;
   bool _processing = false;
   bool _capturing = false;
@@ -71,10 +72,11 @@ class _GuidedActorCameraPageState extends State<GuidedActorCameraPage>
   }
 
   Future<void> _start() async {
-    if (_disposed || _initializing || !_agreed ||
-        !Platform.isAndroid && !Platform.isIOS) return;
+    if (_disposed || _initializing || !_resumed || !_agreed ||
+        (!Platform.isAndroid && !Platform.isIOS)) return;
     _initializing = true;
     try {
+      if (_controller != null) await _stopCamera();
       final cameras = await availableCameras();
       final front = cameras.where(
         (c) => c.lensDirection == CameraLensDirection.front,
@@ -89,7 +91,7 @@ class _GuidedActorCameraPageState extends State<GuidedActorCameraPage>
             ? ImageFormatGroup.nv21 : ImageFormatGroup.bgra8888,
       );
       await controller.initialize();
-      if (_disposed || !mounted) {
+      if (_disposed || !mounted || !_resumed) {
         await controller.dispose();
         return;
       }
@@ -112,6 +114,7 @@ class _GuidedActorCameraPageState extends State<GuidedActorCameraPage>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (!_agreed || _disposed) return;
+    _resumed = state == AppLifecycleState.resumed;
     if (state == AppLifecycleState.resumed) {
       if (_controller == null) _start();
     } else if (state == AppLifecycleState.inactive ||
@@ -236,9 +239,22 @@ class _GuidedActorCameraPageState extends State<GuidedActorCameraPage>
       final faces = await _detector.processImage(
         InputImage.fromFilePath(photo.path),
       );
-      if (faces.length != 1) {
-        await File(photo.path).delete().catchError((_) => File(photo.path));
-        throw StateError('The photo needs exactly one detectable face. Try again.');
+      final latest = faces.isEmpty ? null : faces.first;
+      final angleOk = latest != null && latest.headEulerAngleY != null &&
+          latest.headEulerAngleZ != null &&
+          latest.headEulerAngleZ!.abs() <= 18 &&
+          switch (_pose) {
+            ScanPose.front => latest.headEulerAngleY!.abs() < 13,
+            ScanPose.left => latest.headEulerAngleY! <= -16 &&
+                latest.headEulerAngleY! >= -50,
+            ScanPose.right => latest.headEulerAngleY! >= 16 &&
+                latest.headEulerAngleY! <= 50,
+          };
+      if (faces.length != 1 || !angleOk) {
+        try { await File(photo.path).delete(); } catch (_) {}
+        throw StateError(
+          'Keep one face at the required angle for the actual photo. Retry.',
+        );
       }
       // These files are intentionally temporary; no server access, gallery
       // publication, or background upload. Purge/restart contract documented.
