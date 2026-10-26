@@ -39,6 +39,17 @@ void main() {
     expect(check(yaw: null).ready, isFalse);
   });
 
+  test('mirrored selfie camera yaw follows the actor left/right perspective', () {
+    expect(ActorPoseGate.selfieYaw(25), -25);
+    expect(ActorPoseGate.selfieYaw(-25), 25);
+    expect(ActorPoseGate.selfieYaw(null), isNull);
+    expect(ActorPoseGate.selfieYaw(25, mirroredFront: false), 25);
+    expect(check(pose: ScanPose.left,
+        yaw: ActorPoseGate.selfieYaw(25)).ready, isTrue);
+    expect(check(pose: ScanPose.right,
+        yaw: ActorPoseGate.selfieYaw(-25)).ready, isTrue);
+  });
+
   test('requires distinct front left and right yaw angles', () {
     expect(check(pose: ScanPose.front, yaw: 0).ready, isTrue);
     expect(check(pose: ScanPose.front, yaw: 20).ready, isFalse);
