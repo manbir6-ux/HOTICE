@@ -7,7 +7,8 @@ import 'state.dart';
 class GenerationHubPage extends StatefulWidget {
   final HotIceStore store;
   final String? initialProjectId;
-  const GenerationHubPage({super.key, required this.store, this.initialProjectId});
+  final bool isActive;
+  const GenerationHubPage({super.key, required this.store, this.initialProjectId, this.isActive = true});
 
   @override
   State<GenerationHubPage> createState() => _GenerationHubPageState();
@@ -67,6 +68,7 @@ class _GenerationHubPageState extends State<GenerationHubPage> {
               MusicVideoStudioPage(
                 store: widget.store,
                 initialProjectId: widget.initialProjectId,
+                audioActive: widget.isActive && musicMode,
               ),
             ],
           ),
