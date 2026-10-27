@@ -288,6 +288,30 @@ void main() {
     expect(store.drafts, isEmpty);
   });
 
+  test('normal video drafts retain verified attachment snapshots', () {
+    final store = HotIceStore();
+    addTearDown(store.dispose);
+    final mutable = <VideoAttachment>[VideoAttachment.image];
+    store.queueDraft(GenerationDraft(
+      projectId: 'demo-film',
+      project: 'User supplied incorrect project title',
+      prompt: 'A quiet sunset',
+      model: 'Cinematic Draft · Demo',
+      modelId: 'cinematic_demo',
+      requestedAttachments: mutable,
+      aspectRatio: '16:9',
+      durationSeconds: 8,
+      createdAt: DateTime(2026, 10, 27),
+    ));
+    mutable.clear();
+    expect(store.drafts.single.project, 'Untitled cinematic film');
+    expect(store.drafts.single.requestedAttachments, [VideoAttachment.image]);
+    expect(
+      () => store.drafts.single.requestedAttachments.add(VideoAttachment.audio),
+      throwsUnsupportedError,
+    );
+  });
+
   test('saved storyboards snapshot caller-owned mutable shot lists', () {
     final store = HotIceStore();
     addTearDown(store.dispose);
