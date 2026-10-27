@@ -260,6 +260,12 @@ final class App
                 ->execute([$title, $document, $next, $id, $user]);
         } else {
             if ($revision !== 0) throw new ApiError(409, 'Cloud version conflict; new projects require expectedRevision=0.');
+            $count = $this->db->prepare('SELECT COUNT(*) FROM cloud_projects WHERE user_id=?');
+            $count->execute([$user]);
+            $maxProjects = max(1, min(1000, (int) ($this->config['max_cloud_projects'] ?? 100)));
+            if ((int) $count->fetchColumn() >= $maxProjects) {
+                throw new ApiError(413, 'Cloud project count limit reached.');
+            }
             $next = 1;
             $this->db->prepare('INSERT INTO cloud_projects (id,user_id,title,document_json,revision) VALUES (?,?,?,?,1)')
                 ->execute([$id, $user, $title, $document]);
@@ -336,6 +342,12 @@ final class App
             $exists = $this->db->prepare('SELECT id FROM cloud_files WHERE id=? FOR UPDATE');
             $exists->execute([$fileId]);
             if ($exists->fetch()) throw new ApiError(409, 'Media ID already exists.');
+            $count = $this->db->prepare('SELECT COUNT(*) FROM cloud_files WHERE project_id=? AND user_id=?');
+            $count->execute([$project, $user]);
+            $maxFiles = max(1, min(2000, (int) ($this->config['max_files_per_project'] ?? 200)));
+            if ((int) $count->fetchColumn() >= $maxFiles) {
+                throw new ApiError(413, 'Cloud file count limit reached.');
+            }
             if (!rename($temp, $dir . '/' . $name)) throw new \RuntimeException('Private storage unavailable.');
             $temp = '';
             try {
