@@ -7,13 +7,17 @@ import 'design.dart';
 /// Local preview only. No audio bytes, file paths or cloud credentials are
 /// persisted to a HOTICE account; a different project gets a fresh panel.
 class MusicSongPreviewPanel extends StatefulWidget {
-  const MusicSongPreviewPanel({super.key});
+  const MusicSongPreviewPanel({super.key, this.active = true});
+
+  /// Only play when the music editor is the visible active studio.
+  final bool active;
 
   @override
   State<MusicSongPreviewPanel> createState() => _MusicSongPreviewPanelState();
 }
 
-class _MusicSongPreviewPanelState extends State<MusicSongPreviewPanel> {
+class _MusicSongPreviewPanelState extends State<MusicSongPreviewPanel>
+    with WidgetsBindingObserver {
   static const maxAudioBytes = 150 * 1024 * 1024;
   static const allowedExtensions = <String>[
     'mp3', 'wav', 'm4a', 'aac', 'flac', 'ogg',
@@ -26,8 +30,36 @@ class _MusicSongPreviewPanelState extends State<MusicSongPreviewPanel> {
   bool _picking = false;
 
   @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  // An IndexedStack keeps editors mounted even when hidden. Never leave a
+  // local song playing behind Normal Video, Credits, Projects or Accounts.
+  void _pauseHiddenPlayback() {
+    final player = _player;
+    if (player != null && player.playing) {
+      player.pause().catchError((Object _) {
+        // A closed or interrupted audio session must not crash navigation.
+      });
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant MusicSongPreviewPanel oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.active && !widget.active) _pauseHiddenPlayback();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed) _pauseHiddenPlayback();
+  }
+
+  @override
   void dispose() {
-    // Audio must not continue after leaving this project's editor.
+    WidgetsBinding.instance.removeObserver(this);
     _player?.dispose();
     super.dispose();
   }
@@ -40,14 +72,14 @@ class _MusicSongPreviewPanelState extends State<MusicSongPreviewPanel> {
   }
 
   Future<void> _chooseSong() async {
-    if (_picking) return;
+    if (_picking || !widget.active) return;
     setState(() => _picking = true);
     try {
       final file = await FilePicker.pickFile(
         type: FileType.custom,
         allowedExtensions: allowedExtensions,
       );
-      if (!mounted || file == null) return;
+      if (!mounted || !widget.active || file == null) return;
       final path = file.path;
       final extension = file.name.split('.').last.toLowerCase();
       if (!allowedExtensions.contains(extension)) {
@@ -73,7 +105,7 @@ class _MusicSongPreviewPanelState extends State<MusicSongPreviewPanel> {
       final candidate = AudioPlayer();
       try {
         final duration = await candidate.setFilePath(path);
-        if (!mounted) {
+        if (!mounted || !widget.active) {
           await candidate.dispose();
           return;
         }
@@ -132,7 +164,7 @@ class _MusicSongPreviewPanelState extends State<MusicSongPreviewPanel> {
           ),
           const SizedBox(height: 8),
           OutlinedButton.icon(
-            onPressed: _picking ? null : _chooseSong,
+            onPressed: _picking || !widget.active ? null : _chooseSong,
             icon: const Icon(Icons.audio_file_outlined),
             label: Text(_picking ? 'Opening files…' : 'Choose a song'),
           ),
@@ -162,19 +194,22 @@ class _MusicSongPreviewPanelState extends State<MusicSongPreviewPanel> {
                           ? Icons.pause_circle_filled_rounded
                           : Icons.play_circle_fill_rounded),
                       iconSize: 37,
-                      onPressed: () async {
+                      onPressed: widget.active ? () async {
                         try {
                           if (playing && !finished) {
                             await player.pause();
                           } else {
                             if (finished) await player.seek(Duration.zero);
-                            // play() completes when playback stops; do not await it.
-                            player.play();
+                            // play() completes when playback stops; handle delayed
+                            // codec/audio-session failures without blocking UI.
+                            player.play().catchError((Object _) {
+                              _notice('Audio playback failed.');
+                            });
                           }
                         } catch (_) {
                           _notice('Audio playback failed.');
                         }
-                      },
+                      } : null,
                     );
                   },
                 ),
@@ -195,11 +230,11 @@ class _MusicSongPreviewPanelState extends State<MusicSongPreviewPanel> {
                                   value: progress,
                                   min: 0,
                                   max: maximum,
-                                  onChanged: (value) {
+                                  onChanged: widget.active ? (value) {
                                     player.seek(
                                       Duration(milliseconds: value.round()),
                                     );
-                                  },
+                                  } : null,
                                 ),
                                 Text(
                                   '${_clock(elapsed)} / ${_clock(length)}',
