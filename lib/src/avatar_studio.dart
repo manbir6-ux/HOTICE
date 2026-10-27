@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:file_picker/file_picker.dart';
 import 'smart_references.dart';
 import 'live_face_capture.dart';
+import 'face_capture_quality.dart';
 import 'dart:io';
 import 'avatar_identity.dart';
 import 'design.dart';
