@@ -262,7 +262,7 @@ final class App
         // to MySQL as a server error; controls cannot appear in metadata.
         $titleLength = preg_match_all('/./us', $title);
         if ($title === '' || strlen($title) > 480 || $titleLength === false ||
-            $titleLength > 120 || preg_match('/[\\x00-\\x1F\\x7F]/', $title)) {
+            $titleLength > 120 || preg_match('/[\x00-\x1F\x7F]/', $title)) {
             throw new ApiError(422, 'Project title must be 1–120 readable characters.');
         }
         $revision = $b['expectedRevision'] ?? null;
