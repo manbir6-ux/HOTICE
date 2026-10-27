@@ -289,15 +289,35 @@ void main() {
     await tester.tap(preview);
     await tester.pumpAndSettle();
     expect(find.text('Opening'), findsOneWidget);
+    final anime = find.widgetWithText(ChoiceChip, 'Anime');
+    final fantasy = find.widgetWithText(ChoiceChip, 'Fantasy');
+    final cinematic = find.widgetWithText(ChoiceChip, 'Cinematic realism');
+    await tester.ensureVisible(anime);
+    await tester.tap(anime);
+    await tester.pumpAndSettle();
+    expect(tester.widget<ChoiceChip>(anime).selected, isTrue);
 
     await openProject(second);
+    // A different film must start with its default visual direction.
+    expect(tester.widget<ChoiceChip>(anime).selected, isFalse);
+    expect(tester.widget<ChoiceChip>(cinematic).selected, isTrue);
     expect(tester.widget<TextField>(field).controller!.text, isEmpty);
     expect(find.text('Opening'), findsNothing);
     await tester.enterText(field, 'Second music story');
+    await tester.ensureVisible(fantasy);
+    await tester.tap(fantasy);
+    await tester.pumpAndSettle();
     await openProject('demo-film');
     expect(tester.widget<TextField>(field).controller!.text,
         'First music story');
     expect(find.text('Opening'), findsOneWidget);
+    expect(tester.widget<ChoiceChip>(anime).selected, isTrue);
+    expect(tester.widget<ChoiceChip>(fantasy).selected, isFalse);
+
+    await openProject(second);
+    expect(tester.widget<TextField>(field).controller!.text,
+        'Second music story');
+    expect(tester.widget<ChoiceChip>(fantasy).selected, isTrue);
     expect(tester.takeException(), isNull);
   });
 
