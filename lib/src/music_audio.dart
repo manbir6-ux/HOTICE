@@ -47,7 +47,6 @@ class _MusicSongPreviewPanelState extends State<MusicSongPreviewPanel> {
         type: FileType.custom,
         allowedExtensions: allowedExtensions,
         allowMultiple: false,
-        withData: false,
       );
       if (!mounted || result == null || result.files.isEmpty) return;
       final file = result.files.single;
@@ -57,7 +56,10 @@ class _MusicSongPreviewPanelState extends State<MusicSongPreviewPanel> {
         _notice('Choose a supported MP3, WAV, M4A, AAC, FLAC or OGG audio file.');
         return;
       }
-      if (file.size == 0 || file.size > maxAudioBytes) {
+      // FilePicker 12+ uses async length() rather than PlatformFile.size.
+      final fileBytes = await file.length();
+      if (!mounted) return;
+      if (fileBytes == 0 || fileBytes > maxAudioBytes) {
         _notice('Song must be non-empty and no larger than 150 MB.');
         return;
       }
@@ -77,7 +79,7 @@ class _MusicSongPreviewPanelState extends State<MusicSongPreviewPanel> {
         setState(() {
           _player = candidate;
           _songName = file.name;
-          _songBytes = file.size;
+          _songBytes = fileBytes;
           _songLength = duration;
         });
         await previous?.dispose();
