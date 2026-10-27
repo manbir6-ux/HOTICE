@@ -435,8 +435,22 @@ final class App
         // only backend/public misses public_html itself and can expose backups.
         // Fail closed if storage is inside OR encloses either web root.
         $roots = [$realPublic];
-        $documentRoot = realpath((string) ($_SERVER['DOCUMENT_ROOT'] ?? ''));
-        if ($documentRoot !== false) $roots[] = $documentRoot;
+        $documentRoot = trim((string) ($_SERVER['DOCUMENT_ROOT'] ?? ''));
+        if ($documentRoot !== '') {
+            $resolvedDocumentRoot = realpath($documentRoot);
+            if ($resolvedDocumentRoot === false) {
+                throw new \RuntimeException('Web document root cannot be verified.');
+            }
+            $roots[] = $resolvedDocumentRoot;
+        }
+        $configuredRoot = trim((string) ($this->config['public_webroot_path'] ?? ''));
+        if ($configuredRoot !== '') {
+            $resolvedConfiguredRoot = realpath($configuredRoot);
+            if ($resolvedConfiguredRoot === false) {
+                throw new \RuntimeException('Configured public webroot cannot be verified.');
+            }
+            $roots[] = $resolvedConfiguredRoot;
+        }
         foreach (array_unique($roots) as $root) {
             if ($real === $root || str_starts_with($real . '/', $root . '/')
                 || str_starts_with($root . '/', $real . '/')) {
