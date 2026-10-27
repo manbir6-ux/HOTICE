@@ -31,6 +31,8 @@ class _MusicVideoStudioPageState extends State<MusicVideoStudioPage> {
   final story = TextEditingController();
   final Map<String, String> _unsavedStories = {};
   final Map<String, List<StoryboardShot>> _unsavedShots = {};
+  final Map<String, String> _unsavedStyles = {};
+  final Map<String, String> _unsavedAvatars = {};
   String? projectId;
   String selectedStyle = 'Cinematic realism';
   String selectedAvatar = 'None';
@@ -59,8 +61,14 @@ class _MusicVideoStudioPageState extends State<MusicVideoStudioPage> {
     if (projectId != null) {
       _unsavedStories[projectId!] = story.text;
       _unsavedShots[projectId!] = List<StoryboardShot>.of(shots);
+      _unsavedStyles[projectId!] = selectedStyle;
+      _unsavedAvatars[projectId!] = selectedAvatar;
     }
     projectId = next;
+    // Visual style and recurring Actor belong to the project just like its
+    // story. Never carry a different film's creative settings across tabs.
+    selectedStyle = next == null ? styles.first : (_unsavedStyles[next] ?? styles.first);
+    selectedAvatar = next == null ? 'None' : (_unsavedAvatars[next] ?? 'None');
     story.text = next == null ? '' : (_unsavedStories[next] ?? '');
     shots = next == null
         ? <StoryboardShot>[]
