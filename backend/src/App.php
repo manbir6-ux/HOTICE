@@ -245,7 +245,8 @@ final class App
         $q->execute([$user, $id]);
         $p = $q->fetch();
         if (!$p) throw new ApiError(404, 'Project not found.');
-        $p['document'] = json_decode($p['document_json'], true, 32, JSON_THROW_ON_ERROR);
+        // Decode as objects to preserve {} vs [] throughout cloud sync.
+        $p['document'] = json_decode($p['document_json'], false, 32, JSON_THROW_ON_ERROR);
         unset($p['document_json']);
         $p['revision'] = (int) $p['revision'];
         $files = $this->db->prepare('SELECT id,mime,byte_size,sha256,created_at FROM cloud_files WHERE project_id=? AND user_id=? ORDER BY created_at DESC LIMIT 200');
