@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:file_picker/file_picker.dart';
+import 'smart_references.dart';
 import 'avatar_identity.dart';
 import 'design.dart';
 import 'state.dart';
@@ -99,6 +101,85 @@ class _AvatarsPageState extends State<AvatarsPage> {
     }
   }
 
+  Future<void> importFacePhoto(StudioAvatar avatar) async {
+    final view = await showModalBottomSheet<FaceView>(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) => SafeArea(
+        child: ListView(
+          shrinkWrap: true,
+          children: [
+            const ListTile(title: Text('Label this face view'),
+                subtitle: Text('Choose the angle shown in your actual photo.')),
+            for (final angle in FaceView.values)
+              ListTile(
+                title: Text(angle.label),
+                onTap: () => Navigator.pop(ctx, angle),
+              ),
+          ],
+        ),
+      ),
+    );
+    if (!mounted || view == null) return;
+    final consent = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Import face reference?'),
+        content: const Text(
+          'This photo contains sensitive likeness data. HOTICE will retain '
+          'only a temporary local picker file reference in this demo session. '
+          'It is not a verified 3D scan, encrypted vault, or cloud backup.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Choose photo')),
+        ],
+      ),
+    );
+    if (!mounted || consent != true) return;
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.image, allowMultiple: false, withData: false,
+      );
+      if (!mounted || result == null || result.files.isEmpty) return;
+      final file = result.files.single;
+      final ext = (file.extension ?? '').toLowerCase();
+      final mime = switch (ext) {
+        'jpg' || 'jpeg' => 'image/jpeg',
+        'png' => 'image/png',
+        'webp' => 'image/webp',
+        _ => null,
+      };
+      final path = file.path;
+      if (mime == null || path == null || path.isEmpty ||
+          file.size <= 0 || file.size > 15 * 1024 * 1024) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Choose a JPG/PNG/WebP photo under 15 MB.'),
+        ));
+        return;
+      }
+      final saved = widget.store.addAvatarReference(avatar.name, AvatarReference(
+        id: createLocalProjectId(),
+        ownerName: avatar.name,
+        role: ReferenceRole.avatar,
+        format: ReferenceFormat.image,
+        mimeType: mime,
+        localPath: path,
+        view: view,
+      ));
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(saved
+          ? '${view.label} reference added for this session.'
+          : 'Could not add reference. Check avatar and limit (16).')));
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Image selection failed or was cancelled.'),
+      ));
+    }
+  }
+
   void openProfile(StudioAvatar avatar) {
     final card = AvatarPromptComposer.identityCard(avatar);
     showModalBottomSheet<void>(
@@ -122,6 +203,26 @@ class _AvatarsPageState extends State<AvatarsPage> {
                 const DemoNotice(
                   'HOTICE can add these notes to demo video prompts. Real 3D scanning, facial matching and provider-specific references are not active.',
                 ),
+                const SizedBox(height: 14),
+                Text('Imported face references: '
+                    '${widget.store.avatarPackFor(avatar.name).assets.length} '
+                    '(session only)'),
+                for (final photo in widget.store.avatarPackFor(avatar.name).assets)
+                  ListTile(
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(Icons.photo_outlined),
+                    title: Text(photo.view?.label ?? 'Reference'),
+                    subtitle: const Text('Unverified face photo'),
+                    trailing: IconButton(
+                      tooltip: 'Remove this reference',
+                      icon: const Icon(Icons.delete_outline),
+                      onPressed: () {
+                        widget.store.removeAvatarReference(avatar.name, photo.id);
+                        Navigator.pop(ctx);
+                      },
+                    ),
+                  ),
                 const SizedBox(height: 14),
                 FilledButton.icon(
                   onPressed: () async {
@@ -152,7 +253,7 @@ class _AvatarsPageState extends State<AvatarsPage> {
             subtitle: 'Create once. Reuse the same character description across your shots.',
           ),
           const DemoNotice(
-            'Testing mode: character descriptions work as local presets. No face images, camera scans, biometric data or 3D meshes are collected or stored.',
+            'Testing mode: you may manually import face photos for reference planning; only temporary local paths are held in memory. Live camera scanning, verified 3D reconstruction and secure avatar storage are not active.',
           ),
           const SizedBox(height: 20),
           Wrap(
@@ -362,20 +463,25 @@ class _AvatarsPageState extends State<AvatarsPage> {
                   title: Text(avatar.name,
                       maxLines: 1, overflow: TextOverflow.ellipsis),
                   subtitle: Text(avatar.style +
-                      ' · ' + (avatar.identityNotes.isEmpty
+                      ' · ${widget.store.avatarPackFor(avatar.name).assets.length} photos · ' +
+                      (avatar.identityNotes.isEmpty
                           ? 'Add identity notes later'
-                          : 'Identity notes ready for prompts')),
+                          : 'Identity notes ready')),
+
                   isThreeLine: false,
                   trailing: PopupMenuButton<String>(
                     tooltip: 'Character options',
                     onSelected: (action) {
-                      if (action == 'edit') {
+                      if (action == 'import') {
+                        importFacePhoto(avatar);
+                      } else if (action == 'edit') {
                         startEditing(avatar);
                       } else if (action == 'delete') {
                         deleteAvatar(avatar);
                       }
                     },
                     itemBuilder: (ctx) => const [
+                      PopupMenuItem(value: 'import', child: Text('Add face reference photo')),
                       PopupMenuItem(value: 'edit', child: Text('Edit character')),
                       PopupMenuItem(value: 'delete', child: Text('Delete character')),
                     ],
