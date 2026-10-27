@@ -278,6 +278,7 @@ class _GenerationPageState extends State<GenerationPage> {
           ),
           const SizedBox(height: 13),
           DropdownButtonFormField<String>(
+            key: ValueKey('normal-model-$project'),
             value: model,
             isExpanded: true,
             decoration: const InputDecoration(labelText: 'Model preview'),
@@ -318,6 +319,7 @@ class _GenerationPageState extends State<GenerationPage> {
           ),
           const SizedBox(height: 13),
           DropdownButtonFormField<String>(
+            key: ValueKey('normal-avatar-$project'),
             value: avatarName,
             decoration: const InputDecoration(labelText: 'Avatar'),
             items: avatars.map((name) =>
