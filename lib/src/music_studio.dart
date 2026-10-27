@@ -303,6 +303,7 @@ class _MusicVideoStudioPageState extends State<MusicVideoStudioPage> {
                   ),
                   const SizedBox(height: 12),
                   DropdownButtonFormField<String>(
+                    key: ValueKey('music-avatar-$projectId'),
                     value: selectedAvatar,
                     isExpanded: true,
                     decoration: const InputDecoration(
