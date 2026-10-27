@@ -65,4 +65,16 @@ test "$status" = '404'
 curl -fsS -X POST -H "$AUTH" "$BASE/v1/auth/logout" | jq -e '.ok == true' >/dev/null
 status=$(curl -sS -o /dev/null -w '%{http_code}' -H "$AUTH" "$BASE/v1/me")
 test "$status" = '401'
+# Failed-login budgets use both a user-address HMAC and a client-IP HMAC.
+# An attacker cannot reset the global IP budget by a valid login.
+spray_email='brute-force-target@example.com'
+for i in $(seq 1 12); do
+  status=$(curl -sS -o /dev/null -w '%{http_code}' -H 'Content-Type: application/json' \
+    -d "{\"email\":\"$spray_email\",\"password\":\"InvalidPassword$i\"}" "$BASE/v1/auth/login")
+  test "$status" = '401'
+done
+status=$(curl -sS -o /dev/null -w '%{http_code}' -H 'Content-Type: application/json' \
+  -d "{\"email\":\"$spray_email\",\"password\":\"InvalidPassword13\"}" "$BASE/v1/auth/login")
+test "$status" = '429'
+
 echo 'HOTICE MySQL + HTTP API integration: passed (auth, entitlement, project conflict, media, delete, logout).'
