@@ -110,6 +110,10 @@ class _GenerationPageState extends State<GenerationPage> {
   final prompt = TextEditingController();
   // Each in-progress scene belongs to one film project in this demo session.
   final Map<String, String> _unsavedPrompts = {};
+  final Map<String, String> _unsavedModels = {};
+  final Map<String, String> _unsavedRatios = {};
+  final Map<String, int> _unsavedDurations = {};
+  final Map<String, String> _unsavedAvatars = {};
   String? project;
   String model = 'cinematic_demo';
 
@@ -127,9 +131,31 @@ class _GenerationPageState extends State<GenerationPage> {
 
   void _selectProject(String? next) {
     if (project == next) return;
-    if (project != null) _unsavedPrompts[project!] = prompt.text;
+    if (project != null) {
+      _unsavedPrompts[project!] = prompt.text;
+      _unsavedModels[project!] = model;
+      _unsavedRatios[project!] = ratio;
+      _unsavedDurations[project!] = seconds;
+      _unsavedAvatars[project!] = avatarName;
+    }
     project = next;
     prompt.text = next == null ? '' : (_unsavedPrompts[next] ?? '');
+    final savedModel = next == null ? null : _unsavedModels[next];
+    model = demoVideoModels.any((candidate) => candidate.id == savedModel)
+        ? savedModel!
+        : 'cinematic_demo';
+    final chosen = demoModelById(model);
+    final savedDuration = next == null ? null : _unsavedDurations[next];
+    seconds = savedDuration != null && chosen.durations.contains(savedDuration)
+        ? savedDuration
+        : 8;
+    if (!chosen.durations.contains(seconds)) seconds = chosen.durations.first;
+    final savedRatio = next == null ? null : _unsavedRatios[next];
+    ratio = savedRatio != null && chosen.ratiosFor(seconds).contains(savedRatio)
+        ? savedRatio
+        : chosen.ratiosFor(seconds).first;
+    avatarName = next == null ? 'None' : (_unsavedAvatars[next] ?? 'None');
+    // Avatar membership is re-validated at build and at save time.
   }
 
   @override
