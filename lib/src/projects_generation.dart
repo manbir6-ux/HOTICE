@@ -375,7 +375,7 @@ class _GenerationPageState extends State<GenerationPage> {
           const SizedBox(height: 15),
           DropdownButtonFormField<String>(
             key: ValueKey(project),
-            value: project,
+            initialValue: project,
             decoration: const InputDecoration(labelText: 'Project'),
             isExpanded: true,
             items: widget.store.projects.map((item) =>
@@ -400,7 +400,7 @@ class _GenerationPageState extends State<GenerationPage> {
           const SizedBox(height: 13),
           DropdownButtonFormField<String>(
             key: ValueKey('normal-model-$project'),
-            value: model,
+            initialValue: model,
             isExpanded: true,
             decoration: const InputDecoration(labelText: 'Model preview'),
             items: [
@@ -441,7 +441,7 @@ class _GenerationPageState extends State<GenerationPage> {
           const SizedBox(height: 13),
           DropdownButtonFormField<String>(
             key: ValueKey('normal-avatar-$project'),
-            value: avatarName,
+            initialValue: avatarName,
             decoration: const InputDecoration(labelText: 'Avatar'),
             items: avatars.map((name) =>
                 DropdownMenuItem(value: name, child: Text(name))).toList(),
