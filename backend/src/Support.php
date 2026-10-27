@@ -71,17 +71,20 @@ final class Support
         $body = file_get_contents('php://input', false, null, 0, $limit + 1);
         if ($body === false || strlen($body) > $limit) throw new ApiError(413, 'JSON request too large.');
         try {
-            $value = json_decode($body, true, 32, JSON_THROW_ON_ERROR);
+            // Keep nested empty JSON objects as stdClass, not [].
+            $value = json_decode($body, false, 32, JSON_THROW_ON_ERROR);
         } catch (\JsonException $e) {
             throw new ApiError(400, 'Invalid JSON request.');
         }
-        if (!is_array($value) || array_is_list($value)) throw new ApiError(400, 'JSON object expected.');
-        return $value;
+        if (!$value instanceof \stdClass) throw new ApiError(400, 'JSON object expected.');
+        return (array) $value;
     }
 
     public static function jsonString(mixed $value, int $maxBytes): string
     {
-        if (!is_array($value)) throw new ApiError(422, 'Document must be a JSON object.');
+        if (!$value instanceof \stdClass && (!is_array($value) || array_is_list($value))) {
+            throw new ApiError(422, 'Document must be a JSON object.');
+        }
         try {
             $json = json_encode($value, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE);
         } catch (\JsonException $e) {
