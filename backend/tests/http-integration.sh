@@ -40,6 +40,23 @@ status=$(curl -sS -o /dev/null -w '%{http_code}' -X PUT -H "$AUTH" -H 'Content-T
 test "$status" = '413'
 curl -fsS -H "$AUTH" "$BASE/v1/files/$file" -o /tmp/hotice-ci-download.png
 cmp /tmp/hotice-ci-test.png /tmp/hotice-ci-download.png
+
+# A *different entitled account* must not access, overwrite, erase or
+# enumerate the first account's cloud data; free-vs-paid checks are insufficient.
+other_email='cloud-isolation@example.com'
+curl -fsS -H 'Content-Type: application/json' -d "{\"email\":\"$other_email\",\"password\":\"$PASS\"}" "$BASE/v1/auth/register" | jq -e '.registered == true' >/dev/null
+other_token=$(curl -fsS -H 'Content-Type: application/json' -d "{\"email\":\"$other_email\",\"password\":\"$PASS\"}" "$BASE/v1/auth/login" | jq -er '.accessToken')
+php backend/bin/grant-trial.php "$other_email" 32 1
+OTHER_AUTH="Authorization: Bearer $other_token"
+status=$(curl -sS -o /dev/null -w '%{http_code}' -H "$OTHER_AUTH" "$BASE/v1/projects/$id")
+test "$status" = '404'
+status=$(curl -sS -o /dev/null -w '%{http_code}' -X PUT -H "$OTHER_AUTH" -H 'Content-Type: application/json' -d '{"title":"Stolen title","expectedRevision":1,"document":{"stolen":true}}' "$BASE/v1/projects/$id")
+test "$status" = '404'
+status=$(curl -sS -o /dev/null -w '%{http_code}' -H "$OTHER_AUTH" "$BASE/v1/files/$file")
+test "$status" = '404'
+status=$(curl -sS -o /dev/null -w '%{http_code}' -X DELETE -H "$OTHER_AUTH" "$BASE/v1/projects/$id")
+test "$status" = '404'
+curl -fsS -H "$AUTH" "$BASE/v1/projects/$id" | jq -e '.project.revision == 1' >/dev/null
 curl -fsS -H "$AUTH" "$BASE/v1/me" | jq -e '.cloud.usedBytes > 0' >/dev/null
 curl -fsS -X DELETE -H "$AUTH" "$BASE/v1/projects/$id" | jq -e '.deleted == true' >/dev/null
 curl -fsS -H "$AUTH" "$BASE/v1/me" | jq -e '.cloud.usedBytes == 0' >/dev/null
