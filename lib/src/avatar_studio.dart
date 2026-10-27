@@ -139,11 +139,10 @@ class _AvatarsPageState extends State<AvatarsPage> {
     );
     if (!mounted || consent != true) return;
     try {
-      final result = await FilePicker.platform.pickFiles(
-        type: FileType.image, allowMultiple: false, withData: false,
-      );
-      if (!mounted || result == null || result.files.isEmpty) return;
-      final file = result.files.single;
+      final file = await FilePicker.pickFile(type: FileType.image);
+      if (!mounted || file == null) return;
+      final fileBytes = file.lengthSync() ?? await file.length();
+      if (!mounted) return;
       final ext = (file.extension ?? '').toLowerCase();
       final mime = switch (ext) {
         'jpg' || 'jpeg' => 'image/jpeg',
@@ -153,7 +152,7 @@ class _AvatarsPageState extends State<AvatarsPage> {
       };
       final path = file.path;
       if (mime == null || path == null || path.isEmpty ||
-          file.size <= 0 || file.size > 15 * 1024 * 1024) {
+          fileBytes == null || fileBytes <= 0 || fileBytes > 15 * 1024 * 1024) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
           content: Text('Choose a JPG/PNG/WebP photo under 15 MB.'),
         ));
