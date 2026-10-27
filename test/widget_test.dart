@@ -42,7 +42,7 @@ void main() {
     expect(store.drafts.single.project, 'Better title');
     expect(store.musicPlans.single.projectId, first);
     expect(store.renameProject(first, '  '), isFalse);
-    expect(store.renameProject(first, 'x' * 61), isFalse);
+    expect(store.renameProject(first, List.filled(61, 'x').join()), isFalse);
 
     store.addAccount('separate@example.com');
     final other = store.addProject('Other account project');
