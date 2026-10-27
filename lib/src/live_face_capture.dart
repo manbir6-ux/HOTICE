@@ -247,20 +247,32 @@ class _LiveFaceScanPageState extends State<LiveFaceScanPage>
     _stability.reset();
     final pose = CapturePose.values[_index];
     if (mounted) setState(() => _instruction = 'Capturing ' + pose.label);
+    XFile? rawCapture;
     try {
       if (controller.value.isStreamingImages) await controller.stopImageStream();
-      final capture = await controller.takePicture();
+      rawCapture = await controller.takePicture();
       final verified = await _detector.processImage(
-          InputImage.fromFilePath(capture.path));
+          InputImage.fromFilePath(rawCapture.path));
       if (verified.length != 1) throw StateError('Exactly one face required in photo');
-      if (pose == CapturePose.front) {
-        final face = verified.single;
-        if (face.leftEyeOpenProbability == null ||
-            face.rightEyeOpenProbability == null ||
-            face.leftEyeOpenProbability! < .70 ||
-            face.rightEyeOpenProbability! < .70) {
-          throw StateError('Both eyes must be open in the front photo');
-        }
+      final face = verified.single;
+      final stillQuality = CaptureQualityGate.check(
+        pose,
+        FaceObservation(
+          faces: verified.length,
+          centerX: .5,
+          centerY: .5,
+          faceWidthFraction: .4,
+          faceHeightFraction: .5,
+          yaw: face.headEulerAngleY,
+          pitch: face.headEulerAngleX,
+          roll: face.headEulerAngleZ,
+          leftEyeOpen: face.leftEyeOpenProbability,
+          rightEyeOpen: face.rightEyeOpenProbability,
+        ),
+        invertYaw: _invertYaw,
+      );
+      if (!stillQuality.ready) {
+        throw StateError('Still image failed pose check: ' + stillQuality.message);
       }
       if (_directory == null) {
         final tmp = await getTemporaryDirectory();
@@ -270,8 +282,7 @@ class _LiveFaceScanPageState extends State<LiveFaceScanPage>
         _directory = dir.path;
       }
       final target = File(_directory! + '/' + pose.name + '.jpg');
-      await File(capture.path).copy(target.path);
-      try { await File(capture.path).delete(); } catch (_) {}
+      await File(rawCapture.path).copy(target.path);
       if (_disposed || !mounted) {
         try { await target.delete(); } catch (_) {}
         return;
@@ -285,6 +296,9 @@ class _LiveFaceScanPageState extends State<LiveFaceScanPage>
       if (mounted && !_disposed) setState(() =>
           _instruction = 'Retake: ' + e.toString());
     } finally {
+      if (rawCapture != null) {
+        try { await File(rawCapture.path).delete(); } catch (_) {}
+      }
       _taking = false;
       if (!_disposed && mounted && identical(_camera, controller) &&
           _index < CapturePose.values.length &&
@@ -444,6 +458,25 @@ class _LiveFaceScanPageState extends State<LiveFaceScanPage>
                     label: Text(pose.label),
                   ),
               ]),
+              if (_shots.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                SizedBox(
+                  height: 112,
+                  child: ListView(
+                    scrollDirection: Axis.horizontal,
+                    children: [for (final shot in _shots)
+                      Padding(
+                        padding: const EdgeInsets.only(right: 8),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(12),
+                          child: Image.file(File(shot.path),
+                            width: 96, height: 108, fit: BoxFit.cover),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
               if (done) ...[
                 const SizedBox(height: 18),
                 const Text('Five guided photos are ready. No 3D mesh exists.'),
