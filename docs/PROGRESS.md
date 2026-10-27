@@ -2,6 +2,14 @@
 
 > **Continuing HOTICE on another model?** First read [CONTINUE_HERE.md](CONTINUE_HERE.md) for the verified repo state, product decisions, blockers, and ordered next steps. Refresh the current branch and Actions status; this checklist may lag behind newer commits.
 
+## Guided live face capture — 28 October 2026 (feature branch)
+
+- [x] On-device Camera2/NV21 + ML Kit face detection and 5-step auto-capture implementation with explicit consent, front-view open-eye checks, framing/head-pose/lighting heuristics, still revalidation and retake controls.
+- [x] Prominent Live face capture UI; capture photos are linked to the selected Actor as session-only 2D reference assets; cleaning up app-owned temporary files on removal.
+- [x] Native camera permission generation and iOS 15.5 deployment/privacy configuration; unit tests for pose and eye-quality logic.
+- [ ] Physical Android/iOS scan accuracy, orientation calibration and camera-permission/lifecycle field QA. CI emulator smoke tests do not prove face scanning works.
+- [ ] Secure encrypted on-device avatar vault, actual multi-view 3D reconstruction and export, native model APIs and verified identity fidelity.
+
 ## Smart reference work-in-progress — 28 October 2026 (feature branch)
 
 - [x] Typed smart reference selection engine in source with image/GLB capability gates, pose-aware scoring, manual locks, consent checks and account/project ownership validation.
