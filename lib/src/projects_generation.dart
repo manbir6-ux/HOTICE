@@ -123,17 +123,15 @@ class ProjectsPage extends StatelessWidget {
                           children: [
                             FilmPreview(title: project.title),
                             const SizedBox(height: 12),
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: Text(
-                                    project.title,
-                                    maxLines: 2,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: Theme.of(context).textTheme.titleMedium,
-                                  ),
-                                ),
-                                PopupMenuButton<String>(
+                            LayoutBuilder(
+                              builder: (context, constraints) {
+                                final title = Text(
+                                  project.title,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: Theme.of(context).textTheme.titleMedium,
+                                );
+                                final menu = PopupMenuButton<String>(
                                   key: ValueKey('project-options-${project.id}'),
                                   tooltip: 'Project options',
                                   icon: const Icon(Icons.more_vert_rounded),
@@ -154,8 +152,21 @@ class ProjectsPage extends StatelessWidget {
                                       child: Text('Delete'),
                                     ),
                                   ],
-                                ),
-                              ],
+                                );
+                                // The tiny-width regression test gives this
+                                // tile as little as 16 logical px to use.
+                                // A 48px IconButton next to a title overflows
+                                // in a Row even with an Expanded title.
+                                if (constraints.maxWidth < 64) {
+                                  return Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [title, menu],
+                                  );
+                                }
+                                return Row(
+                                  children: [Expanded(child: title), menu],
+                                );
+                              },
                             ),
                             const SizedBox(height: 5),
                             const Text('Open project →',
