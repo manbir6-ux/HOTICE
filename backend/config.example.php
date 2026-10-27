@@ -9,6 +9,9 @@ return [
     // Use: php -r "echo bin2hex(random_bytes(32)), PHP_EOL;"
     'app_key' => 'REPLACE_WITH_64_RANDOM_HEX_CHARACTERS',
     'storage_path' => __DIR__ . '/private-media',
+    // Set to your cPanel domain's real document root (for example
+    // /home/account/public_html). The installer checks this BEFORE deployment.
+    'public_webroot_path' => '/home/CPANEL_USERNAME/public_html',
     'require_https' => true,
     'allow_registration' => false, // switch on ONLY after signup/email verification controls are in place
     'token_ttl_hours' => 24,
