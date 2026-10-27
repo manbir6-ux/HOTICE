@@ -1,4 +1,5 @@
 import 'dart:math';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'video_models.dart';
@@ -189,10 +190,19 @@ class HotIceStore extends ChangeNotifier {
     return true;
   }
 
+  void _deleteOwnedPhotos(Iterable<AvatarReference> photos) {
+    for (final photo in photos) {
+      if (photo.ownedTemporaryFile) {
+        File(photo.localPath).delete().catchError((Object _) => File(photo.localPath));
+      }
+    }
+  }
+
   bool removeAvatarReference(String avatarName, String assetId) {
     final assets = _workspace.avatarReferences[avatarName];
     if (assets == null) return false;
     final previous = assets.length;
+    _deleteOwnedPhotos(assets.where((a) => a.id == assetId));
     assets.removeWhere((a) => a.id == assetId);
     if (assets.length == previous) return false;
     notifyListeners();
@@ -351,7 +361,7 @@ class HotIceStore extends ChangeNotifier {
     final oldLength = avatars.length;
     avatars.removeWhere((a) => a.name == name);
     if (avatars.length == oldLength) return false;
-    _workspace.avatarReferences.remove(name);
+    _deleteOwnedPhotos(_workspace.avatarReferences.remove(name) ?? const <AvatarReference>[]);
     // Existing scene drafts remain historical snapshots of their creation.
     notifyListeners();
     return true;
