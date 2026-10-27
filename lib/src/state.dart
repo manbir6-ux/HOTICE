@@ -226,6 +226,12 @@ class HotIceStore extends ChangeNotifier {
         !projects.any((p) => p.id == draft.projectId)) {
       throw StateError('The selected project is not in this demo workspace.');
     }
+    // Prevent synthetic scene drafts from referring to an Actor belonging
+    // to another demo workspace. This is data integrity, NOT authentication.
+    if (draft.avatarName != 'None' &&
+        !avatars.any((avatar) => avatar.name == draft.avatarName)) {
+      throw StateError('Selected Actor is not in this demo workspace.');
+    }
     if (draft.modelId.isNotEmpty) {
       final matches = demoVideoModels.where((m) => m.id == draft.modelId);
       if (matches.isEmpty ||
@@ -237,7 +243,22 @@ class HotIceStore extends ChangeNotifier {
         throw StateError('Unsupported output or attachment for this model.');
       }
     }
-    drafts.insert(0, draft);
+    // Capture a stable job snapshot. The caller must not be able to mutate
+    // validated attachment settings after this draft is stored.
+    final canonicalProject = projects.where((p) => p.id == draft.projectId);
+    drafts.insert(0, GenerationDraft(
+      project: canonicalProject.isEmpty ? draft.project : canonicalProject.first.title,
+      prompt: draft.prompt,
+      model: draft.model,
+      aspectRatio: draft.aspectRatio,
+      durationSeconds: draft.durationSeconds,
+      createdAt: draft.createdAt,
+      projectId: draft.projectId,
+      avatarName: draft.avatarName,
+      modelId: draft.modelId,
+      requestedAttachments:
+          List<VideoAttachment>.unmodifiable(draft.requestedAttachments),
+    ));
     notifyListeners();
   }
 
@@ -252,7 +273,21 @@ class HotIceStore extends ChangeNotifier {
         !avatars.any((avatar) => avatar.name == plan.avatarName)) {
       throw StateError('Avatar belongs to a different workspace.');
     }
-    musicPlans.insert(0, plan);
+    if (plan.shots.any((shot) => shot.estimatedSeconds <= 0 ||
+        shot.estimatedSeconds > 600 ||
+        shot.description.trim().isEmpty)) {
+      throw StateError('Storyboard shots require a description and a valid duration.');
+    }
+    // Store a detached immutable snapshot, not a caller-owned mutable List.
+    // Otherwise editing an unsaved storyboard can silently rewrite history.
+    musicPlans.insert(0, MusicVideoPlan(
+      projectId: plan.projectId,
+      storyBrief: plan.storyBrief.trim(),
+      visualStyle: plan.visualStyle,
+      avatarName: plan.avatarName,
+      shots: List<StoryboardShot>.unmodifiable(plan.shots),
+      createdAt: plan.createdAt,
+    ));
     notifyListeners();
   }
 

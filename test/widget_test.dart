@@ -270,6 +270,134 @@ void main() {
     store.dispose();
   });
 
+  test('foreign Actors are not accepted in normal video scene drafts', () {
+    final store = HotIceStore();
+    addTearDown(store.dispose);
+    store.addAvatar('Private Hero', 'Cinematic');
+    store.addAccount('other@example.com');
+    expect(() => store.queueDraft(GenerationDraft(
+      projectId: store.addProject('Other film'),
+      project: 'Other film',
+      avatarName: 'Private Hero',
+      prompt: 'A scene with another profile\'s actor',
+      model: 'Cinematic Draft',
+      aspectRatio: '16:9',
+      durationSeconds: 8,
+      createdAt: DateTime(2026, 10, 27),
+    )), throwsStateError);
+    expect(store.drafts, isEmpty);
+  });
+
+  test('normal video drafts retain verified attachment snapshots', () {
+    final store = HotIceStore();
+    addTearDown(store.dispose);
+    final mutable = <VideoAttachment>[VideoAttachment.image];
+    store.queueDraft(GenerationDraft(
+      projectId: 'demo-film',
+      project: 'User supplied incorrect project title',
+      prompt: 'A quiet sunset',
+      model: 'Cinematic Draft · Demo',
+      modelId: 'cinematic_demo',
+      requestedAttachments: mutable,
+      aspectRatio: '16:9',
+      durationSeconds: 8,
+      createdAt: DateTime(2026, 10, 27),
+    ));
+    mutable.clear();
+    expect(store.drafts.single.project, 'Untitled cinematic film');
+    expect(store.drafts.single.requestedAttachments, [VideoAttachment.image]);
+    expect(
+      () => store.drafts.single.requestedAttachments.add(VideoAttachment.audio),
+      throwsUnsupportedError,
+    );
+  });
+
+  test('saved storyboards snapshot caller-owned mutable shot lists', () {
+    final store = HotIceStore();
+    addTearDown(store.dispose);
+    final mutableShots = <StoryboardShot>[
+      const StoryboardShot('Opening', 'A safe opening', 6),
+    ];
+    store.saveMusicPlan(MusicVideoPlan(
+      projectId: 'demo-film',
+      storyBrief: '  Night ride  ',
+      visualStyle: 'Cinematic realism',
+      avatarName: 'None',
+      shots: mutableShots,
+      createdAt: DateTime(2026, 10, 27),
+    ));
+    mutableShots.clear();
+    expect(store.musicPlans.single.shots, hasLength(1));
+    expect(store.musicPlans.single.storyBrief, 'Night ride');
+    expect(() => store.musicPlans.single.shots.clear(), throwsUnsupportedError);
+    expect(() => store.saveMusicPlan(MusicVideoPlan(
+      projectId: 'demo-film',
+      storyBrief: 'Broken',
+      visualStyle: 'Anime',
+      avatarName: 'None',
+      shots: const [StoryboardShot('Bad', '', 0)],
+      createdAt: DateTime(2026, 10, 27),
+    )), throwsStateError);
+  });
+
+  testWidgets('normal video creative settings remain isolated per project',
+      (tester) async {
+    final store = HotIceStore();
+    final second = store.addProject('Second video');
+    expect(store.addAvatar('Test Actor', 'Cinematic'), isTrue);
+    addTearDown(store.dispose);
+
+    Future<void> openProject(String id) async {
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(body: GenerationPage(
+          store: store, initialProjectId: id,
+        )),
+      ));
+      await tester.pumpAndSettle();
+    }
+
+    await openProject('demo-film');
+    // Choose a different model, duration, aspect and Actor for film one.
+    final modelField = find.widgetWithText(
+        DropdownButtonFormField<String>, 'Model preview');
+    await tester.ensureVisible(modelField);
+    await tester.tap(modelField);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Character Focus · Demo').last);
+    await tester.pumpAndSettle();
+    final portrait = find.text('9:16');
+    await tester.ensureVisible(portrait.last);
+    await tester.tap(portrait.last);
+    await tester.pumpAndSettle();
+    final actorField = find.widgetWithText(
+        DropdownButtonFormField<String>, 'Avatar');
+    await tester.ensureVisible(actorField);
+    await tester.tap(actorField);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Test Actor').last);
+    await tester.pumpAndSettle();
+
+    await openProject(second);
+    expect(find.text('Cinematic Draft · Demo'), findsOneWidget);
+    expect(find.text('Character Focus · Demo'), findsNothing);
+    expect(find.text('None'), findsWidgets);
+    final fourSeconds = find.text('4 seconds');
+    await tester.ensureVisible(fourSeconds);
+    await tester.tap(fourSeconds);
+    await tester.pumpAndSettle();
+
+    await openProject('demo-film');
+    expect(find.text('Character Focus · Demo'), findsOneWidget);
+    expect(find.text('Test Actor'), findsOneWidget);
+    expect(find.text('9:16'), findsOneWidget);
+    expect(find.text('8 seconds'), findsOneWidget);
+
+    await openProject(second);
+    expect(find.text('Cinematic Draft · Demo'), findsOneWidget);
+    expect(find.text('4 seconds'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('unsaved scene prompts stay with their own projects',
       (tester) async {
     final store = HotIceStore();
