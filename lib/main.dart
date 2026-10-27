@@ -4,22 +4,52 @@ import 'src/design.dart';
 import 'src/pages.dart';
 import 'src/generation_hub.dart';
 import 'src/diagnostics.dart';
+import 'src/local_store.dart';
 
-void main() {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   HoticeDiagnostics.install();
-  runApp(const HotIceApp());
+  final store = HotIceStore();
+  try {
+    final archive = await HotIceLocalArchive.openOnDevice();
+    final snapshot = await archive.restore();
+    if (snapshot != null) store.restoreLocalSnapshot(snapshot);
+    // A crash must never silently reset the user's encrypted projects.
+    // Capture immutable JSON snapshots before queuing any asynchronous writes.
+    store.addListener(() => archive.enqueue(store.exportLocalSnapshot()));
+    runApp(HotIceApp(initialStore: store));
+  } catch (_) {
+    store.dispose();
+    runApp(const MaterialApp(
+      home: Scaffold(
+        body: SafeArea(
+          child: Center(
+            child: Padding(
+              padding: EdgeInsets.all(24),
+              child: Text(
+                'HOTICE could not safely open your encrypted projects. '
+                'Your saved files were NOT erased or replaced. '
+                'Please recover your device key or backup before continuing.',
+                textAlign: TextAlign.center,
+              ),
+            ),
+          ),
+        ),
+      ),
+    ));
+  }
 }
 
 class HotIceApp extends StatefulWidget {
-  const HotIceApp({super.key});
+  const HotIceApp({super.key, this.initialStore});
+  final HotIceStore? initialStore;
 
   @override
   State<HotIceApp> createState() => _HotIceAppState();
 }
 
 class _HotIceAppState extends State<HotIceApp> {
-  final HotIceStore store = HotIceStore();
+  late final HotIceStore store;
   bool showLogin = false;
 
   late ThemeMode _lastThemeMode;
@@ -29,6 +59,7 @@ class _HotIceAppState extends State<HotIceApp> {
   @override
   void initState() {
     super.initState();
+    store = widget.initialStore ?? HotIceStore();
     _lastThemeMode = store.themeMode;
     _lastAccent = store.accent;
     _lastFont = store.font;
