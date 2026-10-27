@@ -43,13 +43,11 @@ class _MusicSongPreviewPanelState extends State<MusicSongPreviewPanel> {
     if (_picking) return;
     setState(() => _picking = true);
     try {
-      final result = await FilePicker.pickFiles(
+      final file = await FilePicker.pickFile(
         type: FileType.custom,
         allowedExtensions: allowedExtensions,
-        allowMultiple: false,
       );
-      if (!mounted || result == null || result.files.isEmpty) return;
-      final file = result.files.single;
+      if (!mounted || file == null) return;
       final path = file.path;
       final extension = file.name.split('.').last.toLowerCase();
       if (!allowedExtensions.contains(extension)) {
@@ -57,8 +55,12 @@ class _MusicSongPreviewPanelState extends State<MusicSongPreviewPanel> {
         return;
       }
       // FilePicker 12+ uses async length() rather than PlatformFile.size.
-      final fileBytes = await file.length();
+      final fileBytes = file.lengthSync() ?? await file.length();
       if (!mounted) return;
+      if (fileBytes == null) {
+        _notice('The device could not determine this file size.');
+        return;
+      }
       if (fileBytes == 0 || fileBytes > maxAudioBytes) {
         _notice('Song must be non-empty and no larger than 150 MB.');
         return;
