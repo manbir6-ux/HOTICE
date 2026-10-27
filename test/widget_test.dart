@@ -15,6 +15,103 @@ void main() {
     expect(50 * creditsPerUsd, 5000);
   });
 
+  test('project rename and delete keep demo workspaces isolated', () {
+    final store = HotIceStore();
+    addTearDown(store.dispose);
+    final first = store.addProject('First name');
+    final second = store.addProject('Keep this film');
+    store.queueDraft(GenerationDraft(
+      projectId: first,
+      project: 'First name',
+      prompt: 'Opening shot',
+      model: 'Cinematic Draft',
+      aspectRatio: '16:9',
+      durationSeconds: 8,
+      createdAt: DateTime(2026, 10, 27),
+    ));
+    store.saveMusicPlan(MusicVideoPlan(
+      projectId: first,
+      storyBrief: 'A completed local storyboard',
+      visualStyle: 'Anime',
+      avatarName: 'None',
+      shots: const [StoryboardShot('Scene one', 'A character arrives', 6)],
+      createdAt: DateTime(2026, 10, 27),
+    ));
+    expect(store.renameProject(first, '  Better title  '), isTrue);
+    expect(store.projects.any((p) => p.id == first && p.title == 'Better title'), isTrue);
+    expect(store.drafts.single.project, 'Better title');
+    expect(store.musicPlans.single.projectId, first);
+    expect(store.renameProject(first, '  '), isFalse);
+    expect(store.renameProject(first, List.filled(61, 'x').join()), isFalse);
+
+    store.addAccount('separate@example.com');
+    final other = store.addProject('Other account project');
+    expect(store.renameProject(first, 'Illegal rename'), isFalse);
+    expect(store.deleteProject(first), isFalse);
+    expect(store.projects.single.id, other);
+    store.switchAccount('creator@hotice.demo');
+    expect(store.deleteProject(first), isTrue);
+    expect(store.deleteProject(first), isFalse);
+    expect(store.drafts, isEmpty);
+    expect(store.musicPlans, isEmpty);
+    expect(store.projects.any((p) => p.id == second), isTrue);
+    expect(store.projects.any((p) => p.id == first), isFalse);
+    store.switchAccount('separate@example.com');
+    expect(store.projects.single.id, other);
+  });
+
+  testWidgets('project cards support rename and confirmed delete',
+      (tester) async {
+    final store = HotIceStore();
+    addTearDown(store.dispose);
+    final id = store.addProject('Manage this film');
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: AnimatedBuilder(
+          animation: store,
+          builder: (context, _) => ProjectsPage(
+            store: store,
+            onOpen: (_) {},
+          ),
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    Future<void> openOptions() async {
+      final menu = find.byKey(ValueKey('project-options-$id'));
+      await tester.ensureVisible(menu);
+      await tester.tap(menu);
+      await tester.pumpAndSettle();
+    }
+
+    await openOptions();
+    await tester.tap(find.text('Rename').last);
+    await tester.pumpAndSettle();
+    await tester.enterText(
+        find.widgetWithText(TextField, 'Project title'), 'Revised title');
+    await tester.tap(find.text('Save name'));
+    await tester.pumpAndSettle();
+    expect(store.projects.first.title, 'Revised title');
+    expect(find.text('Revised title'), findsWidgets);
+
+    await openOptions();
+    await tester.tap(find.text('Delete').last);
+    await tester.pumpAndSettle();
+    expect(find.text('Delete project?'), findsOneWidget);
+    await tester.tap(find.text('Cancel').last);
+    await tester.pumpAndSettle();
+    expect(store.projects.any((p) => p.id == id), isTrue);
+
+    await openOptions();
+    await tester.tap(find.text('Delete').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Delete project').last);
+    await tester.pumpAndSettle();
+    expect(store.projects.any((p) => p.id == id), isFalse);
+    expect(tester.takeException(), isNull);
+  });
+
   test('demo profile email validation rejects malformed inputs', () {
     expect(isValidDemoEmail('creator@example.com'), isTrue);
     expect(isValidDemoEmail('creator@'), isFalse);

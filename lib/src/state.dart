@@ -184,6 +184,48 @@ class HotIceStore extends ChangeNotifier {
     return id;
   }
 
+  /// Rename only a project owned by the currently selected demo workspace.
+  /// Keep its stable ID and refresh labels captured in existing scene drafts.
+  bool renameProject(String projectId, String newTitle) {
+    final title = newTitle.trim();
+    final index = projects.indexWhere((p) => p.id == projectId);
+    if (index < 0 || title.isEmpty || title.length > 60) return false;
+    final current = projects[index];
+    if (current.title == title) return true;
+    projects[index] = HotProject(current.id, title, current.createdAt);
+    for (var i = 0; i < drafts.length; i++) {
+      final old = drafts[i];
+      if (old.projectId != projectId) continue;
+      drafts[i] = GenerationDraft(
+        project: title,
+        prompt: old.prompt,
+        model: old.model,
+        aspectRatio: old.aspectRatio,
+        durationSeconds: old.durationSeconds,
+        createdAt: old.createdAt,
+        projectId: old.projectId,
+        avatarName: old.avatarName,
+        modelId: old.modelId,
+        requestedAttachments: old.requestedAttachments,
+      );
+    }
+    notifyListeners();
+    return true;
+  }
+
+  /// Permanently remove the in-memory project and all associated draft data
+  /// in this one demo profile. A UI confirmation is required before calling.
+  /// This is not a cloud-delete or biometric Actor vault operation.
+  bool deleteProject(String projectId) {
+    final index = projects.indexWhere((p) => p.id == projectId);
+    if (index < 0) return false;
+    projects.removeAt(index);
+    drafts.removeWhere((draft) => draft.projectId == projectId);
+    musicPlans.removeWhere((plan) => plan.projectId == projectId);
+    notifyListeners();
+    return true;
+  }
+
   /// Avoid duplicate values in the avatar dropdown.
   bool addAvatar(String name, String style, {String identityNotes = ''}) {
     final trimmed = name.trim();
