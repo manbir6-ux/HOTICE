@@ -53,7 +53,7 @@ void main() {
         consented: true,
       );
 
-  test('right side scene picks right profile and front before left side', () {
+  test('right side scene prioritises right profile and right 45 over front', () {
     final plan = SmartReferencePlanner.plan(
       avatarPack: pack(images),
       sceneAssets: [
@@ -65,7 +65,7 @@ void main() {
     );
     expect(plan.errors, isEmpty);
     expect(plan.selected.map((a) => a.id).toList(),
-        ['right', 'front', 'street', 'car']);
+        ['right', 'right45', 'street', 'car']);
     expect(plan.canSubmit, isTrue);
   });
 
