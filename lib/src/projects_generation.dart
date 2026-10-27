@@ -535,7 +535,12 @@ class _GenerationPageState extends State<GenerationPage> {
             items: avatars.map((name) =>
                 DropdownMenuItem(value: name, child: Text(name))).toList(),
             onChanged: (v) {
-              if (v != null) setState(() => avatarName = v);
+              if (v != null) setState(() {
+                if (v != avatarName && project != null) {
+                  _pinnedReferencesByProject[project!]?.clear();
+                }
+                avatarName = v;
+              });
             },
           ),
           const SizedBox(height: 8),
@@ -602,6 +607,17 @@ class _GenerationPageState extends State<GenerationPage> {
               Chip(label: Text('Selected ${currentPlan.imageCount}/4 (demo)')),
             ],
           ),
+          if (pinned.isNotEmpty)
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                onPressed: project == null ? null : () => setState(() {
+                  _pinnedReferencesByProject[project!]?.clear();
+                }),
+                icon: const Icon(Icons.restart_alt),
+                label: const Text('Clear locked / manual references'),
+              ),
+            ),
           if (allAssets.isEmpty)
             const Padding(
               padding: EdgeInsets.symmetric(vertical: 8),
@@ -617,6 +633,16 @@ class _GenerationPageState extends State<GenerationPage> {
                   : '${asset.role.name} image'),
               subtitle: Text(manualMode ? 'Include this image' : 'Lock this image'),
               value: pinned.contains(asset.id),
+              secondary: asset.role == ReferenceRole.avatar ? null : IconButton(
+                tooltip: 'Remove scene reference',
+                icon: const Icon(Icons.delete_outline),
+                onPressed: () => setState(() {
+                  if (project != null) {
+                    widget.store.removeSceneReference(project!, asset.id);
+                    _pinnedReferencesByProject[project!]?.remove(asset.id);
+                  }
+                }),
+              ),
               onChanged: (checked) => setState(() {
                 final refs = _pinnedReferencesByProject.putIfAbsent(
                     project!, () => <String>{});
