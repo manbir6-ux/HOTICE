@@ -23,6 +23,8 @@ jobs:
           cache: true
       - name: Prepare Flutter platform scaffolds
         run: flutter create . --project-name hotice --platforms=android,ios
+      - name: Configure native camera permissions
+        run: python3 tools/configure_face_capture.py
       - name: Resolve dependencies
         run: flutter pub get
       - name: Static analysis
@@ -47,6 +49,8 @@ jobs:
           cache: true
       - name: Generate Android project
         run: flutter create . --project-name hotice --platforms=android
+      - name: Configure Android camera permission
+        run: python3 tools/configure_face_capture.py
       - name: Install HOTICE preview icon
         run: python3 tools/brand_android.py
       - name: Resolve dependencies
@@ -88,6 +92,8 @@ jobs:
           cache: true
       - name: Generate Android project
         run: flutter create . --project-name hotice --platforms=android
+      - name: Configure Android camera permission
+        run: python3 tools/configure_face_capture.py
       - name: Fetch dependencies
         run: flutter pub get
       - name: Launch real Android emulator and test user journey
