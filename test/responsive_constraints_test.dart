@@ -4,6 +4,7 @@ import 'package:hotice/src/welcome.dart';
 import 'package:hotice/src/projects_generation.dart';
 import 'package:hotice/src/generation_hub.dart';
 import 'package:hotice/src/music_studio.dart';
+import 'package:hotice/src/music_audio.dart';
 import 'package:hotice/src/state.dart';
 
 void main() {
@@ -117,6 +118,46 @@ void main() {
     await tester.pumpAndSettle();
     final editing = tester.widget<TextField>(field);
     expect(editing.controller!.text, 'Original forest music video');
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('hidden music editor disables picker and retains scene state',
+      (tester) async {
+    final store = HotIceStore();
+    addTearDown(store.dispose);
+    Future<void> pumpHub(bool active) async {
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(body: GenerationHubPage(
+          store: store,
+          initialProjectId: 'demo-film',
+          isActive: active,
+        )),
+      ));
+      await tester.pumpAndSettle();
+    }
+
+    await pumpHub(true);
+    await tester.tap(find.text('Music video studio'));
+    await tester.pumpAndSettle();
+    expect(tester.widget<MusicSongPreviewPanel>(
+        find.byType(MusicSongPreviewPanel)).active, isTrue);
+    final field = find.widgetWithText(TextField, 'Describe your music video');
+    await tester.enterText(field, 'Keep storyboard when audio pauses');
+    await pumpHub(false);
+    expect(tester.widget<MusicSongPreviewPanel>(
+        find.byType(MusicSongPreviewPanel)).active, isFalse);
+    final picker = tester.widget<OutlinedButton>(
+      find.widgetWithText(OutlinedButton, 'Choose a song'));
+    expect(picker.onPressed, isNull);
+    await pumpHub(true);
+    expect(tester.widget<MusicSongPreviewPanel>(
+        find.byType(MusicSongPreviewPanel)).active, isTrue);
+    expect(tester.widget<TextField>(field).controller!.text,
+        'Keep storyboard when audio pauses');
+    await tester.tap(find.text('Normal video'));
+    await tester.pumpAndSettle();
+    expect(tester.widget<MusicSongPreviewPanel>(
+        find.byType(MusicSongPreviewPanel, skipOffstage: false)).active, isFalse);
     expect(tester.takeException(), isNull);
   });
 

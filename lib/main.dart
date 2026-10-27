@@ -236,6 +236,7 @@ class _StudioShellState extends State<StudioShell> {
                         GenerationHubPage(
                           store: store,
                           initialProjectId: openedProjectId,
+                          isActive: selected == 1,
                         ),
                         AvatarsPage(store: store),
                         CreditsPage(store: store),

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hotice/main.dart';
 import 'package:hotice/src/dialogs.dart';
+import 'package:hotice/src/music_audio.dart';
 
 void main() {
   testWidgets('project dialog closes cleanly before opening its studio',
@@ -37,6 +38,19 @@ void main() {
     await tester.tap(find.text('Music video studio'));
     await tester.pumpAndSettle();
     expect(find.text('Music Video Studio'), findsOneWidget);
+    expect(tester.widget<MusicSongPreviewPanel>(
+      find.byType(MusicSongPreviewPanel)).active, isTrue);
+
+    // The parent StudioShell also keeps pages mounted. Confirm its navigation
+    // actually deactivates local playback rather than just hiding the UI.
+    await tester.tap(find.byIcon(Icons.toll_outlined).last);
+    await tester.pumpAndSettle();
+    expect(tester.widget<MusicSongPreviewPanel>(
+      find.byType(MusicSongPreviewPanel, skipOffstage: false)).active, isFalse);
+    await tester.tap(find.byIcon(Icons.movie_creation_outlined).last);
+    await tester.pumpAndSettle();
+    expect(tester.widget<MusicSongPreviewPanel>(
+      find.byType(MusicSongPreviewPanel)).active, isTrue);
     expect(tester.takeException(), isNull);
   });
 
