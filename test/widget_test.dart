@@ -211,6 +211,47 @@ void main() {
     expect(plan.every((shot) => shot.estimatedSeconds > 0), isTrue);
   });
 
+  test('manual music shot schedule computes contiguous scene boundaries', () {
+    const shots = [
+      StoryboardShot('One', 'Opening', 4),
+      StoryboardShot('Two', 'Action', 10),
+      StoryboardShot('Three', 'Finale', 6),
+    ];
+    final cues = MusicStoryboardTimeline.arrange(shots);
+    expect(cues.map((c) => c.startSeconds).toList(), [0, 4, 14]);
+    expect(cues.map((c) => c.endSeconds).toList(), [4, 14, 20]);
+    expect(MusicStoryboardTimeline.clock(cues.last.endSeconds), '00:20');
+    expect(MusicStoryboardTimeline.clock(125), '02:05');
+    expect(MusicStoryboardTimeline.arrange([]), isEmpty);
+  });
+
+  testWidgets('music storyboard scene duration can be edited manually',
+      (tester) async {
+    final store = HotIceStore();
+    addTearDown(store.dispose);
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(body: MusicVideoStudioPage(store: store)),
+    ));
+    await tester.pumpAndSettle();
+
+    final field = find.widgetWithText(TextField, 'Describe your music video');
+    await tester.enterText(field, 'A singer walks toward the sunrise');
+    final preview = find.text('Preview storyboard');
+    await tester.ensureVisible(preview);
+    await tester.tap(preview);
+    await tester.pumpAndSettle();
+    expect(find.text('Estimated runtime: 00:26'), findsOneWidget);
+
+    final duration = find.byKey(const ValueKey('music-shot-duration-0'));
+    await tester.ensureVisible(duration);
+    await tester.tap(duration);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('10').last);
+    await tester.pumpAndSettle();
+    expect(find.text('Estimated runtime: 00:30'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   test('music video drafts are isolated by profile and reject foreign projects', () {
     final store = HotIceStore();
     final plan = MusicVideoPlan(
