@@ -11,6 +11,10 @@ dependencies:
     sdk: flutter
   file_picker: ^13.3.0
   just_audio: ^0.10.6
+  camera: ^0.12.1
+  camera_android: ^0.10.12 # Camera2 NV21 ML Kit compatibility on Android
+  google_mlkit_face_detection: ^0.15.1
+  path_provider: ^2.1.5
 
 dev_dependencies:
   flutter_test:
