@@ -2,6 +2,7 @@ import 'dart:math';
 
 import 'package:flutter/material.dart';
 import 'video_models.dart';
+import 'smart_references.dart';
 
 /// Pricing is in whole US cents to avoid floating point billing errors.
 const int creditsPerUsd = 100;
@@ -77,6 +78,7 @@ class GenerationDraft {
   final String avatarName;
   final String modelId;
   final List<VideoAttachment> requestedAttachments;
+  final List<String> selectedReferenceIds;
 
   const GenerationDraft({
     required this.project,
@@ -89,6 +91,7 @@ class GenerationDraft {
     this.avatarName = 'None',
     this.modelId = '',
     this.requestedAttachments = const <VideoAttachment>[],
+    this.selectedReferenceIds = const <String>[],
   });
 }
 
@@ -130,6 +133,8 @@ class _DemoWorkspace {
 
   final List<HotProject> projects = [];
   final List<StudioAvatar> avatars = [];
+  final Map<String, List<AvatarReference>> avatarReferences = {};
+  final Map<String, List<AvatarReference>> sceneReferences = {};
   final List<GenerationDraft> drafts = [];
   final List<MusicVideoPlan> musicPlans = [];
   int demoCredits = 1000;
@@ -155,6 +160,69 @@ class HotIceStore extends ChangeNotifier {
   int get demoCredits => _workspace.demoCredits;
   List<HotProject> get projects => _workspace.projects;
   List<StudioAvatar> get avatars => _workspace.avatars;
+
+  /// Metadata for explicitly imported, session-only files. No biometric scan.
+  AvatarAssetPack avatarPackFor(String avatarName) => AvatarAssetPack(
+    avatarName: avatarName,
+    version: 1,
+    assets: _workspace.avatarReferences[avatarName] ?? const [],
+    consented: avatars.any((a) => a.name == avatarName),
+  );
+
+  List<AvatarReference> sceneReferencesFor(String projectId) =>
+      List<AvatarReference>.unmodifiable(
+        _workspace.sceneReferences[projectId] ?? const [],
+      );
+
+  bool addAvatarReference(String avatarName, AvatarReference asset) {
+    if (!avatars.any((a) => a.name == avatarName) ||
+        asset.ownerName != avatarName ||
+        asset.role != ReferenceRole.avatar ||
+        asset.format != ReferenceFormat.image ||
+        asset.localPath.isEmpty || asset.id.isEmpty ||
+        !const ['image/jpeg', 'image/png', 'image/webp']
+            .contains(asset.mimeType)) return false;
+    final items = _workspace.avatarReferences.putIfAbsent(avatarName, () => []);
+    if (items.length >= 16 || items.any((a) => a.id == asset.id)) return false;
+    items.add(asset);
+    notifyListeners();
+    return true;
+  }
+
+  bool removeAvatarReference(String avatarName, String assetId) {
+    final assets = _workspace.avatarReferences[avatarName];
+    if (assets == null) return false;
+    final previous = assets.length;
+    assets.removeWhere((a) => a.id == assetId);
+    if (assets.length == previous) return false;
+    notifyListeners();
+    return true;
+  }
+
+  bool addSceneReference(String projectId, AvatarReference asset) {
+    if (!projects.any((p) => p.id == projectId) ||
+        asset.ownerName != projectId ||
+        asset.role == ReferenceRole.avatar ||
+        asset.format != ReferenceFormat.image ||
+        asset.localPath.isEmpty || asset.id.isEmpty ||
+        !const ['image/jpeg', 'image/png', 'image/webp']
+            .contains(asset.mimeType)) return false;
+    final items = _workspace.sceneReferences.putIfAbsent(projectId, () => []);
+    if (items.length >= 12 || items.any((a) => a.id == asset.id)) return false;
+    items.add(asset);
+    notifyListeners();
+    return true;
+  }
+
+  bool removeSceneReference(String projectId, String assetId) {
+    final assets = _workspace.sceneReferences[projectId];
+    if (assets == null) return false;
+    final count = assets.length;
+    assets.removeWhere((a) => a.id == assetId);
+    if (assets.length == count) return false;
+    notifyListeners();
+    return true;
+  }
   List<GenerationDraft> get drafts => _workspace.drafts;
   List<MusicVideoPlan> get musicPlans => _workspace.musicPlans;
 
@@ -223,6 +291,7 @@ class HotIceStore extends ChangeNotifier {
         avatarName: old.avatarName,
         modelId: old.modelId,
         requestedAttachments: old.requestedAttachments,
+        selectedReferenceIds: old.selectedReferenceIds,
       );
     }
     notifyListeners();
@@ -238,6 +307,7 @@ class HotIceStore extends ChangeNotifier {
     projects.removeAt(index);
     drafts.removeWhere((draft) => draft.projectId == projectId);
     musicPlans.removeWhere((plan) => plan.projectId == projectId);
+    _workspace.sceneReferences.remove(projectId);
     notifyListeners();
     return true;
   }
@@ -265,6 +335,14 @@ class HotIceStore extends ChangeNotifier {
       return false;
     }
     avatars[index] = StudioAvatar(name, style, identityNotes: identityNotes.trim());
+    if (name != originalName) {
+      final previous = _workspace.avatarReferences.remove(originalName);
+      if (previous != null) {
+        _workspace.avatarReferences[name] = [
+          for (final asset in previous) asset.withOwner(name),
+        ];
+      }
+    }
     notifyListeners();
     return true;
   }
@@ -273,6 +351,7 @@ class HotIceStore extends ChangeNotifier {
     final oldLength = avatars.length;
     avatars.removeWhere((a) => a.name == name);
     if (avatars.length == oldLength) return false;
+    _workspace.avatarReferences.remove(name);
     // Existing scene drafts remain historical snapshots of their creation.
     notifyListeners();
     return true;
@@ -301,6 +380,18 @@ class HotIceStore extends ChangeNotifier {
         throw StateError('Unsupported output or attachment for this model.');
       }
     }
+    final ownedAssetIds = <String>{
+      for (final a in _workspace.avatarReferences[draft.avatarName] ?? const <AvatarReference>[]) a.id,
+      for (final a in _workspace.sceneReferences[draft.projectId] ?? const <AvatarReference>[]) a.id,
+    };
+    if (draft.selectedReferenceIds.toSet().length != draft.selectedReferenceIds.length ||
+        draft.selectedReferenceIds.any((id) => !ownedAssetIds.contains(id))) {
+      throw StateError('Selected references are not in this workspace.');
+    }
+    if (draft.selectedReferenceIds.isNotEmpty && draft.modelId.isNotEmpty &&
+        !demoModelById(draft.modelId).supportsAttachments([VideoAttachment.image])) {
+      throw StateError('This demo model does not support image references.');
+    }
     // Capture a stable job snapshot. The caller must not be able to mutate
     // validated attachment settings after this draft is stored.
     final canonicalProject = projects.where((p) => p.id == draft.projectId);
@@ -316,6 +407,7 @@ class HotIceStore extends ChangeNotifier {
       modelId: draft.modelId,
       requestedAttachments:
           List<VideoAttachment>.unmodifiable(draft.requestedAttachments),
+      selectedReferenceIds: List<String>.unmodifiable(draft.selectedReferenceIds),
     ));
     notifyListeners();
   }
