@@ -42,6 +42,30 @@ final class Support
         return (bool) preg_match('/^[a-f0-9]{64}$/D', $value);
     }
 
+    /**
+     * Canonicalise paths and prevent storage from being inside, equal to, or
+     * an ancestor of any publicly served directory. Resolve symlinks first.
+     */
+    public static function assertPrivateStorage(string $storage, array $roots): string
+    {
+        $real = realpath($storage);
+        if ($real === false || !is_dir($real)) {
+            throw new \RuntimeException('Private storage directory missing.');
+        }
+        if ($roots === []) throw new \RuntimeException('No web roots available for safety check.');
+        foreach ($roots as $root) {
+            $public = realpath((string) $root);
+            if ($public === false || !is_dir($public)) {
+                throw new \RuntimeException('Public web root cannot be verified.');
+            }
+            if ($real === $public || str_starts_with($real . '/', $public . '/')
+                || str_starts_with($public . '/', $real . '/')) {
+                throw new \RuntimeException('Private storage must be outside all public web roots.');
+            }
+        }
+        return $real;
+    }
+
     public static function jsonInput(int $limit = 262144): array
     {
         $body = file_get_contents('php://input', false, null, 0, $limit + 1);
