@@ -45,7 +45,8 @@ class MusicStoryboardTimeline {
 class MusicVideoStudioPage extends StatefulWidget {
   final HotIceStore store;
   final String? initialProjectId;
-  const MusicVideoStudioPage({super.key, required this.store, this.initialProjectId});
+  final bool audioActive;
+  const MusicVideoStudioPage({super.key, required this.store, this.initialProjectId, this.audioActive = true});
 
   @override
   State<MusicVideoStudioPage> createState() => _MusicVideoStudioPageState();
@@ -335,6 +336,7 @@ class _MusicVideoStudioPageState extends State<MusicVideoStudioPage> {
             );
             final audio = MusicSongPreviewPanel(
               key: ValueKey('song-preview-$projectId'),
+              active: widget.audioActive,
             );
             if (wide) {
               return Row(
