@@ -139,10 +139,13 @@ class SmartReferencePlanner {
     final text = prompt.toLowerCase();
     final left = RegExp(r'\b(left|ਖੱਬੇ)\b').hasMatch(text);
     final right = RegExp(r'\b(right|ਸੱਜੇ)\b').hasMatch(text);
-    final side = RegExp(r'\b(side|profile|70°|70 degrees|90°|90 degrees)\b')
-        .hasMatch(text);
-    final threeQuarter = RegExp(r'\b(45°|45 degrees|three.quarter|3/4)\b')
-        .hasMatch(text);
+    final degrees = RegExp(r'(\d{1,3})\s*(?:°|degrees?)')
+        .firstMatch(text);
+    final angle = degrees == null ? null : int.tryParse(degrees.group(1)!);
+    final side = RegExp(r'\b(side|profile)\b').hasMatch(text) ||
+        (angle != null && angle >= 60);
+    final threeQuarter = RegExp(r'\b(three.quarter|3/4)\b').hasMatch(text) ||
+        (angle != null && angle >= 25 && angle < 60);
     if (left && !right) {
       return side ? FaceView.left90 : FaceView.left45;
     }
@@ -151,6 +154,7 @@ class SmartReferencePlanner {
     }
     if (text.contains('looking up')) return FaceView.up;
     if (text.contains('looking down')) return FaceView.down;
+    if (side) return FaceView.left90;
     return threeQuarter ? FaceView.left45 : FaceView.front;
   }
 
@@ -259,10 +263,17 @@ class SmartReferencePlanner {
       final avatarAssets = all.where((a) => a.role == ReferenceRole.avatar);
       final meshAssets = avatarAssets
           .where((a) => a.format == ReferenceFormat.glb).toList();
+      // A prompt saying only 'side profile' does not establish left/right.
+      // Prefer an available side image to the front rather than assuming a side.
+      final unspecifiedSide = preferredView == null &&
+          !RegExp(r'\b(left|right)\b').hasMatch(scenePrompt.toLowerCase()) &&
+          RegExp(r'\b(side|profile)\b').hasMatch(scenePrompt.toLowerCase());
+      int score(FaceView? view) => unspecifiedSide &&
+              (view == FaceView.left90 || view == FaceView.right90)
+          ? 100 : _viewScore(view, wanted);
       final imagesByView = avatarAssets
           .where((a) => a.format == ReferenceFormat.image).toList()
-        ..sort((a, b) => _viewScore(b.view, wanted)
-            .compareTo(_viewScore(a.view, wanted)));
+        ..sort((a, b) => score(b.view).compareTo(score(a.view)));
       // Use actual native mesh only when supplied AND the provider accepts it.
       for (final mesh in meshAssets) {
         if (append(mesh)) break;
