@@ -24,6 +24,8 @@ class _AvatarsPageState extends State<AvatarsPage> {
   String style = 'Photorealistic';
   String? editingName;
   bool showScanGuide = false;
+  bool showLiveCapture = false;
+  String? captureTarget;
   int poseIndex = 0;
 
   static const poses = <({String title, String hint, IconData icon})>[
@@ -72,6 +74,7 @@ class _AvatarsPageState extends State<AvatarsPage> {
       style = avatar.style;
       identityNotes.text = avatar.identityNotes;
       showScanGuide = false;
+      showLiveCapture = false;
     });
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Edit the character in the form above.')),
@@ -312,18 +315,70 @@ class _AvatarsPageState extends State<AvatarsPage> {
               ChoiceChip(
                 avatar: const Icon(Icons.edit_note_rounded, size: 18),
                 label: const Text('Quick character'),
-                selected: !showScanGuide,
-                onSelected: (_) => setState(() => showScanGuide = false),
+                selected: !showScanGuide && !showLiveCapture,
+                onSelected: (_) => setState(() {
+                  showScanGuide = false;
+                  showLiveCapture = false;
+                }),
               ),
               ChoiceChip(
                 avatar: const Icon(Icons.face_retouching_natural_rounded, size: 18),
                 label: const Text('3D face-scan guide'),
                 selected: showScanGuide,
-                onSelected: (_) => setState(() => showScanGuide = true),
+                onSelected: (_) => setState(() {
+                  showScanGuide = true;
+                  showLiveCapture = false;
+                }),
+              ),
+              ChoiceChip(
+                avatar: const Icon(Icons.camera_front_outlined, size: 18),
+                label: const Text('Live face capture'),
+                selected: showLiveCapture,
+                onSelected: (_) => setState(() {
+                  showLiveCapture = true;
+                  showScanGuide = false;
+                }),
               ),
             ],
           ),
           const SizedBox(height: 16),
+          if (showLiveCapture) StudioPanel(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('On-device guided capture',
+                  style: Theme.of(context).textTheme.titleLarge),
+                const SizedBox(height: 9),
+                const Text('Capture five face views with camera framing, head angles and eyes-open checks. This creates real 2D reference photos, not a 3D model. Temporary cache only.'),
+                const SizedBox(height: 16),
+                if (widget.store.avatars.isEmpty)
+                  const Text('Save a character below before scanning its face.'),
+                if (widget.store.avatars.isNotEmpty) ...[
+                  DropdownButtonFormField<String>(
+                    key: const ValueKey('scan-avatar-selector'),
+                    initialValue: widget.store.avatars.any((a) => a.name == captureTarget)
+                        ? captureTarget : widget.store.avatars.first.name,
+                    decoration: const InputDecoration(labelText: 'Attach to character'),
+                    items: [for (final avatar in widget.store.avatars)
+                      DropdownMenuItem(value: avatar.name, child: Text(avatar.name))],
+                    onChanged: (value) => setState(() => captureTarget = value),
+                  ),
+                  const SizedBox(height: 12),
+                  FilledButton.icon(
+                    onPressed: () {
+                      final chosen = widget.store.avatars.firstWhere(
+                        (a) => a.name == captureTarget,
+                        orElse: () => widget.store.avatars.first,
+                      );
+                      startRealCapture(chosen);
+                    },
+                    icon: const Icon(Icons.face_retouching_natural),
+                    label: const Text('Start live scanner'),
+                  ),
+                ],
+              ],
+            ),
+          ),
           if (showScanGuide) ...[
             StudioPanel(
               child: Column(
