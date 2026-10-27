@@ -27,6 +27,7 @@ class AvatarReference {
     required this.localPath,
     this.view,
     this.isScanVerified = false,
+    this.ownedTemporaryFile = false,
   });
 
   final String id;
@@ -39,6 +40,8 @@ class AvatarReference {
   final FaceView? view;
   /// Must be true only after a real capture/reconstruction quality gate.
   final bool isScanVerified;
+  /// Only HOTICE-generated temporary captures may be safely deleted by us.
+  final bool ownedTemporaryFile;
 
   AvatarReference withOwner(String next) => AvatarReference(
         id: id,
@@ -49,6 +52,7 @@ class AvatarReference {
         localPath: localPath,
         view: view,
         isScanVerified: isScanVerified,
+        ownedTemporaryFile: ownedTemporaryFile,
       );
 }
 
