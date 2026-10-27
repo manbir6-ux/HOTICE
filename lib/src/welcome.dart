@@ -194,8 +194,8 @@ class _Highlight extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(14),
-        color: Colors.white.withOpacity(.09),
-        border: Border.all(color: Colors.white.withOpacity(.12)),
+        color: Colors.white.withValues(alpha: .09),
+        border: Border.all(color: Colors.white.withValues(alpha: .12)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
