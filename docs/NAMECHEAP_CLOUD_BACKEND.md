@@ -22,8 +22,8 @@ Implementation principles: password_hash and verification; random bearer tokens 
 ## Verification truth
 - Local PHP 8.4 syntax checks: nine PHP files passed.
 - Local standalone smoke test: 206 core assertions passed.
-- ZIP checksum SHA-256: `e76f8e2dcdd51e4a6d297bd5baca5c806578af1d92502b31d4356f5c4c62bb19`.
-- **MySQL end-to-end HTTP integration test not executed locally:** no pdo_mysql driver/MySQL server in the current local container. The repository now includes a GitHub Actions workflow with an ephemeral MySQL service to test account login, subscription gate, project conflict, media upload/download/deletion and session revocation. CI result for the added code must be checked separately.
+- ZIP checksum SHA-256: `54e5b3b15812d3fc38e1d4844606d66d1dcf56a941c762ddb134726f9a911ff6`.
+- **MySQL end-to-end HTTP integration test not executed locally:** no pdo_mysql driver/MySQL server in the current local container. The repository now includes a GitHub Actions workflow with an ephemeral MySQL service to test account login, subscription gate, project conflict, distinct entitled users' cross-account isolation, media upload/download/deletion and session revocation. CI result for the added code must be checked separately.
 - **No Namecheap deployment, public URL or provider/payment key installation has happened.** Do not label this a working live API.
 - Current `main` Flutter code is still a UI/demo and has no backend client wiring.
 
