@@ -42,22 +42,49 @@ final class Support
         return (bool) preg_match('/^[a-f0-9]{64}$/D', $value);
     }
 
+    /**
+     * Canonicalise paths and prevent storage from being inside, equal to, or
+     * an ancestor of any publicly served directory. Resolve symlinks first.
+     */
+    public static function assertPrivateStorage(string $storage, array $roots): string
+    {
+        $real = realpath($storage);
+        if ($real === false || !is_dir($real)) {
+            throw new \RuntimeException('Private storage directory missing.');
+        }
+        if ($roots === []) throw new \RuntimeException('No web roots available for safety check.');
+        foreach ($roots as $root) {
+            $public = realpath((string) $root);
+            if ($public === false || !is_dir($public)) {
+                throw new \RuntimeException('Public web root cannot be verified.');
+            }
+            if ($real === $public || str_starts_with($real . '/', $public . '/')
+                || str_starts_with($public . '/', $real . '/')) {
+                throw new \RuntimeException('Private storage must be outside all public web roots.');
+            }
+        }
+        return $real;
+    }
+
     public static function jsonInput(int $limit = 262144): array
     {
         $body = file_get_contents('php://input', false, null, 0, $limit + 1);
         if ($body === false || strlen($body) > $limit) throw new ApiError(413, 'JSON request too large.');
         try {
-            $value = json_decode($body, true, 32, JSON_THROW_ON_ERROR);
+            // Keep nested empty JSON objects as stdClass, not [].
+            $value = json_decode($body, false, 32, JSON_THROW_ON_ERROR);
         } catch (\JsonException $e) {
             throw new ApiError(400, 'Invalid JSON request.');
         }
-        if (!is_array($value) || array_is_list($value)) throw new ApiError(400, 'JSON object expected.');
-        return $value;
+        if (!$value instanceof \stdClass) throw new ApiError(400, 'JSON object expected.');
+        return (array) $value;
     }
 
     public static function jsonString(mixed $value, int $maxBytes): string
     {
-        if (!is_array($value)) throw new ApiError(422, 'Document must be a JSON object.');
+        if (!$value instanceof \stdClass && (!is_array($value) || array_is_list($value))) {
+            throw new ApiError(422, 'Document must be a JSON object.');
+        }
         try {
             $json = json_encode($value, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE);
         } catch (\JsonException $e) {

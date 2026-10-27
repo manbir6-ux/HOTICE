@@ -265,7 +265,7 @@ class _MusicVideoStudioPageState extends State<MusicVideoStudioPage> {
                   const SizedBox(height: 17),
                   DropdownButtonFormField<String>(
                     key: ValueKey(projectId),
-                    value: projectId,
+                    initialValue: projectId,
                     isExpanded: true,
                     decoration: const InputDecoration(labelText: 'Project'),
                     items: [
@@ -305,7 +305,7 @@ class _MusicVideoStudioPageState extends State<MusicVideoStudioPage> {
                   const SizedBox(height: 12),
                   DropdownButtonFormField<String>(
                     key: ValueKey('music-avatar-$projectId'),
-                    value: selectedAvatar,
+                    initialValue: selectedAvatar,
                     isExpanded: true,
                     decoration: const InputDecoration(
                       labelText: 'Recurring character (optional)',

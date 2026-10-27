@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:flutter/material.dart';
 import 'video_models.dart';
 
@@ -9,6 +11,20 @@ const int minimumPurchaseUsd = 10;
 bool isValidDemoEmail(String value) {
   final email = value.trim();
   return RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(email);
+}
+
+/// New device projects use UUIDv4 IDs suitable for a future opt-in cloud API.
+/// Older seeded demo project IDs remain legacy examples; never upload those
+/// without an explicit migration to UUIDs and ownership verification.
+String createLocalProjectId() {
+  final random = Random.secure();
+  final bytes = List<int>.generate(16, (_) => random.nextInt(256));
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  final hex = bytes.map((value) => value.toRadixString(16).padLeft(2, '0')).join();
+  return '${hex.substring(0, 8)}-${hex.substring(8, 12)}-'
+      '${hex.substring(12, 16)}-${hex.substring(16, 20)}-'
+      '${hex.substring(20, 32)}';
 }
 
 class HotProject {
@@ -175,10 +191,10 @@ class HotIceStore extends ChangeNotifier {
 
   String addProject(String title) {
     final trimmed = title.trim();
-    if (trimmed.isEmpty) {
-      throw ArgumentError.value(title, 'title', 'Project title is empty');
+    if (trimmed.isEmpty || trimmed.length > 60) {
+      throw ArgumentError.value(title, 'title', 'Project title must be 1–60 characters.');
     }
-    final id = DateTime.now().microsecondsSinceEpoch.toString();
+    final id = createLocalProjectId();
     projects.insert(0, HotProject(id, trimmed, DateTime.now()));
     notifyListeners();
     return id;

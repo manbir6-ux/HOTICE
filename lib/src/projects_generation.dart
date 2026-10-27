@@ -92,8 +92,27 @@ class ProjectsPage extends StatelessWidget {
             onPressed: () => add(context),
           ),
           const SizedBox(height: 16),
-          const DemoNotice('Projects are saved in memory for this demo session.'),
+          const DemoNotice(
+            'Demo only: projects, scenes and storyboards are stored in memory '
+            'and will be lost when the app restarts. Device storage and '
+            'paid cloud backup are not connected yet.',
+          ),
           const SizedBox(height: 22),
+          if (store.projects.isEmpty)
+            StudioPanel(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(Icons.movie_creation_outlined,
+                      size: 36, color: Theme.of(context).colorScheme.primary),
+                  const SizedBox(height: 12),
+                  Text('Your next film starts here',
+                      style: Theme.of(context).textTheme.titleMedium),
+                  const SizedBox(height: 6),
+                  const Text('Create a project to plan scenes or a music video.'),
+                ],
+              ),
+            ),
           LayoutBuilder(builder: (context, box) {
             final columns = box.maxWidth > 810
                 ? 3
@@ -168,7 +187,17 @@ class ProjectsPage extends StatelessWidget {
                                 );
                               },
                             ),
-                            const SizedBox(height: 5),
+                            const SizedBox(height: 6),
+                            Text(
+                              '${store.drafts.where((item) => item.projectId == project.id).length} '
+                              'scene drafts · '
+                              '${store.musicPlans.where((item) => item.projectId == project.id).length} '
+                              'storyboards',
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: Theme.of(context).textTheme.bodySmall,
+                            ),
+                            const SizedBox(height: 6),
                             const Text('Open project →',
                                 style: TextStyle(fontSize: 12)),
                           ],
@@ -346,7 +375,7 @@ class _GenerationPageState extends State<GenerationPage> {
           const SizedBox(height: 15),
           DropdownButtonFormField<String>(
             key: ValueKey(project),
-            value: project,
+            initialValue: project,
             decoration: const InputDecoration(labelText: 'Project'),
             isExpanded: true,
             items: widget.store.projects.map((item) =>
@@ -371,7 +400,7 @@ class _GenerationPageState extends State<GenerationPage> {
           const SizedBox(height: 13),
           DropdownButtonFormField<String>(
             key: ValueKey('normal-model-$project'),
-            value: model,
+            initialValue: model,
             isExpanded: true,
             decoration: const InputDecoration(labelText: 'Model preview'),
             items: [
@@ -412,7 +441,7 @@ class _GenerationPageState extends State<GenerationPage> {
           const SizedBox(height: 13),
           DropdownButtonFormField<String>(
             key: ValueKey('normal-avatar-$project'),
-            value: avatarName,
+            initialValue: avatarName,
             decoration: const InputDecoration(labelText: 'Avatar'),
             items: avatars.map((name) =>
                 DropdownMenuItem(value: name, child: Text(name))).toList(),

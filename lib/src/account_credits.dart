@@ -81,7 +81,7 @@ class _CreditsPageState extends State<CreditsPage> {
                               borderRadius: BorderRadius.circular(18),
                               color: selectedUsd == price
                                   ? Theme.of(context)
-                                      .colorScheme.primary.withOpacity(.13)
+                                      .colorScheme.primary.withValues(alpha: .13)
                                   : Theme.of(context)
                                       .colorScheme.surfaceContainerHigh,
                               border: Border.all(

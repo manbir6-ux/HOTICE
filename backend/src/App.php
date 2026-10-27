@@ -34,8 +34,11 @@ final class App
     public function run(): void
     {
         header('X-Content-Type-Options: nosniff');
+        header('X-Frame-Options: DENY');
+        header("Content-Security-Policy: default-src 'none'; frame-ancestors 'none'");
         header('Cache-Control: no-store, max-age=0');
         header('Referrer-Policy: no-referrer');
+        if ($this->https()) header('Strict-Transport-Security: max-age=31536000');
         $requestId = bin2hex(random_bytes(8));
         header('X-Request-ID: ' . $requestId);
         try {
@@ -119,20 +122,34 @@ final class App
         echo json_encode($data, JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
     }
 
-    private function throttle(string $email): string
+    /**
+     * Separate per-email and per-client-IP limits prevent two common bypasses:
+     * distributing guesses for one account over many IPs, and spraying many
+     * email addresses from one IP. All identifiers are keyed HMAC digests.
+     * Clean expired rows using bin/cleanup.php (cron).
+     */
+    private function throttle(string $email): array
     {
         $ip = (string) ($_SERVER['REMOTE_ADDR'] ?? 'unknown');
-        $fingerprint = hash_hmac('sha256', $email . '|' . $ip, (string) $this->config['app_key']);
-        $q = $this->db->prepare('SELECT COUNT(*) FROM login_attempts WHERE fingerprint=? AND occurred_at > DATE_SUB(UTC_TIMESTAMP(),INTERVAL 15 MINUTE)');
-        $q->execute([$fingerprint]);
-        if ((int) $q->fetchColumn() >= 6) throw new ApiError(429, 'Too many attempts. Try later.');
-        return $fingerprint;
+        $key = (string) $this->config['app_key'];
+        $identities = [
+            'email' => hash_hmac('sha256', 'email:' . $email, $key),
+            'ip' => hash_hmac('sha256', 'ip:' . $ip, $key),
+        ];
+        $q = $this->db->prepare('SELECT COUNT(*) FROM login_attempts WHERE fingerprint=? AND occurred_at > DATE_SUB(UTC_TIMESTAMP(), INTERVAL 15 MINUTE)');
+        foreach (['email' => 12, 'ip' => 50] as $type => $maxAttempts) {
+            $q->execute([$identities[$type]]);
+            if ((int) $q->fetchColumn() >= $maxAttempts) {
+                throw new ApiError(429, 'Too many attempts. Try later.');
+            }
+        }
+        return $identities;
     }
 
-    private function recordFailedLogin(string $fingerprint): void
+    private function recordFailedLogin(array $fingerprints): void
     {
-        $this->db->prepare('INSERT INTO login_attempts (fingerprint,occurred_at) VALUES (?,UTC_TIMESTAMP())')
-            ->execute([$fingerprint]);
+        $q = $this->db->prepare('INSERT INTO login_attempts (fingerprint,occurred_at) VALUES (?,UTC_TIMESTAMP())');
+        foreach ($fingerprints as $fingerprint) $q->execute([$fingerprint]);
     }
 
     private function register(): void
@@ -168,7 +185,9 @@ final class App
             $this->recordFailedLogin($fingerprint);
             throw new ApiError(401, 'Invalid email or password.');
         }
-        $this->db->prepare('DELETE FROM login_attempts WHERE fingerprint=?')->execute([$fingerprint]);
+        // Never clear the IP budget on a successful login: a single valid
+        // account must not let attackers reset their IP-wide spray limit.
+        $this->db->prepare('DELETE FROM login_attempts WHERE fingerprint=?')->execute([$fingerprint['email']]);
         if (password_needs_rehash($user['password_hash'], PASSWORD_DEFAULT)) {
             $this->db->prepare('UPDATE users SET password_hash=? WHERE id=?')
                 ->execute([password_hash($password, PASSWORD_DEFAULT), $user['id']]);
@@ -226,7 +245,8 @@ final class App
         $q->execute([$user, $id]);
         $p = $q->fetch();
         if (!$p) throw new ApiError(404, 'Project not found.');
-        $p['document'] = json_decode($p['document_json'], true, 32, JSON_THROW_ON_ERROR);
+        // Decode as objects to preserve {} vs [] throughout cloud sync.
+        $p['document'] = json_decode($p['document_json'], false, 32, JSON_THROW_ON_ERROR);
         unset($p['document_json']);
         $p['revision'] = (int) $p['revision'];
         $files = $this->db->prepare('SELECT id,mime,byte_size,sha256,created_at FROM cloud_files WHERE project_id=? AND user_id=? ORDER BY created_at DESC LIMIT 200');
@@ -239,7 +259,13 @@ final class App
         $this->requireCloud($user, true);
         $b = Support::jsonInput((int) ($this->config['max_project_bytes'] ?? 131072) + 4096);
         $title = trim((string) ($b['title'] ?? ''));
-        if ($title === '' || strlen($title) > 480 || preg_match_all('/./us', $title) > 120) throw new ApiError(422, 'Project title must be 1–120 characters.');
+        // A malformed UTF-8 title must be rejected as input, not handed
+        // to MySQL as a server error; controls cannot appear in metadata.
+        $titleLength = preg_match_all('/./us', $title);
+        if ($title === '' || strlen($title) > 480 || $titleLength === false ||
+            $titleLength > 120 || preg_match('/[\x00-\x1F\x7F]/', $title)) {
+            throw new ApiError(422, 'Project title must be 1–120 readable characters.');
+        }
         $revision = $b['expectedRevision'] ?? null;
         if (!is_int($revision) || $revision < 0) throw new ApiError(422, 'expectedRevision must be a nonnegative integer.');
         $document = Support::jsonString($b['document'] ?? null, (int) ($this->config['max_project_bytes'] ?? 131072));
@@ -409,12 +435,14 @@ final class App
     private function privateDir(): string
     {
         $path = (string) ($this->config['storage_path'] ?? '');
-        $realPublic = realpath(dirname(__DIR__) . '/public');
         if ($path === '' || !is_dir($path) || !is_writable($path)) throw new \RuntimeException('Private media directory missing or not writable.');
-        $real = realpath($path);
-        if ($real === false || $realPublic === false || $real === $realPublic || str_starts_with($real . '/', $realPublic . '/')) {
-            throw new \RuntimeException('Private storage may not be inside public directory.');
-        }
-        return $real;
+        // The runtime DOCUMENT_ROOT is authoritative; the configured cPanel
+        // root adds protection against alternate domains and aliases.
+        $roots = [dirname(__DIR__) . '/public'];
+        $documentRoot = trim((string) ($_SERVER['DOCUMENT_ROOT'] ?? ''));
+        if ($documentRoot !== '') $roots[] = $documentRoot;
+        $configuredRoot = trim((string) ($this->config['public_webroot_path'] ?? ''));
+        if ($configuredRoot !== '') $roots[] = $configuredRoot;
+        return Support::assertPrivateStorage($path, $roots);
     }
 }

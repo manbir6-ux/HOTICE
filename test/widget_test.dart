@@ -8,6 +8,22 @@ import 'package:hotice/src/avatar_identity.dart';
 import 'package:hotice/src/music_studio.dart';
 
 void main() {
+  test('new device projects use unique UUIDv4 IDs for future cloud API', () {
+    final store = HotIceStore();
+    addTearDown(store.dispose);
+    final ids = <String>{};
+    final pattern = RegExp(
+        r'^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$');
+    for (var i = 0; i < 64; i++) {
+      final id = store.addProject('Film $i');
+      expect(pattern.hasMatch(id), isTrue);
+      expect(ids.add(id), isTrue);
+    }
+    expect(() => store.addProject('   '), throwsArgumentError);
+    expect(() => store.addProject(List.filled(61, 'x').join()),
+        throwsArgumentError);
+  });
+
   test('credit prices use integer US cents', () {
     expect(creditsPerUsd, 100);
     expect(minimumPurchaseUsd * creditsPerUsd, 1000);

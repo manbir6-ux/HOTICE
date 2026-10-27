@@ -175,7 +175,7 @@ class DemoNotice extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(13),
       decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.primary.withOpacity(.09),
+        color: Theme.of(context).colorScheme.primary.withValues(alpha: .09),
         borderRadius: BorderRadius.circular(12),
       ),
       child: LayoutBuilder(
@@ -267,7 +267,7 @@ class FilmPreview extends StatelessWidget {
               child: Icon(
                 Icons.blur_circular,
                 size: 210,
-                color: Colors.white.withOpacity(.13),
+                color: Colors.white.withValues(alpha: .13),
               ),
             ),
             const Center(
