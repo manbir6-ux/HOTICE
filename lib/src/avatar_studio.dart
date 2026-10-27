@@ -2,12 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:file_picker/file_picker.dart';
 import 'smart_references.dart';
+import 'live_face_capture.dart';
+import 'dart:io';
 import 'avatar_identity.dart';
 import 'design.dart';
 import 'state.dart';
 
-/// Local-only character workshop. The scan guide never requests the camera,
-/// captures a face, or constructs a 3D model. Those require later integrations.
+/// Local character workshop with separate guided live 2D camera capture.
+/// The five-pose illustration remains a design preview, not a mesh scanner.
 class AvatarsPage extends StatefulWidget {
   final HotIceStore store;
   const AvatarsPage({super.key, required this.store});
@@ -99,6 +101,54 @@ class _AvatarsPageState extends State<AvatarsPage> {
         identityNotes.clear();
       });
     }
+  }
+
+  Future<void> startRealCapture(StudioAvatar avatar) async {
+    if (widget.store.avatarPackFor(avatar.name).assets.length > 11) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Remove some previous photos before adding five more.'),
+      ));
+      return;
+    }
+    final photos = await Navigator.of(context).push<List<CapturedFacePhoto>>(
+      MaterialPageRoute(builder: (_) => const LiveFaceScanPage()),
+    );
+    if (photos == null || photos.isEmpty) return;
+    const viewByPose = <CapturePose, FaceView>{
+      CapturePose.front: FaceView.front,
+      CapturePose.left45: FaceView.left45,
+      CapturePose.right45: FaceView.right45,
+      CapturePose.left90: FaceView.left90,
+      CapturePose.right90: FaceView.right90,
+    };
+    var saved = 0;
+    for (final shot in photos) {
+      final success = widget.store.addAvatarReference(
+        avatar.name,
+        AvatarReference(
+          id: createLocalProjectId(),
+          ownerName: avatar.name,
+          role: ReferenceRole.avatar,
+          format: ReferenceFormat.image,
+          mimeType: 'image/jpeg',
+          localPath: shot.path,
+          view: viewByPose[shot.pose],
+          ownedTemporaryFile: true,
+          // These are 2D photos, never claim a verified 3D mesh.
+          isScanVerified: false,
+        ),
+      );
+      if (success) {
+        saved++;
+      } else {
+        try { await File(shot.path).delete(); } catch (_) {}
+      }
+    }
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(saved.toString() +
+          ' guided 2D face references saved for this session. Not a 3D mesh.'),
+    ));
   }
 
   Future<void> importFacePhoto(StudioAvatar avatar) async {
@@ -252,7 +302,7 @@ class _AvatarsPageState extends State<AvatarsPage> {
             subtitle: 'Create once. Reuse the same character description across your shots.',
           ),
           const DemoNotice(
-            'Testing mode: you may manually import face photos for reference planning; only temporary local paths are held in memory. Live camera scanning, verified 3D reconstruction and secure avatar storage are not active.',
+            'Beta: live guided multi-angle 2D capture is available on Android/iOS with consent, plus manual references. Photos are temporarily cached, not encrypted. No 3D reconstruction, identity verification or cloud storage.'
           ),
           const SizedBox(height: 20),
           Wrap(
@@ -471,7 +521,9 @@ class _AvatarsPageState extends State<AvatarsPage> {
                   trailing: PopupMenuButton<String>(
                     tooltip: 'Character options',
                     onSelected: (action) {
-                      if (action == 'import') {
+                      if (action == 'scan') {
+                        startRealCapture(avatar);
+                      } else if (action == 'import') {
                         importFacePhoto(avatar);
                       } else if (action == 'edit') {
                         startEditing(avatar);
@@ -480,6 +532,7 @@ class _AvatarsPageState extends State<AvatarsPage> {
                       }
                     },
                     itemBuilder: (ctx) => const [
+                      PopupMenuItem(value: 'scan', child: Text('Start live guided face capture')),
                       PopupMenuItem(value: 'import', child: Text('Add face reference photo')),
                       PopupMenuItem(value: 'edit', child: Text('Edit character')),
                       PopupMenuItem(value: 'delete', child: Text('Delete character')),
