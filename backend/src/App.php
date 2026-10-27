@@ -425,38 +425,14 @@ final class App
     private function privateDir(): string
     {
         $path = (string) ($this->config['storage_path'] ?? '');
-        $realPublic = realpath(dirname(__DIR__) . '/public');
         if ($path === '' || !is_dir($path) || !is_writable($path)) throw new \RuntimeException('Private media directory missing or not writable.');
-        $real = realpath($path);
-        if ($real === false || $realPublic === false) {
-            throw new \RuntimeException('Private storage path cannot be verified.');
-        }
-        // The PHP app may be installed under public_html/API/public. Checking
-        // only backend/public misses public_html itself and can expose backups.
-        // Fail closed if storage is inside OR encloses either web root.
-        $roots = [$realPublic];
+        // The runtime DOCUMENT_ROOT is authoritative; the configured cPanel
+        // root adds protection against alternate domains and aliases.
+        $roots = [dirname(__DIR__) . '/public'];
         $documentRoot = trim((string) ($_SERVER['DOCUMENT_ROOT'] ?? ''));
-        if ($documentRoot !== '') {
-            $resolvedDocumentRoot = realpath($documentRoot);
-            if ($resolvedDocumentRoot === false) {
-                throw new \RuntimeException('Web document root cannot be verified.');
-            }
-            $roots[] = $resolvedDocumentRoot;
-        }
+        if ($documentRoot !== '') $roots[] = $documentRoot;
         $configuredRoot = trim((string) ($this->config['public_webroot_path'] ?? ''));
-        if ($configuredRoot !== '') {
-            $resolvedConfiguredRoot = realpath($configuredRoot);
-            if ($resolvedConfiguredRoot === false) {
-                throw new \RuntimeException('Configured public webroot cannot be verified.');
-            }
-            $roots[] = $resolvedConfiguredRoot;
-        }
-        foreach (array_unique($roots) as $root) {
-            if ($real === $root || str_starts_with($real . '/', $root . '/')
-                || str_starts_with($root . '/', $real . '/')) {
-                throw new \RuntimeException('Private storage must be outside all public web roots.');
-            }
-        }
-        return $real;
+        if ($configuredRoot !== '') $roots[] = $configuredRoot;
+        return Support::assertPrivateStorage($path, $roots);
     }
 }
