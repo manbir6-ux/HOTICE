@@ -57,6 +57,12 @@ test "$status" = '404'
 status=$(curl -sS -o /dev/null -w '%{http_code}' -X DELETE -H "$OTHER_AUTH" "$BASE/v1/projects/$id")
 test "$status" = '404'
 curl -fsS -H "$AUTH" "$BASE/v1/projects/$id" | jq -e '.project.revision == 1' >/dev/null
+# Round-trip fidelity matters: Flutter maps {} to {}, not [].
+json_patch='{"title":"Keep object shapes","expectedRevision":1,"document":{"emptyObject":{},"emptyList":[],"scene":{"settings":{}}}}'
+curl -fsS -X PUT -H "$AUTH" -H 'Content-Type: application/json' -d "$json_patch" \
+  "$BASE/v1/projects/$id" | jq -e '.revision == 2' >/dev/null
+curl -fsS -H "$AUTH" "$BASE/v1/projects/$id" \
+  | jq -e '.project.revision == 2 and (.project.document.emptyObject | type) == "object" and (.project.document.emptyList | type) == "array" and (.project.document.scene.settings | type) == "object"' >/dev/null
 curl -fsS -H "$AUTH" "$BASE/v1/me" | jq -e '.cloud.usedBytes > 0' >/dev/null
 curl -fsS -X DELETE -H "$AUTH" "$BASE/v1/projects/$id" | jq -e '.deleted == true' >/dev/null
 curl -fsS -H "$AUTH" "$BASE/v1/me" | jq -e '.cloud.usedBytes == 0' >/dev/null
