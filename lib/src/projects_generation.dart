@@ -24,6 +24,57 @@ class ProjectsPage extends StatelessWidget {
     }
   }
 
+  Future<void> rename(BuildContext context, HotProject project) async {
+    final title = await showHotIceTextDialog(
+      context,
+      title: 'Rename project',
+      label: 'Project title',
+      confirmLabel: 'Save name',
+      initialValue: project.title,
+      maxLength: 60,
+    );
+    if (!context.mounted || title == null) return;
+    if (!store.renameProject(project.id, title)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Project could not be renamed.')),
+      );
+    }
+  }
+
+  Future<void> delete(BuildContext context, HotProject project) async {
+    final draftCount =
+        store.drafts.where((draft) => draft.projectId == project.id).length;
+    final planCount =
+        store.musicPlans.where((plan) => plan.projectId == project.id).length;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Delete project?'),
+        content: Text(
+          'Delete "${project.title}" and its $draftCount saved scene drafts '
+          'and $planCount storyboards from this demo session? '
+          'This cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Delete project'),
+          ),
+        ],
+      ),
+    );
+    if (!context.mounted || confirmed != true) return;
+    if (!store.deleteProject(project.id)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Project no longer exists.')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return PageFrame(
@@ -72,10 +123,40 @@ class ProjectsPage extends StatelessWidget {
                           children: [
                             FilmPreview(title: project.title),
                             const SizedBox(height: 12),
-                            Text(project.title,
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                                style: Theme.of(context).textTheme.titleMedium),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    project.title,
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: Theme.of(context).textTheme.titleMedium,
+                                  ),
+                                ),
+                                PopupMenuButton<String>(
+                                  key: ValueKey('project-options-${project.id}'),
+                                  tooltip: 'Project options',
+                                  icon: const Icon(Icons.more_vert_rounded),
+                                  onSelected: (action) async {
+                                    if (action == 'rename') {
+                                      await rename(context, project);
+                                    } else if (action == 'delete') {
+                                      await delete(context, project);
+                                    }
+                                  },
+                                  itemBuilder: (_) => const [
+                                    PopupMenuItem(
+                                      value: 'rename',
+                                      child: Text('Rename'),
+                                    ),
+                                    PopupMenuItem(
+                                      value: 'delete',
+                                      child: Text('Delete'),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
                             const SizedBox(height: 5),
                             const Text('Open project →',
                                 style: TextStyle(fontSize: 12)),
