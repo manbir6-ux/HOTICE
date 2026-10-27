@@ -8,7 +8,7 @@
 - Local-first: Flutter projects and media stay on the device. *The current HOTICE demo stores most projects in RAM; local persistence is a separate required Flutter change.* No automatic cloud upload or biometric uploads.
 - Cloud optional and gated by server-owned paid entitlement records and quota; free account cannot enable cloud via UI or spoof client JSON.
 - **Credits and cloud storage are separate:** fixed 1 HOTICE Credit = USD $0.01, purchase minimum USD $10. Never treat a credit pack as a cloud subscription or subscription as an AI credit grant.
-- Media shared-host MVP cap: 20 MiB/file; large generated video results later need signed object storage and resumable upload.
+- Media shared-host MVP cap: 20 MiB/file, 100 projects/user and 200 files/project by default; large generated video results later need signed object storage and resumable upload.
 - Inactive/expired plans: deny writes; grace read-only export of 30 days is a *provisional technical policy*, not a contracted offer. Cloud deletion remains available after expiry.
 - Provider API keys and DB secrets never shipped inside Flutter. Use private server config and future outbound allowlisted provider proxy with billable-usage controls.
 
@@ -22,7 +22,7 @@ Implementation principles: password_hash and verification; random bearer tokens 
 ## Verification truth
 - Local PHP 8.4 syntax checks: nine PHP files passed.
 - Local standalone smoke test: 206 core assertions passed.
-- ZIP checksum SHA-256: `9fefae39e892dfa80c0afc0b492fbd32f29ac791826aae43f8c9c7efd84be768`.
+- ZIP checksum SHA-256: `e76f8e2dcdd51e4a6d297bd5baca5c806578af1d92502b31d4356f5c4c62bb19`.
 - **MySQL end-to-end HTTP integration test not executed locally:** no pdo_mysql driver/MySQL server in the current local container. The repository now includes a GitHub Actions workflow with an ephemeral MySQL service to test account login, subscription gate, project conflict, media upload/download/deletion and session revocation. CI result for the added code must be checked separately.
 - **No Namecheap deployment, public URL or provider/payment key installation has happened.** Do not label this a working live API.
 - Current `main` Flutter code is still a UI/demo and has no backend client wiring.
