@@ -34,8 +34,11 @@ final class App
     public function run(): void
     {
         header('X-Content-Type-Options: nosniff');
+        header('X-Frame-Options: DENY');
+        header("Content-Security-Policy: default-src 'none'; frame-ancestors 'none'");
         header('Cache-Control: no-store, max-age=0');
         header('Referrer-Policy: no-referrer');
+        if ($this->https()) header('Strict-Transport-Security: max-age=31536000');
         $requestId = bin2hex(random_bytes(8));
         header('X-Request-ID: ' . $requestId);
         try {
@@ -255,7 +258,13 @@ final class App
         $this->requireCloud($user, true);
         $b = Support::jsonInput((int) ($this->config['max_project_bytes'] ?? 131072) + 4096);
         $title = trim((string) ($b['title'] ?? ''));
-        if ($title === '' || strlen($title) > 480 || preg_match_all('/./us', $title) > 120) throw new ApiError(422, 'Project title must be 1–120 characters.');
+        // A malformed UTF-8 title must be rejected as input, not handed
+        // to MySQL as a server error; controls cannot appear in metadata.
+        $titleLength = preg_match_all('/./us', $title);
+        if ($title === '' || strlen($title) > 480 || $titleLength === false ||
+            $titleLength > 120 || preg_match('/[\\x00-\\x1F\\x7F]/', $title)) {
+            throw new ApiError(422, 'Project title must be 1–120 readable characters.');
+        }
         $revision = $b['expectedRevision'] ?? null;
         if (!is_int($revision) || $revision < 0) throw new ApiError(422, 'expectedRevision must be a nonnegative integer.');
         $document = Support::jsonString($b['document'] ?? null, (int) ($this->config['max_project_bytes'] ?? 131072));
