@@ -119,20 +119,34 @@ final class App
         echo json_encode($data, JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
     }
 
-    private function throttle(string $email): string
+    /**
+     * Separate per-email and per-client-IP limits prevent two common bypasses:
+     * distributing guesses for one account over many IPs, and spraying many
+     * email addresses from one IP. All identifiers are keyed HMAC digests.
+     * Clean expired rows using bin/cleanup.php (cron).
+     */
+    private function throttle(string $email): array
     {
         $ip = (string) ($_SERVER['REMOTE_ADDR'] ?? 'unknown');
-        $fingerprint = hash_hmac('sha256', $email . '|' . $ip, (string) $this->config['app_key']);
-        $q = $this->db->prepare('SELECT COUNT(*) FROM login_attempts WHERE fingerprint=? AND occurred_at > DATE_SUB(UTC_TIMESTAMP(),INTERVAL 15 MINUTE)');
-        $q->execute([$fingerprint]);
-        if ((int) $q->fetchColumn() >= 6) throw new ApiError(429, 'Too many attempts. Try later.');
-        return $fingerprint;
+        $key = (string) $this->config['app_key'];
+        $identities = [
+            'email' => hash_hmac('sha256', 'email:' . $email, $key),
+            'ip' => hash_hmac('sha256', 'ip:' . $ip, $key),
+        ];
+        $q = $this->db->prepare('SELECT COUNT(*) FROM login_attempts WHERE fingerprint=? AND occurred_at > DATE_SUB(UTC_TIMESTAMP(), INTERVAL 15 MINUTE)');
+        foreach (['email' => 12, 'ip' => 50] as $type => $maxAttempts) {
+            $q->execute([$identities[$type]]);
+            if ((int) $q->fetchColumn() >= $maxAttempts) {
+                throw new ApiError(429, 'Too many attempts. Try later.');
+            }
+        }
+        return $identities;
     }
 
-    private function recordFailedLogin(string $fingerprint): void
+    private function recordFailedLogin(array $fingerprints): void
     {
-        $this->db->prepare('INSERT INTO login_attempts (fingerprint,occurred_at) VALUES (?,UTC_TIMESTAMP())')
-            ->execute([$fingerprint]);
+        $q = $this->db->prepare('INSERT INTO login_attempts (fingerprint,occurred_at) VALUES (?,UTC_TIMESTAMP())');
+        foreach ($fingerprints as $fingerprint) $q->execute([$fingerprint]);
     }
 
     private function register(): void
@@ -168,7 +182,9 @@ final class App
             $this->recordFailedLogin($fingerprint);
             throw new ApiError(401, 'Invalid email or password.');
         }
-        $this->db->prepare('DELETE FROM login_attempts WHERE fingerprint=?')->execute([$fingerprint]);
+        // Never clear the IP budget on a successful login: a single valid
+        // account must not let attackers reset their IP-wide spray limit.
+        $this->db->prepare('DELETE FROM login_attempts WHERE fingerprint=?')->execute([$fingerprint['email']]);
         if (password_needs_rehash($user['password_hash'], PASSWORD_DEFAULT)) {
             $this->db->prepare('UPDATE users SET password_hash=? WHERE id=?')
                 ->execute([password_hash($password, PASSWORD_DEFAULT), $user['id']]);
@@ -412,8 +428,20 @@ final class App
         $realPublic = realpath(dirname(__DIR__) . '/public');
         if ($path === '' || !is_dir($path) || !is_writable($path)) throw new \RuntimeException('Private media directory missing or not writable.');
         $real = realpath($path);
-        if ($real === false || $realPublic === false || $real === $realPublic || str_starts_with($real . '/', $realPublic . '/')) {
-            throw new \RuntimeException('Private storage may not be inside public directory.');
+        if ($real === false || $realPublic === false) {
+            throw new \RuntimeException('Private storage path cannot be verified.');
+        }
+        // The PHP app may be installed under public_html/API/public. Checking
+        // only backend/public misses public_html itself and can expose backups.
+        // Fail closed if storage is inside OR encloses either web root.
+        $roots = [$realPublic];
+        $documentRoot = realpath((string) ($_SERVER['DOCUMENT_ROOT'] ?? ''));
+        if ($documentRoot !== false) $roots[] = $documentRoot;
+        foreach (array_unique($roots) as $root) {
+            if ($real === $root || str_starts_with($real . '/', $root . '/')
+                || str_starts_with($root . '/', $real . '/')) {
+                throw new \RuntimeException('Private storage must be outside all public web roots.');
+            }
         }
         return $real;
     }
