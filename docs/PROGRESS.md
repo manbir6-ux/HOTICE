@@ -2,6 +2,16 @@
 
 > **Continuing HOTICE on another model?** First read [CONTINUE_HERE.md](CONTINUE_HERE.md) for the verified repo state, product decisions, blockers, and ordered next steps. Refresh the current branch and Actions status; this checklist may lag behind newer commits.
 
+## Smart reference work-in-progress — 28 October 2026 (feature branch)
+
+- [x] Typed smart reference selection engine in source with image/GLB capability gates, pose-aware scoring, manual locks, consent checks and account/project ownership validation.
+- [x] Avatar Studio manual front/side face photo tagging/import, scene image picker, generation reference preview, and immutable reference IDs on demo drafts.
+- [x] Dedicated test coverage added; CI/device build results must still be verified before marking tests as passing.
+- [ ] Actual guided live camera scanning, landmark/eye checks, quality gating, trusted 3D reconstruction/export and secure long-lived avatar storage.
+- [ ] Verified vendor reference limits + server-side adapters, encrypted backend media, genuine AI rendering and likeness benchmarks.
+
+See [SMART_REFERENCE_ENGINE.md](SMART_REFERENCE_ENGINE.md) for exact supported behavior and privacy limitations. **Current changes are on a feature branch and not a production release.**
+
 ## Current verified snapshot — 26 October 2026
 - [x] **Flutter static analysis and widget tests passed** on the preview code branch: [Actions run 40201075329](https://github.com/parmtech/HOTICE/actions/runs/40201075329).
 - [x] A real Android **debug** APK was compiled and uploaded as artifact `HOTICE-Android-Preview-APK` in the same run. This does **not** mean a production-signed APK or device QA pass.
