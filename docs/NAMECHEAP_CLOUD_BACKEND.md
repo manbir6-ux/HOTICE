@@ -1,6 +1,6 @@
 # HOTICE — Namecheap cPanel Cloud Backend v0.1
 
-**Status 27 Oct 2026:** Standalone, ZIP-packaged PHP/MySQL backend implemented and locally syntax/unit tested in the current development conversation. **This document records the architecture and follow-on GitHub integration; the PHP source files from the ZIP are NOT yet committed to the HOTICE repository, deployed to Namecheap, connected to Flutter or live production tested.** Import/review the packaged source before deploying. No account credentials/API secrets are committed.
+**Status 27 Oct 2026:** PHP/MySQL backend MVP implemented, local PHP syntax and core assertions checked, and the exact ZIP source **committed into backend/** with an independent GitHub Actions MySQL integration workflow. **It has not been deployed to Namecheap, connected to Flutter or live production tested.** GitHub CI checks are required before any production deployment. No account credentials/API secrets are committed.
 
 ## Hosting and policy
 - Target: Namecheap shared cPanel, PHP 8.2+, pdo_mysql/fileinfo, MySQL/MariaDB, HTTPS.
@@ -12,7 +12,7 @@
 - Inactive/expired plans: deny writes; grace read-only export of 30 days is a *provisional technical policy*, not a contracted offer. Cloud deletion remains available after expiry.
 - Provider API keys and DB secrets never shipped inside Flutter. Use private server config and future outbound allowlisted provider proxy with billable-usage controls.
 
-## Backend ZIP contents (delivered directly in chat this session)
+## Backend ZIP contents (also committed in backend/ in this PR)
 `backend/public/index.php`, `backend/public/.htaccess`, `backend/src/App.php`, `backend/src/Support.php`, `backend/schema.sql`, `backend/config.example.php`, CLI installer/create-user/grant-trial/cleanup, smoke and MySQL HTTP integration tests, cPanel README, and independent `.github/workflows/backend_ci.yml`.
 
 Endpoints: GET /health; POST /v1/auth/login, /register (disabled by default), /logout; GET /v1/me; GET /v1/projects; GET/PUT/DELETE /v1/projects/{UUID}; PUT /v1/projects/{UUID}/files/{UUID}; GET/DELETE /v1/files/{UUID}.
@@ -23,12 +23,12 @@ Implementation principles: password_hash and verification; random bearer tokens 
 - Local PHP 8.4 syntax checks: nine PHP files passed.
 - Local standalone smoke test: 206 core assertions passed.
 - ZIP checksum SHA-256: `9fefae39e892dfa80c0afc0b492fbd32f29ac791826aae43f8c9c7efd84be768`.
-- **MySQL end-to-end HTTP integration test not executed locally:** no pdo_mysql driver/MySQL server in the current local container. The ZIP includes a GitHub Actions workflow with an ephemeral MySQL service to test account login, subscription gate, project conflict, media upload/download/deletion and session revocation after importing source into this repository.
+- **MySQL end-to-end HTTP integration test not executed locally:** no pdo_mysql driver/MySQL server in the current local container. The repository now includes a GitHub Actions workflow with an ephemeral MySQL service to test account login, subscription gate, project conflict, media upload/download/deletion and session revocation. CI result for the added code must be checked separately.
 - **No Namecheap deployment, public URL or provider/payment key installation has happened.** Do not label this a working live API.
 - Current `main` Flutter code is still a UI/demo and has no backend client wiring.
 
 ## Release-critical next steps
-1. Import exact ZIP source into `backend/` + `.github/workflows/backend_ci.yml` in this repo, verify diff, run MySQL integration workflow and fix all failures.
+1. Verify committed PHP source under `backend/` and run/fix the independent MySQL integration GitHub Actions workflow. Resolve security concerns before release.
 2. Connect secure Flutter device storage and real auth in separate reviewed PRs, including access tokens in native secure storage, explicit cloud sync opt-in and offline conflict handling.
 3. Configure a dedicated, HTTPS-only cPanel subdomain, SQL database, server-only secrets, private media directory, backups and recovery; validate direct URL blocking of config/private files.
 4. Integrate **verified** billing webhooks before automatically granting any paid cloud entitlement; add refunds, cancellations and webhook idempotency.
