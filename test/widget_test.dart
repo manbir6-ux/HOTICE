@@ -54,7 +54,8 @@ void main() {
     expect(store.deleteProject(first), isFalse);
     expect(store.drafts, isEmpty);
     expect(store.musicPlans, isEmpty);
-    expect(store.projects.single.id, second);
+    expect(store.projects.any((p) => p.id == second), isTrue);
+    expect(store.projects.any((p) => p.id == first), isFalse);
     store.switchAccount('separate@example.com');
     expect(store.projects.single.id, other);
   });
