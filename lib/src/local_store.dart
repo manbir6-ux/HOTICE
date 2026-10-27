@@ -94,6 +94,12 @@ class HotIceLocalArchive {
         if (data is! Map<String, dynamic> || data['schema'] != 1) {
           throw const FormatException('Unsupported project archive schema.');
         }
+        if (candidate.path == _backup.path) {
+          // Repair a corrupt/missing primary now. Never rotate an invalid
+          // primary over the only authenticated backup during the next save.
+          if (await _primary.exists()) await _primary.delete();
+          await _backup.rename(_primary.path);
+        }
         return data;
       } catch (_) {
         // A half-written primary may be recoverable from the prior backup.
