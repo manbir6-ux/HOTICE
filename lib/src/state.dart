@@ -243,7 +243,22 @@ class HotIceStore extends ChangeNotifier {
         throw StateError('Unsupported output or attachment for this model.');
       }
     }
-    drafts.insert(0, draft);
+    // Capture a stable job snapshot. The caller must not be able to mutate
+    // validated attachment settings after this draft is stored.
+    final canonicalProject = projects.where((p) => p.id == draft.projectId);
+    drafts.insert(0, GenerationDraft(
+      project: canonicalProject.isEmpty ? draft.project : canonicalProject.first.title,
+      prompt: draft.prompt,
+      model: draft.model,
+      aspectRatio: draft.aspectRatio,
+      durationSeconds: draft.durationSeconds,
+      createdAt: draft.createdAt,
+      projectId: draft.projectId,
+      avatarName: draft.avatarName,
+      modelId: draft.modelId,
+      requestedAttachments:
+          List<VideoAttachment>.unmodifiable(draft.requestedAttachments),
+    ));
     notifyListeners();
   }
 
