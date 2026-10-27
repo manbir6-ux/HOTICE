@@ -14,6 +14,8 @@ return [
     'token_ttl_hours' => 24,
     'max_file_bytes' => 20 * 1024 * 1024, // conservative shared-host MVP, not large source videos
     'max_project_bytes' => 128 * 1024,
+    'max_cloud_projects' => 100, // server-owned per-account metadata limit
+    'max_files_per_project' => 200, // avoid shared-host inode/database abuse
     // Never put secret keys inside Flutter, JS, SQL, or Git. No live AI adapter in v0.1.
     'providers' => [
         'openai' => ['api_key' => ''],
