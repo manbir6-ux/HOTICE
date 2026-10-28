@@ -164,6 +164,12 @@ void main() {
 
   testWidgets('server login form submits credentials to the auth callback',
       (tester) async {
+    tester.view.physicalSize = const Size(393, 852);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
     String? submittedEmail;
     String? submittedPassword;
     await tester.pumpWidget(MaterialApp(
@@ -178,7 +184,9 @@ void main() {
 
     await tester.enterText(find.widgetWithText(TextFormField, 'Email'), 'maker@example.com');
     await tester.enterText(find.widgetWithText(TextFormField, 'Password'), 'secret password');
-    await tester.tap(find.text('Sign in'));
+    final submit = find.text('Sign in');
+    await tester.ensureVisible(submit);
+    await tester.tap(submit);
     await tester.pumpAndSettle();
 
     expect(submittedEmail, 'maker@example.com');
