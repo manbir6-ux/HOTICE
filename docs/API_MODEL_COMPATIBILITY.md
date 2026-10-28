@@ -73,6 +73,8 @@ A real server-delivered catalog record must include:
 ## Implementation in this branch
 - lib/src/model_registry.dart: researched, provider-scoped model entries, task/role/duration/ratio/resolution checks, retired model guards, error categories and server-readiness gate contract.
 - lib/src/model_compatibility_page.dart: searchable source-backed API model inspector accessible from HOTICE Settings / Normal Video.
+- lib/src/api_model_preview_panel.dart: separate non-billable Normal Video panel that reacts to selected provider profile, adapting aspect/resolution/duration UI without modifying the user's one main prompt. A model without a documented exact duration field displays automatic duration rather than pretending that the API accepts seconds.
+- test/api_model_preview_test.dart: widget-level model switching and dynamic settings checks.
 - lib/src/server_model_manifest.dart: strict versioned expiring trusted-server JSON catalog parser with exact duration/aspect/resolution tuple validation and reference count gates.
 - backend/php/ProviderEnvelope.php: server-only, text-only Google Omni/Runway envelope builders; secret headers from env and fixed allowlisted hosts; **not an HTTP worker** and never runs without trusted server approval gates.
 - backend/tests/provider_envelope_test.php: mandatory quote/auth/entitlement gates, payload schemas, secret isolation, rejection cases.
