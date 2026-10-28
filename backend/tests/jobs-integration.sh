@@ -25,8 +25,8 @@ EMAIL='mock-jobs@example.com'
 PASS='TemporaryMockPassword123!'
 OTHER='mock-outsider@example.com'
 OTHER_PASS='TemporaryOtherPassword123!'
-printf '%s\n' "$PASS" | php backend/bin/create-user.php "$EMAIL" >/dev/null 2>&1
-printf '%s\n' "$OTHER_PASS" | php backend/bin/create-user.php "$OTHER" >/dev/null 2>&1
+curl -fsS -H 'Content-Type: application/json' -d "{\"email\":\"$EMAIL\",\"password\":\"$PASS\"}" "$BASE/v1/auth/register" >/dev/null
+curl -fsS -H 'Content-Type: application/json' -d "{\"email\":\"$OTHER\",\"password\":\"$OTHER_PASS\"}" "$BASE/v1/auth/register" >/dev/null
 login=$(curl -fsS -H 'Content-Type: application/json' -d "{\"email\":\"$EMAIL\",\"password\":\"$PASS\"}" "$BASE/v1/auth/login")
 token=$(echo "$login" | jq -er '.accessToken')
 other_login=$(curl -fsS -H 'Content-Type: application/json' -d "{\"email\":\"$OTHER\",\"password\":\"$OTHER_PASS\"}" "$BASE/v1/auth/login")

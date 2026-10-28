@@ -133,7 +133,7 @@ async function main() {
     assert.equal(apiResponses.find((response) => response.path === '/v1/auth/register')?.status, 202,
       'Registration response must preserve the anti-enumeration accepted status.');
 
-    await page.locator('[data-account-view="login"]').click();
+    await page.locator('#accountRegister [data-account-view="login"]').click();
     await page.locator('#accountEmail').fill(registerEmail);
     await page.locator('#accountPassword').fill(registerPassword);
     await page.locator('#accountSignIn').click();
