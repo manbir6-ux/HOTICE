@@ -29,7 +29,8 @@ class AiCapability {
     required this.status, this.apiVersion = '', this.workflow = '',
     this.aspects = const [], this.resolutions = const [],
     this.minSeconds, this.maxSeconds, this.exactSeconds = const [],
-    this.roles = const [], this.imageLimit, this.videoLimit,
+    this.roles = const [], this.allowedMimes = const [],
+    this.maxSingleAssetBytes, this.imageLimit, this.videoLimit,
     this.controlsDuration = true,
     this.audioLimit, this.meshLimit = 0, this.firstFrameRequired = false,
     this.notes = '',
@@ -42,6 +43,8 @@ class AiCapability {
   final int? minSeconds, maxSeconds, imageLimit, videoLimit, audioLimit, meshLimit;
   final List<int> exactSeconds;
   final List<AiMediaRole> roles;
+  final List<String> allowedMimes;
+  final int? maxSingleAssetBytes;
   final bool firstFrameRequired, controlsDuration;
 
   List<String> validate(AiRequest request) {
@@ -74,7 +77,15 @@ class AiCapability {
     for (final asset in request.assets) {
       if (!roles.contains(asset.role)) errors.add('Unsupported media reference role.');
       if (asset.id.isEmpty || !ids.add(asset.id)) errors.add('Invalid or duplicate media ID.');
-      if (asset.bytes <= 0 || asset.mime.isEmpty) errors.add('Unverified file MIME or size.');
+      if (asset.bytes <= 0 || asset.mime.isEmpty) {
+        errors.add('Unverified file MIME or size.');
+      }
+      if (!allowedMimes.contains(asset.mime.toLowerCase())) {
+        errors.add('Unverified or unsupported media MIME type.');
+      }
+      if (maxSingleAssetBytes != null && asset.bytes > maxSingleAssetBytes!) {
+        errors.add('File exceeds documented per-upload size limit.');
+      }
     }
     final images = request.assets.where((a) =>
       a.role == AiMediaRole.firstFrame ||
@@ -156,6 +167,7 @@ class HoticeAiCatalog {
       resolutions: ['360p','720p','1080p','4k'],
       minSeconds: 3, maxSeconds: 10, controlsDuration: false,
       roles: [AiMediaRole.firstFrame,AiMediaRole.lastFrame],
+      allowedMimes: ['image/jpeg','image/png'],
       firstFrameRequired: true, imageLimit: 2,
       notes: 'Two keyframes are NOT interchangeable with two identity references.',
     ),
@@ -192,6 +204,7 @@ class HoticeAiCatalog {
       aspects: ['1280:720','720:1280','1584:672','1104:832','832:1104','672:1584','960:960'],
       resolutions: ['720p'], minSeconds: 2, maxSeconds: 10,
       roles: [AiMediaRole.firstFrame], imageLimit: 1,
+      allowedMimes: ['image/jpeg','image/png'],
       firstFrameRequired: true,
       notes: 'One prompt image, not an arbitrary 4-reference avatar mode.',
     ),
@@ -255,6 +268,8 @@ class HoticeAiCatalog {
       status: AiStatus.active,
       docsUrl: 'https://developers.openai.com/api/docs/guides/speech-to-text',
       roles: [AiMediaRole.audioReference], audioLimit: 1,
+      allowedMimes: ['audio/mpeg','audio/mp4','video/mp4','audio/x-m4a','audio/wav','audio/webm'],
+      maxSingleAssetBytes: 25000000,
       notes: 'Up to 25 MB, supported format list documented; no automatic promise of word timestamps. Separate voice identification pipeline where required.',
     ),
     AiCapability(
@@ -265,6 +280,7 @@ class HoticeAiCatalog {
       status: AiStatus.active,
       docsUrl: 'https://ai.google.dev/gemini-api/docs/models/gemini-3.5-transcribe',
       roles: [AiMediaRole.audioReference], audioLimit: 1,
+      allowedMimes: ['audio/mpeg','audio/wav'],
       notes: '1h basic audio; 30m when diarization or word timestamps active. Timestamps incompatible with custom vocabulary; diarization also conflicts with custom vocabulary. Feature switches must validate together.',
     ),
     AiCapability(
