@@ -480,10 +480,11 @@
       'Secure account service configured. Sign in to verify your account; this preview does not sync project data.');
   }
 
-  async function accountApi(path, {method = 'GET', token = null, body = null} = {}) {
+  async function accountApi(path, {method = 'GET', token = null, body = null, extraHeaders = {}} = {}) {
     const headers = {Accept: 'application/json'};
     if (token) headers.Authorization = 'Bearer ' + token;
     if (body !== null) headers['Content-Type'] = 'application/json';
+    Object.assign(headers, extraHeaders);
     const response = await fetch(accountApiOrigin + path, {
       method,
       mode: 'cors',
@@ -510,9 +511,120 @@
   let selectedProjectId = null;
   let localProjectCache = [];
   let cloudProjectCache = [];
+  let mockGenerationEnabled = false;
+  let currentMockQuote = null;
 
   function projectStatus(message) { status('projectStatus', message); }
   function cloudProjectStatus(message) { status('cloudProjectStatus', message); }
+
+  function mockJobStatus(message) { status('mockGenerationStatus', message); }
+
+  function refreshMockControls() {
+    const available = Boolean(accountToken && mockGenerationEnabled);
+    for (const id of ['quoteMockJob', 'refreshMockJobs']) {
+      const control = get(id);
+      if (control) control.disabled = !available;
+    }
+    const submit = get('submitMockJob');
+    if (submit) submit.disabled = !available || !currentMockQuote;
+    if (!accountToken) mockJobStatus('Sign in and use an API server with mock generation enabled. No request is sent until you choose an action.');
+    else if (!mockGenerationEnabled) mockJobStatus('Mock generation is disabled on this server. Your scene stays on this device.');
+  }
+
+  async function quoteMockJob() {
+    if (!accountToken || !mockGenerationEnabled) return;
+    currentMockQuote = null;
+    refreshMockControls();
+    const prompt = get('scenePrompt')?.value.trim() || '';
+    if (!prompt) return mockJobStatus('Write a scene prompt before requesting a quote.');
+    mockJobStatus('Requesting a simulated-credit quote for this prompt…');
+    try {
+      const response = await accountApi('/v1/jobs/quote', {method: 'POST', token: accountToken,
+        body: {request: {modelId: 'hotice.mock.video.v1', prompt}}});
+      if (typeof response.quoteToken !== 'string' || !Number.isInteger(response.credits) ||
+          response.modelId !== 'hotice.mock.video.v1') throw new Error('Invalid mock quote.');
+      currentMockQuote = {token: response.quoteToken, prompt, credits: response.credits};
+      refreshMockControls();
+      mockJobStatus('Mock dry run quote: ' + response.credits + ' simulated credits. No money is charged. Quote expires ' + response.expiresAt + '.');
+    } catch (error) {
+      currentMockQuote = null;
+      refreshMockControls();
+      mockJobStatus(error.status === 503 ? 'Mock generation is disabled on this server.' :
+        'Could not get a simulated-credit quote. Check the server and try again.');
+    }
+  }
+
+  async function submitMockJob() {
+    if (!accountToken || !mockGenerationEnabled || !currentMockQuote) return;
+    const quote = currentMockQuote;
+    const prompt = get('scenePrompt')?.value.trim() || '';
+    if (prompt !== quote.prompt) {
+      currentMockQuote = null;
+      refreshMockControls();
+      return mockJobStatus('The prompt changed. Check a new quote before submitting.');
+    }
+    if (!window.confirm('Start a mock dry run for ' + quote.credits + ' simulated credits? No video is generated and no money is charged.')) return;
+    currentMockQuote = null;
+    refreshMockControls();
+    const submit = get('submitMockJob');
+    if (submit) submit.disabled = true;
+    mockJobStatus('Submitting the mock dry run…');
+    try {
+      const response = await accountApi('/v1/jobs', {method: 'POST', token: accountToken,
+        extraHeaders: {'Idempotency-Key': 'web-' + crypto.randomUUID()},
+        body: {quoteToken: quote.token, request: {modelId: 'hotice.mock.video.v1', prompt}}});
+      if (!response.job || typeof response.job.id !== 'string' || typeof response.job.status !== 'string') {
+        throw new Error('Invalid mock job response.');
+      }
+      mockJobStatus('Mock job ' + response.job.status + '. This staging workflow does not produce video. Use Refresh my jobs to check its latest state.');
+      await renderMockJobs([response.job]);
+    } catch (error) {
+      mockJobStatus(error.status === 402 ? 'Not enough simulated credits for this mock job.' :
+        'The server could not confirm job submission. Refresh your jobs before trying again.');
+    } finally {
+      refreshMockControls();
+    }
+  }
+
+  async function renderMockJobs(jobs) {
+    const root = get('mockJobs');
+    if (!root) return;
+    root.replaceChildren();
+    if (!jobs.length) return root.append(make('p', 'editor-note', 'No mock jobs found.'));
+    for (const job of jobs) {
+      const row = make('article', 'mock-job');
+      const title = make('strong', '', 'Mock job · ' + job.status);
+      const meta = make('small', '', 'ID ' + job.id + ' · simulated credits reserved: ' + job.reservedCredits);
+      row.append(title, meta);
+      if (job.result) row.append(make('p', 'editor-note', 'Mock adapter result recorded. No media was created.'));
+      if (job.errorCode === 'provider_outcome_unknown') row.append(make('p', 'editor-note', 'Provider outcome is unknown; credits remain reserved pending reconciliation.'));
+      root.append(row);
+    }
+  }
+
+  async function refreshMockJobs() {
+    if (!accountToken || !mockGenerationEnabled) return;
+    mockJobStatus('Loading your mock job status…');
+    try {
+      const response = await accountApi('/v1/jobs', {token: accountToken});
+      if (!Array.isArray(response.jobs)) throw new Error('Invalid jobs response.');
+      await renderMockJobs(response.jobs);
+      mockJobStatus('Job list refreshed. Results are mock metadata only; no video was created.');
+    } catch (_) {
+      mockJobStatus('Could not load mock job status. Your local scene remains available.');
+    }
+  }
+
+  get('quoteMockJob')?.addEventListener('click', quoteMockJob);
+  get('submitMockJob')?.addEventListener('click', submitMockJob);
+  get('refreshMockJobs')?.addEventListener('click', refreshMockJobs);
+  get('scenePrompt')?.addEventListener('input', () => {
+    if (currentMockQuote && get('scenePrompt').value.trim() !== currentMockQuote.prompt) {
+      currentMockQuote = null;
+      refreshMockControls();
+      mockJobStatus('Prompt changed. Check a new quote before submitting.');
+    }
+  });
 
   function openProjectDb() {
     return new Promise((resolve, reject) => {
@@ -845,9 +957,13 @@
 
   function showAccountForm(message) {
     accountToken = null;
+    mockGenerationEnabled = false;
+    currentMockQuote = null;
     accountSignedIn.hidden = true;
     accountForm.hidden = false;
     status('accountStatus', message);
+    get('mockJobs')?.replaceChildren();
+    refreshMockControls();
   }
 
   accountForm?.addEventListener('submit', async (event) => {
@@ -877,6 +993,7 @@
       accountToken = issuedToken;
       accountCanWriteCloud = profile.cloud?.active === true;
       accountCanReadCloud = profile.cloud?.readable === true;
+      mockGenerationEnabled = profile.mockGeneration?.enabled === true;
       get('accountIdentity').textContent = returnedEmail;
       get('accountCloudStatus').textContent = accountCanWriteCloud
         ? 'Cloud access is active. Project sync still requires your consent and a project-specific action.'
@@ -887,6 +1004,7 @@
       accountSignedIn.hidden = false;
       status('accountStatus', 'Signed in and verified with the HOTICE server.');
       refreshCloudControls();
+      refreshMockControls();
       await refreshLocalProjects();
     } catch (error) {
       if (issuedToken && accountApiOrigin) {
@@ -907,6 +1025,8 @@
   get('accountSignOut')?.addEventListener('click', async () => {
     const token = accountToken;
     accountToken = null;
+    mockGenerationEnabled = false;
+    currentMockQuote = null;
     accountCanWriteCloud = false;
     accountCanReadCloud = false;
     accountSignedIn.hidden = true;
@@ -914,7 +1034,9 @@
     if (projectConsent) projectConsent.checked = false;
     cloudProjectCache = [];
     get('cloudProjects')?.replaceChildren();
+    get('mockJobs')?.replaceChildren();
     refreshCloudControls();
+    refreshMockControls();
     refreshLocalProjects();
     status('accountStatus', 'Signing out and revoking this server session…');
     try {
@@ -929,6 +1051,8 @@
   window.addEventListener('pagehide', () => {
     const token = accountToken;
     accountToken = null;
+    mockGenerationEnabled = false;
+    currentMockQuote = null;
     accountCanWriteCloud = false;
     accountCanReadCloud = false;
     if (projectConsent) projectConsent.checked = false;
@@ -936,7 +1060,9 @@
     accountForm.hidden = false;
     cloudProjectCache = [];
     get('cloudProjects')?.replaceChildren();
+    get('mockJobs')?.replaceChildren();
     refreshCloudControls();
+    refreshMockControls();
     if (token && accountApiOrigin) {
       fetch(accountApiOrigin + '/v1/auth/logout', {
         method: 'POST', mode: 'cors', credentials: 'omit', cache: 'no-store',
@@ -946,4 +1072,5 @@
     }
   });
 })();
+
 

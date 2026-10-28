@@ -58,7 +58,13 @@
 <label>Scene prompt<textarea id="scenePrompt" rows="4" placeholder="Describe camera, action, mood and environment..."></textarea></label>
 <div class="composer-options"><label>Model preview <select id="sceneModel"><option value="cinematic_demo">Cinematic Draft · Demo</option><option value="character_demo">Character Focus · Demo</option><option value="storyboard_demo">Storyboard Mode · Demo</option><option value="multimodal_demo">Multimodal Studio · Demo</option></select></label><div class="actor-library"><label for="actorNameInput">Add a named Actor <span class="editor-note">Saved on this device only</span></label><div class="actor-add"><input id="actorNameInput" placeholder="e.g. Hero" maxlength="60" autocomplete="off"><button type="button" id="addActor" class="tool">Add Actor</button></div><div id="actorList" class="actor-list" aria-live="polite"></div></div></div>
 <div id="actorAssignments" class="actor-assignments" aria-live="polite"></div>
-<div class="composer-bottom"><button type="button" id="saveSceneDraft" class="button tiny">Save scene idea</button><span id="sceneStatus" role="status" class="editor-note">Local preview only</span></div></div>
+<div class="composer-bottom"><button type="button" id="saveSceneDraft" class="button tiny">Save scene idea</button><span id="sceneStatus" role="status" class="editor-note">Local preview only</span></div>
+<section class="mock-generation" aria-labelledby="mockGenerationHeading">
+<div><span class="eyebrow">SERVER QUEUE · DRY RUN ONLY</span><h4 id="mockGenerationHeading">Try the authenticated mock workflow</h4><p>This submits only the scene prompt to HOTICE’s mock queue. It does not create video, upload media or call a paid AI provider. Actor names, reference media and model-preview settings are not sent.</p></div>
+<div class="mock-generation-actions"><button type="button" class="tool" id="quoteMockJob" disabled>Check simulated credit quote</button><button type="button" class="button tiny" id="submitMockJob" disabled>Start mock dry run</button><button type="button" class="tool" id="refreshMockJobs" disabled>Refresh my jobs</button></div>
+<p id="mockGenerationStatus" class="editor-note" role="status" aria-live="polite">Sign in and use an API server with mock generation enabled. No request is sent until you choose an action.</p>
+<div id="mockJobs" class="mock-jobs" aria-live="polite"></div>
+</section></div>
 <section class="project-manager" aria-labelledby="projectHeading">
 <div class="project-heading"><div><span class="eyebrow">YOUR PROJECTS</span><h3 id="projectHeading">Keep your work on this device</h3><p>Projects save prompts and Actor names locally. Imported video clips and Actor photos stay out of project sync.</p></div></div>
 <div class="project-create"><label for="projectTitle">Project name</label><input id="projectTitle" maxlength="120" placeholder="e.g. Midnight train sequence" autocomplete="off"><button id="saveLocalProject" class="button tiny" type="button">Save project to this device</button></div>
@@ -89,4 +95,5 @@
 <section class="section endcta"><div><span class="eyebrow">THE FUTURE OF STORYTELLING</span><h2>Make every frame matter.</h2><p>HOTICE is being designed for creators who want powerful tools without a complicated workflow.</p><a class="button" href="#home">Explore HOTICE ↑</a></div></section>
 </main><footer><span>HOTICE © 2026 · ParmTech</span><span>Creative tools preview · AI integrations and live generation not yet connected</span></footer>
 <script src="assets/site.js" defer></script></body></html>
+
 

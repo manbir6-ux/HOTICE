@@ -15,6 +15,9 @@ try {
 const publicRoot = path.resolve(__dirname, '..', 'web', 'public');
 const token = 'a'.repeat(64);
 const cloudProjects = new Map();
+const mockJobs = new Map();
+const mockJobRequests = [];
+const mockQuoteRequests = [];
 const projectRequests = [];
 const apiEvents = [];
 let pageOrigin;
@@ -47,7 +50,7 @@ const api = http.createServer((req, res) => {
   if (req.method === 'OPTIONS') {
     res.writeHead(204, {
       'Access-Control-Allow-Methods': 'GET, POST, PUT, OPTIONS',
-      'Access-Control-Allow-Headers': 'Authorization, Content-Type',
+      'Access-Control-Allow-Headers': 'Authorization, Content-Type, Idempotency-Key',
       'Access-Control-Max-Age': '600',
     });
     return res.end();
@@ -72,8 +75,23 @@ const api = http.createServer((req, res) => {
       return json(res, 200, {
         user: {id: '00000000-0000-4000-8000-000000000001', email: 'browser-test@example.test'},
         cloud: {active: true, readable: true, quotaBytes: 10485760, usedBytes: 0},
+        mockGeneration: {enabled: true, credits: 10, unit: 'simulated_credits', moneyValue: 0},
       });
     }
+
+    if (url.pathname === '/v1/jobs/quote' && req.method === 'POST') {
+      mockQuoteRequests.push(body);
+      return json(res, 200, {quoteToken: 'synthetic-quote', modelId: 'hotice.mock.video.v1', credits: 3, expiresAt: '2026-10-29T00:00:00Z'});
+    }
+    if (url.pathname === '/v1/jobs' && req.method === 'POST') {
+      const idempotencyKey = req.headers['idempotency-key'];
+      mockJobRequests.push({body, idempotencyKey});
+      if (!idempotencyKey || !/^[A-Za-z0-9._~:-]{16,128}$/.test(idempotencyKey)) return json(res, 400, {error: 'Missing idempotency key'});
+      const job = {id: '00000000-0000-4000-8000-000000000123', modelId: 'hotice.mock.video.v1', status: 'queued', reservedCredits: 3, result: null};
+      mockJobs.set(job.id, job);
+      return json(res, 201, {job, idempotentReplay: false});
+    }
+    if (url.pathname === '/v1/jobs' && req.method === 'GET') return json(res, 200, {jobs: [...mockJobs.values()]});
 
     if (url.pathname === '/v1/projects' && req.method === 'GET') {
       projectRequests.push({method: req.method, path: url.pathname, authorized: true});
@@ -232,6 +250,24 @@ async function main() {
     await page.locator('#accountPassword').fill('synthetic-only-password');
     await page.locator('#accountSignIn').click();
     await page.getByText('Signed in and verified with the HOTICE server.').waitFor();
+    await page.locator('#scenePrompt').fill('A synthetic scene follows a red paper kite across a quiet harbour at sunrise.');
+    assert.equal(await page.locator('#quoteMockJob').isDisabled(), false);
+    assert.equal(mockQuoteRequests.length, 0, 'sign-in alone does not submit the scene prompt');
+    await page.locator('#quoteMockJob').click();
+    await page.getByText(/Mock dry run quote: 3 simulated credits/).waitFor();
+    assert.equal(mockQuoteRequests.length, 1);
+    assert.equal(mockQuoteRequests[0].request.modelId, 'hotice.mock.video.v1');
+    assert.match(mockQuoteRequests[0].request.prompt, /red paper kite/);
+    await page.evaluate(() => { window.confirm = () => true; });
+    await page.locator('#submitMockJob').click();
+    await page.getByText(/Mock job queued/).waitFor();
+    assert.equal(mockJobRequests.length, 1);
+    assert.match(mockJobRequests[0].idempotencyKey, /^web-[0-9a-f-]{36}$/i);
+    assert.equal(mockJobRequests[0].body.request.modelId, 'hotice.mock.video.v1');
+    assert.equal(mockJobRequests[0].body.request.prompt, mockQuoteRequests[0].request.prompt);
+    await page.locator('#refreshMockJobs').click();
+    await page.getByText('Job list refreshed. Results are mock metadata only; no video was created.').waitFor();
+    assert.match(await page.locator('#mockJobs').innerText(), /Mock job · queued/);
     assert.equal(await page.locator('#loadCloudProjects').isDisabled(), true, 'cloud list stays disabled without consent');
     assert.equal(projectRequests.length, 0, 'sign-in alone does not load cloud project data');
     await page.locator('#cloudSyncConsent').check();
@@ -300,6 +336,7 @@ async function main() {
       scenarios: [
         'local project save, reload and reopen',
         'media data rejected before upload',
+        'authenticated mock generation quote, explicit submit, idempotency and status refresh',
         'cloud controls disabled until login and consent',
         'entitled account loads cloud list',
         'first cloud upload is authenticated',
@@ -308,6 +345,7 @@ async function main() {
         'a second device downloads a cloud project into its own local storage',
       ],
       mockCloudProjectCount: cloudProjects.size,
+      mockJobCount: mockJobs.size,
       realProviderCalls: 0,
     }));
   } finally {
@@ -323,3 +361,4 @@ main().catch((error) => {
   web.close();
   process.exitCode = 1;
 });
+
