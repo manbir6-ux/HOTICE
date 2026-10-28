@@ -42,6 +42,7 @@ login_cookie=$(curl -sS -D "$headers" -o "$TMP_DIR/login" -b "$TMP_DIR/cookies" 
 if [[ "$login_cookie" != '303' ]]; then echo "Owner login returned HTTP $login_cookie."; cat "$TMP_DIR/login"; exit 1; fi
 session=$(sed -n 's/^[Ss]et-[Cc]ookie: HOTICE_OWNER=\([^;]*\).*/\1/p' "$headers" | tail -1)
 test -n "$session"
+echo '[admin-test] owner login returned a session'
 page=$(curl -fsS -H "Cookie: HOTICE_OWNER=$session" "$BASE/admin.php")
 [[ "$page" == *'Operations overview'* ]]
 [[ "$page" == *'Recent provider attempts'* && "$page" == *'unknown outcome keeps its credit reservation'* ]]
@@ -50,15 +51,18 @@ test -n "$csrf"
 
 managed_email='managed-user@example.com'
 managed_password='TemporaryManagedPassword123!'
-curl -fsS -H 'Content-Type: application/json' -d "{\"email\":\"$managed_email\",\"password\":\"$managed_password\"}" "$BASE/v1/auth/register" >/dev/null
+printf '%s\n' "$managed_password" | php backend/bin/create-user.php "$managed_email" >/dev/null 2>&1
 user_id=$(php -r 'require "backend/src/App.php"; $c=require "backend/config.php"; $db=(new \Hotice\App($c))->database(); $q=$db->prepare("SELECT id FROM users WHERE email=?"); $q->execute([$argv[1]]); echo $q->fetchColumn();' "$managed_email")
 test -n "$user_id"
+echo '[admin-test] verified test user provisioned'
 user_login=$(curl -fsS -H 'Content-Type: application/json' -d "{\"email\":\"$managed_email\",\"password\":\"$managed_password\"}" "$BASE/v1/auth/login")
+echo '[admin-test] verified test user login request succeeded'
 user_token=$(echo "$user_login" | jq -er '.accessToken')
 php backend/bin/grant-mock-credits.php "$managed_email" 5 'owner-attempt-view-credit-001' >/dev/null
 attempt_request=$(jq -cn '{modelId:"hotice.mock.video.v1",prompt:"Owner console attempt view smoke",simulate:"success"}')
 attempt_quote=$(curl -fsS -H "Authorization: Bearer $user_token" -H 'Content-Type: application/json' \
   -d "$(jq -cn --argjson r "$attempt_request" '{request:$r}')" "$BASE/v1/jobs/quote" | jq -er '.quoteToken')
+echo '[admin-test] mock quote succeeded'
 attempt_body=$(jq -cn --arg q "$attempt_quote" --argjson r "$attempt_request" '{quoteToken:$q,request:$r}')
 attempt_job=$(curl -fsS -X POST -H "Authorization: Bearer $user_token" -H 'Content-Type: application/json' \
   -H 'Idempotency-Key: owner-view-attempt-00000001' -d "$attempt_body" "$BASE/v1/jobs" | jq -er '.job.id')
