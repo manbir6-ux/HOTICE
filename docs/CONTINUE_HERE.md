@@ -1,3 +1,30 @@
+# HOTICE — CURRENT HANDOFF (28 OCTOBER 2026)
+
+**Canonical repo:** https://github.com/parmtech/HOTICE  
+**Feature branch:** feat/smart-avatar-reference-engine  
+**Review PR:** https://github.com/parmtech/HOTICE/pull/32 (draft; not merged into main)  
+**Scope:** Smart Avatar reference planning, consented guided multi-angle 2D capture beta, and model compatibility framework.
+
+Read the NEW authoritative contracts before proceeding:
+- [AI Model Compatibility](API_MODEL_COMPATIBILITY.md): official provider docs, retired models, strict role/duration/ratio rules, security, and implementation gaps.
+- [Smart Avatar & Reference Engine](SMART_REFERENCE_ENGINE.md): temporary face-photo capture limits, privacy and 3D/reconstruction gaps.
+- [Progress](PROGRESS.md): current phase gates.
+
+**Source implemented:** typed official-source research catalog in lib/src/model_registry.dart, in-app model browser, trust-bounded backend manifest parser, server-only PHP text-envelope builders for two routes, CI tests. No live provider API, account keys, billing, encrypted vault or rendering is connected. Unknown model counts/features fail closed. No consumer-facing promise of permanent 100% compatibility is possible.
+
+**Attention before release:**
+1. Confirm CI at the latest *head commit*, including Android APK and Android emulator, not a previous green commit.
+2. Run real-device camera/face pose QA. Existing emulator only tests navigation/permission entry, not face-angle accuracy.
+3. Verify and deploy an authenticated PHP backend with vendor secrets outside webroot, entitlement/format/price probes, secure uploads and immutable credit reservation.
+4. Activate providers *one model/version/task at a time* only after real successful low-cost test calls; keep all others read-only.
+5. Never automatically migrate retired Sora 2 Videos API or Gemini Veo 3.1 Preview endpoints to unrelated providers.
+6. Use independent role-aware attachment planners, not the four-image demo slot count; provider input semantics differ.
+7. Backend catalog version, exact aspect/duration/resolution tuples, USD→HOTICE-credit price and idempotency must be revalidated before submit.
+
+**Pricing invariant:** 1 HOTICE Credit = USD 0.01. Prices of individual model requests remain unconfigured. No key ever belongs in a Flutter bundle.
+
+---
+
 # HOTICE — LATEST DEVELOPMENT HANDOFF (26 OCTOBER 2026)
 
 **Canonical repository:** https://github.com/parmtech/HOTICE  
