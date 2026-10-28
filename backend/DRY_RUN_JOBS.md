@@ -32,6 +32,8 @@ The idempotency key is retained only as a hash in the append-only ledger. Repeat
 
 The mock worker is CLI-only and uses a singleton database lock. Run it once per invocation with `php backend/bin/jobs-worker.php --once`; cPanel Cron may invoke it every minute for staging. It supports deterministic local `timeout_once`, `rate_limit_once`, `malformed_once`, `permanent_failure`, and `success` paths. Retries are bounded to three attempts, use a 60-second worker lease, and refund credits exactly once after final failure or lease exhaustion. Provider timeouts, callbacks, remote cancellation, outputs, external queue scaling and real billing settlement are not implemented.
 
+The durable mock job row stores only the selected model and simulation scenario; it does not store prompt text. Quote/idempotency binding uses a user-scoped HMAC-SHA256 over the normalized request, keyed with the private server app key, to prevent offline guessing and cross-account prompt correlation after a database-only disclosure. The digest is kept server-side and omitted from job results.
+
 ## Verification
 
 `backend/tests/jobs-integration.sh` covers quote binding/tampering, duplicate submissions, idempotency conflicts, per-user isolation, success, simulated permanent failure and refund, timeout/rate-limit/malformed retries, cancellation and balance consistency against MySQL. GitHub Actions uses throwaway users, credentials, database and a local-only five-credit tariff. No real provider keys are configured or used.
@@ -39,3 +41,4 @@ The mock worker is CLI-only and uses a singleton database lock. Run it once per 
 ## Production gates still open
 
 Real model catalogs and account/region entitlement checks, provider adapters, signed quotes from a maintained pricing catalog, real currency conversion, payment webhooks, charge reservation/settlement/reconciliation, audit and fraud policy, attachment uploads, moderation, capacity/worker operations, output storage, retention, privacy/compliance and live staging review remain required before enabling any real provider call.
+

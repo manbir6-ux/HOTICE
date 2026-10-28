@@ -94,7 +94,6 @@ final class MockJobWorker
             'mode' => 'mock_dry_run',
             'modelId' => $job['request']['modelId'],
             'message' => 'Dry run completed. No video or provider output was created.',
-            'requestSha256' => $job['request_sha256'],
         ], JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
         $db->beginTransaction();
         $account = $db->prepare('SELECT balance FROM credit_accounts WHERE user_id=? FOR UPDATE');
@@ -142,3 +141,4 @@ final class MockJobWorker
             ->execute([$error, $id]);
     }
 }
+

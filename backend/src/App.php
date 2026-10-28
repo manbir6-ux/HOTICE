@@ -171,9 +171,14 @@ final class App
         return ['modelId' => $model, 'prompt' => $prompt, 'simulate' => $simulate];
     }
 
-    private function mockRequestHash(array $request): string
+    private function mockRequestHash(array $request, string $user): string
     {
-        return hash('sha256', json_encode($request, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));
+        $canonical = json_encode($request, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
+        // A plain digest still permits offline guessing of common prompts after
+        // a database disclosure. Bind a keyed digest to this account as well as
+        // the canonical request so stored rows cannot be compared across users.
+        return hash_hmac('sha256', "hotice:mock-request:v1\0" . $user . "\0" . $canonical,
+            (string)$this->config['app_key']);
     }
 
     private function signMockQuote(array $payload): string
@@ -201,7 +206,7 @@ final class App
         $this->requireMockJobs();
         $body = Support::jsonInput(16384);
         $request = $this->normalizeMockJobRequest($body['request'] ?? null);
-        $requestHash = $this->mockRequestHash($request);
+        $requestHash = $this->mockRequestHash($request, $user);
         $credits = max(0, min(1000000, (int)($this->config['mock_job_cost_credits'] ?? 0)));
         $ttl = max(60, min(600, (int)($this->config['mock_job_quote_ttl_seconds'] ?? 300)));
         $expires = time() + $ttl;
@@ -223,7 +228,7 @@ final class App
         // execution metadata in its durable queue record and retain the
         // one-way hash for quote binding and idempotency. This avoids storing
         // user prompt text in plaintext in the mock jobs table.
-        $requestHash = $this->mockRequestHash($request);
+        $requestHash = $this->mockRequestHash($request, $user);
         $requestJson = json_encode([
             'modelId' => $request['modelId'],
             'simulate' => $request['simulate'],
@@ -680,3 +685,4 @@ final class App
         return Support::assertPrivateStorage($path, $roots);
     }
 }
+
