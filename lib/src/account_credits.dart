@@ -236,7 +236,8 @@ class SettingsPage extends StatelessWidget {
 
 class AccountsPage extends StatefulWidget {
   final HotIceStore store;
-  const AccountsPage({super.key, required this.store});
+  final Future<String?> Function()? onSignOut;
+  const AccountsPage({super.key, required this.store, this.onSignOut});
   @override
   State<AccountsPage> createState() => _AccountsPageState();
 }
@@ -264,6 +265,25 @@ class _AccountsPageState extends State<AccountsPage> {
     );
   }
 
+  Future<void> signOut() async {
+    String? warning;
+    try {
+      if (widget.onSignOut != null) {
+        warning = await widget.onSignOut!();
+      } else {
+        widget.store.signOut();
+      }
+    } catch (_) {
+      warning = 'Signed out on this device. Server revocation could not be confirmed.';
+      widget.store.signOut();
+    }
+    if (warning != null && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(warning)),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) => PageFrame(
     child: Column(
@@ -274,18 +294,32 @@ class _AccountsPageState extends State<AccountsPage> {
           title: 'Accounts',
           subtitle: 'Add and switch between studio profiles.',
         ),
-        const DemoNotice(
-          'Profiles are local UI examples with separate in-memory projects and avatars; no real registration, identity verification or cloud storage exists yet.',
-        ),
+        widget.store.backendAuthenticated
+            ? const DemoNotice(
+                'Signed in with the HOTICE server. Projects and media stay on this device; cloud sync is not connected.',
+              )
+            : const DemoNotice(
+                'Guest profiles are local examples with separate device workspaces. They are not server accounts.',
+              ),
         const SizedBox(height: 19),
         StudioPanel(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Your profiles',
-                  style: Theme.of(context).textTheme.titleLarge),
+              Text(
+                widget.store.backendAuthenticated ? 'HOTICE server account' : 'Your demo profiles',
+                style: Theme.of(context).textTheme.titleLarge,
+              ),
               const SizedBox(height: 10),
-              for (final profile in widget.store.accounts)
+              if (widget.store.backendAuthenticated)
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const CircleAvatar(child: Icon(Icons.verified_user_outlined)),
+                  title: Text(widget.store.selectedAccount),
+                  subtitle: const Text('Authenticated by the HOTICE API'),
+                ),
+              if (!widget.store.backendAuthenticated)
+                for (final profile in widget.store.accounts)
                 ListTile(
                   contentPadding: EdgeInsets.zero,
                   leading: const CircleAvatar(
@@ -300,24 +334,26 @@ class _AccountsPageState extends State<AccountsPage> {
                       : Icons.chevron_right),
                   onTap: () => widget.store.switchAccount(profile),
                 ),
-              const Divider(height: 28),
-              TextField(
-                controller: email,
-                keyboardType: TextInputType.emailAddress,
-                decoration: const InputDecoration(
-                  labelText: 'Add demo email',
-                  prefixIcon: Icon(Icons.alternate_email),
+              if (!widget.store.backendAuthenticated) ...[
+                const Divider(height: 28),
+                TextField(
+                  controller: email,
+                  keyboardType: TextInputType.emailAddress,
+                  decoration: const InputDecoration(
+                    labelText: 'Add demo email',
+                    prefixIcon: Icon(Icons.alternate_email),
+                  ),
                 ),
-              ),
-              const SizedBox(height: 14),
-              PrimaryButton(
-                label: 'Add / switch account',
-                icon: Icons.person_add_alt,
-                onPressed: add,
-              ),
+                const SizedBox(height: 14),
+                PrimaryButton(
+                  label: 'Add / switch demo profile',
+                  icon: Icons.person_add_alt,
+                  onPressed: add,
+                ),
+              ],
               const SizedBox(height: 10),
               TextButton.icon(
-                onPressed: widget.store.signOut,
+                onPressed: signOut,
                 icon: const Icon(Icons.logout),
                 label: const Text('Sign out'),
               ),

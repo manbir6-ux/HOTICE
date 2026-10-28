@@ -30,6 +30,31 @@ jobs:
       - name: Unit and widget tests
         run: flutter test test/
 
+  web-preview:
+    name: Build static HOTICE web app
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Generate Flutter web project
+        run: flutter create . --project-name hotice --platforms=web
+      - name: Resolve dependencies
+        run: flutter pub get
+      - name: Compile production web bundle
+        run: flutter build web --release --dart-define=HOTICE_BUILD_ID=${{ github.sha }}
+      - name: Upload HOTICE web bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: HOTICE-Web-${{ github.run_number }}
+          path: build/web/
+          retention-days: 14
+          if-no-files-found: error
+
   android-preview:
     name: Versioned Android debug APK
     needs: validate

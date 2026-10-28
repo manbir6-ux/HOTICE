@@ -150,7 +150,7 @@ void main() {
     await tester.pumpAndSettle();
 
     await tester.enterText(find.byType(TextField).last, 'tester@example.com');
-    final add = find.text('Add / switch account');
+    final add = find.text('Add / switch demo profile');
     await tester.ensureVisible(add);
     await tester.tap(add);
     await tester.pumpAndSettle();
