@@ -112,7 +112,7 @@ CREATE TABLE IF NOT EXISTS generation_jobs (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Durable attempt ledger for provider lifecycle work. The current worker only
--- writes mock attempts; this table alone does not enable live provider calls.
+-- writes mock attempts only. This table alone does not enable live provider calls.
 CREATE TABLE IF NOT EXISTS provider_attempts (
   id CHAR(36) CHARACTER SET ascii COLLATE ascii_bin NOT NULL PRIMARY KEY,
   job_id CHAR(36) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
