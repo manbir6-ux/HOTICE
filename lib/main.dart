@@ -143,6 +143,7 @@ class _HotIceAppState extends State<HotIceApp> {
                 key: ValueKey(store.selectedAccount),
                 store: store,
                 onSignOut: _signOut,
+                authClient: widget.authClient,
               )
             : showLogin
                 ? LoginPage(
@@ -167,7 +168,8 @@ class _HotIceAppState extends State<HotIceApp> {
 class StudioShell extends StatefulWidget {
   final HotIceStore store;
   final Future<String?> Function()? onSignOut;
-  const StudioShell({super.key, required this.store, this.onSignOut});
+  final BackendAuthClient? authClient;
+  const StudioShell({super.key, required this.store, this.onSignOut, this.authClient});
 
   @override
   State<StudioShell> createState() => _StudioShellState();
@@ -311,6 +313,7 @@ class _StudioShellState extends State<StudioShell> {
                           store: store,
                           initialProjectId: openedProjectId,
                           isActive: selected == 1,
+                          backendClient: widget.authClient,
                         ),
                         AvatarsPage(store: store),
                         CreditsPage(store: store),
