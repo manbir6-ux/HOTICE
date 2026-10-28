@@ -373,11 +373,12 @@ void main() {
     await tester.tap(find.widgetWithText(ChoiceChip, 'Ember'));
     await tester.pumpAndSettle();
     expect(store.accent, StudioAccent.ember);
-    expect(saved, contains({
+    expect(saved, hasLength(1));
+    expect(saved.single, {
       'themeMode': 'system',
       'accent': 'ember',
       'font': 'editorial',
-    }));
+    });
     expect(tester.takeException(), isNull);
     store.dispose();
   });
