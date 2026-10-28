@@ -68,6 +68,13 @@ final class App
                     ->execute([$user['session_id'], $user['id']]);
                 $this->send(200, ['ok' => true]); return;
             }
+            if ($route === '/v1/auth/sessions' && $method === 'GET') {
+                $this->listSessions($user); return;
+            }
+            if (preg_match('~^/v1/auth/sessions/([a-f0-9-]{36})$~D', $route, $m)
+                && Support::isUuid($m[1]) && $method === 'DELETE') {
+                $this->revokeSession($user['id'], $m[1]); return;
+            }
             if ($route === '/v1/models' && $method === 'GET') {
                 $this->send(200, ModelCatalog::response($this->config,
                     FeatureFlags::mockGenerationEnabled($this->db, $this->config))); return;
@@ -428,14 +435,15 @@ final class App
             $token = bin2hex(random_bytes(32));
             $hours = max(1, min(168, (int) ($this->config['token_ttl_hours'] ?? 24)));
             $expires = gmdate('Y-m-d H:i:s', time() + $hours * 3600);
+            $sessionId = Support::uuid();
             $this->db->prepare('INSERT INTO sessions (id,user_id,token_sha256,expires_at) VALUES (?,?,?,?)')
-                ->execute([Support::uuid(), $user['id'], hash('sha256', $token), $expires]);
+                ->execute([$sessionId, $user['id'], hash('sha256', $token), $expires]);
             $this->db->commit();
         } catch (Throwable $e) {
             if ($this->db->inTransaction()) $this->db->rollBack();
             throw $e;
         }
-        $this->send(200, ['accessToken' => $token, 'tokenType' => 'Bearer',
+        $this->send(200, ['accessToken' => $token, 'tokenType' => 'Bearer', 'sessionId' => $sessionId,
             'expiresAt' => str_replace(' ', 'T', $expires) . 'Z']);
     }
 
@@ -448,6 +456,29 @@ final class App
         $user = $q->fetch();
         if (!$user) throw new ApiError(401, 'Session expired or revoked.');
         return $user;
+    }
+
+    private function listSessions(array $user): void
+    {
+        $q = $this->db->prepare('SELECT id,created_at,expires_at FROM sessions WHERE user_id=? AND revoked_at IS NULL AND expires_at>UTC_TIMESTAMP() ORDER BY CASE WHEN id=? THEN 0 ELSE 1 END,created_at DESC LIMIT 100');
+        $q->execute([$user['id'], $user['session_id']]);
+        $sessions = array_map(static function (array $session) use ($user): array {
+            return [
+                'id' => $session['id'],
+                'createdAt' => str_replace(' ', 'T', $session['created_at']) . 'Z',
+                'expiresAt' => str_replace(' ', 'T', $session['expires_at']) . 'Z',
+                'current' => hash_equals($user['session_id'], $session['id']),
+            ];
+        }, $q->fetchAll());
+        $this->send(200, ['sessions' => $sessions]);
+    }
+
+    private function revokeSession(string $userId, string $sessionId): void
+    {
+        $q = $this->db->prepare('UPDATE sessions SET revoked_at=UTC_TIMESTAMP() WHERE id=? AND user_id=? AND revoked_at IS NULL AND expires_at>UTC_TIMESTAMP()');
+        $q->execute([$sessionId, $userId]);
+        if ($q->rowCount() !== 1) throw new ApiError(404, 'Session not found.');
+        $this->send(200, ['revoked' => true]);
     }
 
     private function entitlement(string $user): ?array

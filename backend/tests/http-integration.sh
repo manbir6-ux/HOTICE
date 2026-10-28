@@ -13,6 +13,7 @@ register=$(curl -sS -w '\n%{http_code}' -H 'Content-Type: application/json' -d "
 test "${register##*$'\n'}" = '201'
 login=$(curl -fsS -H 'Content-Type: application/json' -d "{\"email\":\"$EMAIL\",\"password\":\"$PASS\"}" "$BASE/v1/auth/login")
 token=$(echo "$login" | jq -er '.accessToken')
+session_id=$(echo "$login" | jq -er '.sessionId')
 test "${#token}" -eq 64
 AUTH="Authorization: Bearer $token"
 curl -fsS -H "$AUTH" "$BASE/v1/me" | jq -e '.cloud.active == false' >/dev/null
@@ -68,8 +69,20 @@ curl -fsS -X DELETE -H "$AUTH" "$BASE/v1/projects/$id" | jq -e '.deleted == true
 curl -fsS -H "$AUTH" "$BASE/v1/me" | jq -e '.cloud.usedBytes == 0' >/dev/null
 status=$(curl -sS -o /dev/null -w '%{http_code}' -H "$AUTH" "$BASE/v1/files/$file")
 test "$status" = '404'
-curl -fsS -X POST -H "$AUTH" "$BASE/v1/auth/logout" | jq -e '.ok == true' >/dev/null
+# Users can inspect their own active sessions and revoke a lost-device session.
+second_login=$(curl -fsS -H 'Content-Type: application/json' -d "{\"email\":\"$EMAIL\",\"password\":\"$PASS\"}" "$BASE/v1/auth/login")
+second_token=$(echo "$second_login" | jq -er '.accessToken')
+second_session_id=$(echo "$second_login" | jq -er '.sessionId')
+SECOND_AUTH="Authorization: Bearer $second_token"
+curl -fsS -H "$SECOND_AUTH" "$BASE/v1/auth/sessions" | jq -e --arg current "$second_session_id" --arg old "$session_id" '.sessions | length == 2 and any(.[]; .id == $current and .current == true) and any(.[]; .id == $old and .current == false)' >/dev/null
+status=$(curl -sS -o /dev/null -w '%{http_code}' -X DELETE -H "$OTHER_AUTH" "$BASE/v1/auth/sessions/$second_session_id")
+test "$status" = '404'
+curl -fsS -X DELETE -H "$SECOND_AUTH" "$BASE/v1/auth/sessions/$session_id" | jq -e '.revoked == true' >/dev/null
 status=$(curl -sS -o /dev/null -w '%{http_code}' -H "$AUTH" "$BASE/v1/me")
+test "$status" = '401'
+curl -fsS -H "$SECOND_AUTH" "$BASE/v1/me" | jq -e '.user.email == "cloud-integration@example.com"' >/dev/null
+curl -fsS -X POST -H "$SECOND_AUTH" "$BASE/v1/auth/logout" | jq -e '.ok == true' >/dev/null
+status=$(curl -sS -o /dev/null -w '%{http_code}' -H "$SECOND_AUTH" "$BASE/v1/me")
 test "$status" = '401'
 # Failed-login budgets use both a user-address HMAC and a client-IP HMAC.
 # An attacker cannot reset the global IP budget by a valid login.
@@ -83,4 +96,4 @@ status=$(curl -sS -o /dev/null -w '%{http_code}' -H 'Content-Type: application/j
   -d "{\"email\":\"$spray_email\",\"password\":\"InvalidPassword13\"}" "$BASE/v1/auth/login")
 test "$status" = '429'
 
-echo 'HOTICE MySQL + HTTP API integration: passed (auth, entitlement, project conflict, media, delete, logout).'
+echo 'HOTICE MySQL + HTTP API integration: passed (auth, session inventory/revocation, entitlement, project conflict, media, delete, logout).'
