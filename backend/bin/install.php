@@ -26,6 +26,16 @@ try {
     }
     echo "HOTICE tables installed; private media directory verified.\n";
 } catch (\Throwable $e) {
-    fwrite(STDERR, 'Installation failed; check PHP extensions, database permissions and file paths. ' . get_class($e) . "\n");
+    $detail = '';
+    if ($e instanceof \PDOException) {
+        $info = is_array($e->errorInfo ?? null) ? $e->errorInfo : [];
+        $state = (string) ($info[0] ?? $e->getCode());
+        $driverCode = $info[1] ?? null;
+        if (preg_match('/^[A-Z0-9]{5}$/iD', $state)) $detail .= ' SQLSTATE ' . $state;
+        if (is_int($driverCode) || (is_string($driverCode) && ctype_digit($driverCode))) {
+            $detail .= ' driver code ' . $driverCode;
+        }
+    }
+    fwrite(STDERR, 'Installation failed; check PHP extensions, database permissions and file paths. ' . get_class($e) . $detail . "\n");
     exit(1);
 }
