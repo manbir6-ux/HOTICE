@@ -57,10 +57,10 @@ user_login=$(curl -fsS -H 'Content-Type: application/json' -d "{\"email\":\"$man
 user_token=$(echo "$user_login" | jq -er '.accessToken')
 php backend/bin/grant-mock-credits.php "$managed_email" 5 'owner-attempt-view-credit-001' >/dev/null
 attempt_request=$(jq -cn '{modelId:"hotice.mock.video.v1",prompt:"Owner console attempt view smoke",simulate:"success"}')
-attempt_quote=$(curl -fsS -H "Authorization: Bearer $user_token" -H 'Content-Type: application/json' \\
+attempt_quote=$(curl -fsS -H "Authorization: Bearer $user_token" -H 'Content-Type: application/json' \
   -d "$(jq -cn --argjson r "$attempt_request" '{request:$r}')" "$BASE/v1/jobs/quote" | jq -er '.quoteToken')
 attempt_body=$(jq -cn --arg q "$attempt_quote" --argjson r "$attempt_request" '{quoteToken:$q,request:$r}')
-attempt_job=$(curl -fsS -X POST -H "Authorization: Bearer $user_token" -H 'Content-Type: application/json' \\
+attempt_job=$(curl -fsS -X POST -H "Authorization: Bearer $user_token" -H 'Content-Type: application/json' \
   -H 'Idempotency-Key: owner-view-attempt-00000001' -d "$attempt_body" "$BASE/v1/jobs" | jq -er '.job.id')
 php backend/bin/jobs-worker.php --once | jq -e '.status == "succeeded"' >/dev/null
 attempt_operation=$(php -r 'require "backend/src/App.php"; $c=require "backend/config.php"; $db=(new \Hotice\App($c))->database(); $q=$db->prepare("SELECT remote_operation_id FROM provider_attempts WHERE job_id=?"); $q->execute([$argv[1]]); echo $q->fetchColumn();' "$attempt_job")
