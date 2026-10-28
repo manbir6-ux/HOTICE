@@ -7,22 +7,61 @@ import 'src/generation_hub.dart';
 import 'src/diagnostics.dart';
 import 'src/inspiration_catalog.dart';
 import 'src/inspiration_page.dart';
+import 'src/local_store.dart';
 
-void main() {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   HoticeDiagnostics.install();
-  runApp(const HotIceApp());
+  await _startHotIce();
+}
+
+Future<void> _startHotIce() async {
+  final store = HotIceStore();
+  try {
+    final archive = await HotIceLocalArchive.openOnDevice();
+    final snapshot = await archive.restore();
+    if (snapshot != null) store.restoreLocalSnapshot(snapshot);
+    store.addListener(() => archive.enqueue(store.exportLocalSnapshot()));
+    runApp(HotIceApp(initialStore: store));
+  } catch (_) {
+    store.dispose();
+    runApp(const MaterialApp(
+      home: Scaffold(
+        body: SafeArea(
+          child: Center(
+            child: Padding(
+              padding: EdgeInsets.all(24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text(
+                    'HOTICE could not safely open your encrypted projects. '
+                    'Your saved files were not erased or replaced. '
+                    'Check your device storage or recover the device key or a backup.',
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 16),
+                  FilledButton(onPressed: _startHotIce, child: const Text('Try again')),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    ));
+  }
 }
 
 class HotIceApp extends StatefulWidget {
-  const HotIceApp({super.key});
+  const HotIceApp({super.key, this.initialStore});
+  final HotIceStore? initialStore;
 
   @override
   State<HotIceApp> createState() => _HotIceAppState();
 }
 
 class _HotIceAppState extends State<HotIceApp> {
-  final HotIceStore store = HotIceStore();
+  late final HotIceStore store;
   late final AccountApi accountApi;
   AccountUser? accountUser;
   // Show the public welcome screen immediately while checking secure storage.
@@ -37,6 +76,7 @@ class _HotIceAppState extends State<HotIceApp> {
   @override
   void initState() {
     super.initState();
+    store = widget.initialStore ?? HotIceStore();
     accountApi = AccountApi();
     _restoreAccount();
     _lastThemeMode = store.themeMode;
