@@ -82,7 +82,7 @@ test "$foreign_status" = '404'
 echo '[account-lifecycle-test] token revocation, duplicate deletion rejection, and ownership isolation passed'
 php -r '
 require_once "backend/src/App.php"; $c=require "backend/config.php"; $db=(new Hotice\App($c))->database(); $user=$argv[1];
-foreach (["sessions","cloud_projects","cloud_files","generation_jobs","job_quotes","credit_ledger","credit_accounts","cloud_entitlements"] as $table) {
+foreach (["sessions","user_preferences","cloud_projects","cloud_files","generation_jobs","job_quotes","credit_ledger","credit_accounts","cloud_entitlements"] as $table) {
   $q=$db->prepare("SELECT COUNT(*) FROM $table WHERE user_id=?"); $q->execute([$user]); $count=(int)$q->fetchColumn(); if ($count!==0) { fwrite(STDERR,"Residual rows in $table: $count\\n"); exit(1); }
 }
 $q=$db->prepare("SELECT COUNT(*) FROM users WHERE id=?"); $q->execute([$user]); if ((int)$q->fetchColumn()!==0) { fwrite(STDERR,"User row remains\\n"); exit(1); }
