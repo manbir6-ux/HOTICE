@@ -55,7 +55,7 @@ final class MockJobWorker
         $db->beginTransaction();
         $account = $db->prepare('SELECT balance FROM credit_accounts WHERE user_id=? FOR UPDATE');
         $account->execute([$candidate['user_id']]);
-        $q = $db->prepare('SELECT id,user_id,status,request_json,attempt_count,max_attempts,reserved_credits FROM generation_jobs WHERE id=? AND user_id=? FOR UPDATE');
+        $q = $db->prepare('SELECT id,user_id,status,request_json,request_sha256,attempt_count,max_attempts,reserved_credits FROM generation_jobs WHERE id=? AND user_id=? FOR UPDATE');
         $q->execute([$candidate['id'], $candidate['user_id']]);
         $job = $q->fetch();
         if (!$job || $job['status'] !== 'queued') { $db->commit(); return null; }
@@ -94,7 +94,7 @@ final class MockJobWorker
             'mode' => 'mock_dry_run',
             'modelId' => $job['request']['modelId'],
             'message' => 'Dry run completed. No video or provider output was created.',
-            'requestSha256' => hash('sha256', $job['request_json']),
+            'requestSha256' => $job['request_sha256'],
         ], JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
         $db->beginTransaction();
         $account = $db->prepare('SELECT balance FROM credit_accounts WHERE user_id=? FOR UPDATE');
