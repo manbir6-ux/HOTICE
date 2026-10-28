@@ -103,9 +103,9 @@ def main():
     assert "Assign your Actors to this prompt" in script
     assert "prompt.replaceAll('{{' + role + '}}', actors[index])" in script
     apache = (PUBLIC / ".htaccess").read_text(encoding="utf-8")
-    connect_src = re.search(r"(?:^|;)\\s*connect-src\\s+([^;]+)", apache)
-    assert connect_src, "CSP must define connect-src"
-    assert connect_src.group(1).split() == ["'self'", "https://api.your-hotice-domain.example"], \
+    connect_src = next((item.strip() for item in apache.split(";")
+                        if item.strip().startswith("connect-src ")), None)
+    assert connect_src == "connect-src 'self' https://api.your-hotice-domain.example", \
         "CSP must allow only same-origin and the exact configured API host"
     print(f"HOTICE static web verification successful: {len(ids)} templates, "
           f"{len(scanner.assets)} assets, no uncleared remote media.")

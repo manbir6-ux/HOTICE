@@ -88,9 +88,11 @@ jobs:
       - name: Real browser to PHP/MySQL authenticated mock-job dry run
         env:
           HOTICE_E2E_EMAIL: browser-api-dry-run@example.test
-          HOTICE_E2E_PASSWORD: BrowserDryRunOnlyPassword123!
           HOTICE_TEST_API_ORIGIN: http://127.0.0.1:18887
         run: |
+          HOTICE_E2E_PASSWORD=$(php -r 'echo bin2hex(random_bytes(24));')
+          echo "::add-mask::$HOTICE_E2E_PASSWORD"
+          export HOTICE_E2E_PASSWORD
           printf '%s\n' "$HOTICE_E2E_PASSWORD" | php backend/bin/create-user.php "$HOTICE_E2E_EMAIL"
           php backend/bin/grant-mock-credits.php "$HOTICE_E2E_EMAIL" 20 browser-api-dry-run-credit-0001
           php -S 127.0.0.1:18887 -t backend/public backend/public/router.php >/tmp/hotice-browser-api.log 2>&1 &

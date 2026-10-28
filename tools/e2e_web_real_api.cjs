@@ -67,12 +67,20 @@ async function main() {
     page.setDefaultTimeout(10000);
     const errors = [];
     const apiRequests = [];
+    const apiResponses = [];
     page.on('pageerror', (error) => errors.push(error.message));
     page.on('request', (request) => {
       if (request.url().startsWith(apiOrigin)) {
         let body = null;
         try { body = request.postDataJSON(); } catch (_) { /* Requests without JSON have no body. */ }
-        apiRequests.push({method: request.method(), path: new URL(request.url()).pathname, body});
+        apiRequests.push({method: request.method(), path: new URL(request.url()).pathname,
+          body, headers: request.headers()});
+      }
+    });
+    page.on('response', (response) => {
+      if (response.url().startsWith(apiOrigin)) {
+        apiResponses.push({method: response.request().method(), path: new URL(response.url()).pathname,
+          headers: response.headers()});
       }
     });
     await page.goto(`http://127.0.0.1:${port}`, {waitUntil: 'networkidle'});
@@ -99,14 +107,16 @@ async function main() {
     assert.deepEqual(Object.keys(quote.body.request).sort(), ['modelId', 'prompt']);
     assert.deepEqual(Object.keys(create.body).sort(), ['quoteToken', 'request']);
     assert.deepEqual(Object.keys(create.body.request).sort(), ['modelId', 'prompt']);
-    assert(apiRequests.some((request) => request.method === 'OPTIONS' && request.path === '/v1/jobs'),
-      'Browser must successfully preflight the idempotency-key request against the server CORS policy.');
+    assert(create.headers['idempotency-key'], 'Job creation must include its idempotency key.');
+    const createResponse = apiResponses.find((response) => response.method === 'POST' && response.path === '/v1/jobs');
+    assert.equal(createResponse?.headers['access-control-allow-origin'], `http://127.0.0.1:${port}`,
+      'The PHP API must return its exact CORS origin on the real job response.');
     assert.equal(await page.evaluate(() => localStorage.length + sessionStorage.length), 0,
       'Browser credentials must not be persisted in web storage.');
     assert.deepEqual(errors, []);
     console.log(JSON.stringify({result: 'PASS', scenarios: [
       'real browser authentication against loopback PHP/MySQL API',
-      'exact-origin CORS preflight for authenticated idempotent job creation',
+      'exact-origin CORS for authenticated idempotent job creation',
       'signed simulated-credit quote, explicit mock job submission and status refresh',
       'prompt-only request shape with no media, actor references or preview-model routing',
       'bearer token absent from browser storage',
