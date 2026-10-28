@@ -10,6 +10,8 @@ try {
     $db->exec('DELETE FROM password_reset_tokens WHERE expires_at < UTC_TIMESTAMP() OR used_at < DATE_SUB(UTC_TIMESTAMP(), INTERVAL 7 DAY)');
     $db->exec('DELETE FROM email_verification_tokens WHERE expires_at < UTC_TIMESTAMP() OR used_at < DATE_SUB(UTC_TIMESTAMP(), INTERVAL 7 DAY)');
     $db->exec('DELETE FROM email_outbox WHERE expires_at < UTC_TIMESTAMP() OR sent_at < DATE_SUB(UTC_TIMESTAMP(), INTERVAL 7 DAY) OR failed_at < DATE_SUB(UTC_TIMESTAMP(), INTERVAL 7 DAY)');
+    $db->exec('DELETE FROM admin_login_attempts WHERE occurred_at < DATE_SUB(UTC_TIMESTAMP(), INTERVAL 1 DAY)');
+    $db->exec('DELETE FROM job_quotes WHERE consumed_job_id IS NULL AND expires_at < UTC_TIMESTAMP()');
     echo "Expired session/attempt records cleaned. User media unchanged.\n";
 } catch (\Throwable $e) {
     fwrite(STDERR, 'Cleanup failed: ' . get_class($e) . "\n"); exit(1);

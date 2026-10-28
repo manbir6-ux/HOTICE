@@ -48,6 +48,10 @@ def main():
     assert 'name="hotice-api-origin"' in html, "Configure the shared HTTPS API origin at deployment"
     for element_id in ("accountLogin", "accountEmail", "accountPassword", "accountStatus", "accountSignOut"):
         assert 'id="' + element_id + '"' in html, "Missing shared-account workflow control: " + element_id
+    for element_id in ("projectTitle", "saveLocalProject", "localProjects", "cloudSyncConsent",
+                       "loadCloudProjects", "cloudProjects", "cloudProjectStatus"):
+        assert 'id="' + element_id + '"' in html, "Missing local/cloud project control: " + element_id
+    assert 'type="checkbox"' in html and "I agree to sync the saved project I choose" in html
 
     raw = json.loads((PUBLIC / "assets" / "inspiration.json").read_text(encoding="utf-8"))
     assert raw["schemaVersion"] == 1
@@ -85,21 +89,24 @@ def main():
     script = (PUBLIC / "assets" / "site.js").read_text(encoding="utf-8")
     assert "accountApi('/v1/auth/login'" in script and "accountApi('/v1/me'" in script
     assert "accountApi('/v1/auth/logout'" in script
-    assert "accountApi('/v1/auth/register'" in script
-    assert "accountApi('/v1/auth/verify-email'" in script
-    assert "accountApi('/v1/auth/verification/resend'" in script
-    assert "accountApi('/v1/auth/password-reset/request'" in script
-    assert "accountApi('/v1/auth/password-reset/complete'" in script
-    assert "window.history.replaceState" in script, "Verification tokens must be removed from browser history"
-    assert 'name="referrer" content="no-referrer"' in html
-    assert "Account access is provisioned by HOTICE; self-registration is not available" not in html
     assert "credentials: 'omit'" in script and "redirect: 'error'" in script
+    assert "parsed.protocol === 'http:' && localPage" in script, "Insecure API origins must be limited to local development"
     assert "localStorage.setItem('hotice.accessToken'" not in script
     assert "sessionStorage.setItem('hotice.accessToken'" not in script
+    assert "indexedDB.open(projectDbName, 1)" in script, "Browser projects must persist locally"
+    assert "accountApi('/v1/projects'" in script, "Cloud listing must use the shared project API"
+    assert "method: 'PUT', token: accountToken, body" in script, "Cloud writes must be authenticated"
+    assert "projectConsent?.checked" in script, "Cloud actions must require explicit consent"
+    assert "Upload as separate cloud copy" in script, "Revision conflicts must keep local work recoverable"
+    assert "'/v1/projects/' + encodeURIComponent(id)" in script
     assert "actorStorageKey" in script
     assert "Assign your Actors to this prompt" in script
     assert "prompt.replaceAll('{{' + role + '}}', actors[index])" in script
-    assert (PUBLIC / ".htaccess").is_file()
+    apache = (PUBLIC / ".htaccess").read_text(encoding="utf-8")
+    connect_src = next((item.strip() for item in apache.split(";")
+                        if item.strip().startswith("connect-src ")), None)
+    assert connect_src == "connect-src 'self' https://api.your-hotice-domain.example", \
+        "CSP must allow only same-origin and the exact configured API host"
     print(f"HOTICE static web verification successful: {len(ids)} templates, "
           f"{len(scanner.assets)} assets, no uncleared remote media.")
 
@@ -110,5 +117,4 @@ if __name__ == "__main__":
     except Exception as exc:
         print("WEB CHECK FAILED:", str(exc), file=sys.stderr)
         raise
-
 

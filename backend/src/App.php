@@ -132,6 +132,12 @@ final class App
             }
             if ($route === '/v1/me' && $method === 'GET') {
                 $e = $this->entitlement($user['id']);
+                $credits = null;
+                if (($this->config['mock_jobs_enabled'] ?? false) === true) {
+                    $q = $this->db->prepare('SELECT balance FROM credit_accounts WHERE user_id=?');
+                    $q->execute([$user['id']]);
+                    $credits = (int)($q->fetchColumn() ?: 0);
+                }
                 $this->send(200, [
                     'user' => ['id' => $user['id'], 'email' => $user['email']],
                     'cloud' => ['active' => $this->canWriteCloud($e),
@@ -140,7 +146,18 @@ final class App
                         'quotaBytes' => isset($e['quota_bytes']) ? (int) $e['quota_bytes'] : 0,
                         'usedBytes' => isset($e['used_bytes']) ? (int) $e['used_bytes'] : 0,
                         'expiresAt' => $e['expires_at'] ?? null],
+                    'mockGeneration' => ['enabled' => ($this->config['mock_jobs_enabled'] ?? false) === true,
+                        'credits' => $credits, 'unit' => 'simulated_credits', 'moneyValue' => 0],
                 ]); return;
+            }
+            if ($route === '/v1/jobs/quote' && $method === 'POST') { $this->quoteMockJob($user['id']); return; }
+            if ($route === '/v1/jobs' && $method === 'POST') { $this->createMockJob($user['id']); return; }
+            if ($route === '/v1/jobs' && $method === 'GET') { $this->listJobs($user['id']); return; }
+            if (preg_match('~^/v1/jobs/([a-f0-9-]{36})$~D', $route, $m) && Support::isUuid($m[1]) && $method === 'GET') {
+                $this->getJob($user['id'], $m[1]); return;
+            }
+            if (preg_match('~^/v1/jobs/([a-f0-9-]{36})/cancel$~D', $route, $m) && Support::isUuid($m[1]) && $method === 'POST') {
+                $this->cancelJob($user['id'], $m[1]); return;
             }
             if ($route === '/v1/projects' && $method === 'GET') {
                 $this->requireCloud($user['id'], false);
@@ -222,6 +239,212 @@ final class App
         http_response_code($code);
         header('Content-Type: application/json; charset=utf-8');
         echo json_encode($data, JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
+    }
+
+    private function requireMockJobs(): void
+    {
+        if (($this->config['mock_jobs_enabled'] ?? false) !== true) {
+            throw new ApiError(503, 'Mock generation is disabled on this server.');
+        }
+    }
+
+    /** Normalize a deliberately small mock-only request contract. */
+    private function normalizeMockJobRequest(mixed $raw): array
+    {
+        if (!$raw instanceof \stdClass) throw new ApiError(422, 'Job request object required.');
+        $values = get_object_vars($raw);
+        $unknown = array_diff(array_keys($values), ['modelId', 'prompt', 'simulate']);
+        if ($unknown !== []) throw new ApiError(422, 'Unsupported job request field.');
+        $model = $values['modelId'] ?? null;
+        if ($model !== 'hotice.mock.video.v1') throw new ApiError(422, 'Model is not enabled for mock generation.');
+        $prompt = $values['prompt'] ?? null;
+        if (!is_string($prompt)) throw new ApiError(422, 'Prompt must be text.');
+        $prompt = trim($prompt);
+        $length = preg_match_all('/./us', $prompt);
+        if ($prompt === '' || strlen($prompt) > 8000 || $length === false || $length > 2000 ||
+            preg_match('/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/', $prompt)) {
+            throw new ApiError(422, 'Prompt must be 1–2000 readable characters.');
+        }
+        $simulate = $values['simulate'] ?? 'success';
+        $allowed = ['success', 'timeout_once', 'rate_limit_once', 'malformed_once', 'permanent_failure'];
+        if (!is_string($simulate) || !in_array($simulate, $allowed, true)) {
+            throw new ApiError(422, 'Unsupported dry-run scenario.');
+        }
+        return ['modelId' => $model, 'prompt' => $prompt, 'simulate' => $simulate];
+    }
+
+    private function mockRequestHash(array $request, string $user): string
+    {
+        $canonical = json_encode($request, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
+        // A plain digest still permits offline guessing of common prompts after
+        // a database disclosure. Bind a keyed digest to this account as well as
+        // the canonical request so stored rows cannot be compared across users.
+        return hash_hmac('sha256', "hotice:mock-request:v1\0" . $user . "\0" . $canonical,
+            (string)$this->config['app_key']);
+    }
+
+    private function signMockQuote(array $payload): string
+    {
+        $encoded = rtrim(strtr(base64_encode(json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR)), '+/', '-_'), '=');
+        return $encoded . '.' . hash_hmac('sha256', $encoded, (string)$this->config['app_key']);
+    }
+
+    private function verifyMockQuote(string $token): array
+    {
+        $parts = explode('.', $token);
+        if (count($parts) !== 2 || !preg_match('/^[A-Za-z0-9_-]+$/D', $parts[0]) ||
+            !preg_match('/^[a-f0-9]{64}$/D', $parts[1]) ||
+            !hash_equals(hash_hmac('sha256', $parts[0], (string)$this->config['app_key']), $parts[1])) {
+            throw new ApiError(422, 'Quote signature is invalid.');
+        }
+        $raw = base64_decode(strtr($parts[0], '-_', '+/') . str_repeat('=', (4 - strlen($parts[0]) % 4) % 4), true);
+        $payload = is_string($raw) ? json_decode($raw, true) : null;
+        if (!is_array($payload)) throw new ApiError(422, 'Quote is invalid.');
+        return $payload;
+    }
+
+    private function quoteMockJob(string $user): void
+    {
+        $this->requireMockJobs();
+        $body = Support::jsonInput(16384);
+        $request = $this->normalizeMockJobRequest($body['request'] ?? null);
+        $requestHash = $this->mockRequestHash($request, $user);
+        $credits = max(0, min(1000000, (int)($this->config['mock_job_cost_credits'] ?? 0)));
+        $ttl = max(60, min(600, (int)($this->config['mock_job_quote_ttl_seconds'] ?? 300)));
+        $expires = time() + $ttl;
+        $quoteId = Support::uuid();
+        $this->db->prepare('INSERT INTO job_quotes(id,user_id,request_sha256,credits,expires_at) VALUES(?,?,?,?,?)')
+            ->execute([$quoteId, $user, $requestHash, $credits, gmdate('Y-m-d H:i:s', $expires)]);
+        $token = $this->signMockQuote(['quoteId' => $quoteId, 'userId' => $user,
+            'requestSha256' => $requestHash, 'credits' => $credits, 'expiresAt' => $expires]);
+        $this->send(200, ['quoteToken' => $token, 'modelId' => $request['modelId'],
+            'credits' => $credits, 'currency' => 'simulated_credits', 'expiresAt' => gmdate('c', $expires)]);
+    }
+
+    private function createMockJob(string $user): void
+    {
+        $this->requireMockJobs();
+        $body = Support::jsonInput(20000);
+        $request = $this->normalizeMockJobRequest($body['request'] ?? null);
+        // The staging worker never sends the prompt to a provider. Keep only
+        // execution metadata in its durable queue record and retain the
+        // one-way hash for quote binding and idempotency. This avoids storing
+        // user prompt text in plaintext in the mock jobs table.
+        $requestHash = $this->mockRequestHash($request, $user);
+        $requestJson = json_encode([
+            'modelId' => $request['modelId'],
+            'simulate' => $request['simulate'],
+        ], JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
+        $idempotencyKey = trim((string)($_SERVER['HTTP_IDEMPOTENCY_KEY'] ?? ''));
+        if (!preg_match('/^[A-Za-z0-9._~:-]{16,128}$/D', $idempotencyKey)) {
+            throw new ApiError(400, 'Idempotency-Key header required (16–128 safe characters).');
+        }
+        $idempotencyHash = hash('sha256', $idempotencyKey);
+        $this->db->beginTransaction();
+        $this->db->prepare('INSERT INTO credit_accounts(user_id,balance) VALUES(?,0) ON DUPLICATE KEY UPDATE user_id=VALUES(user_id)')
+            ->execute([$user]);
+        $account = $this->db->prepare('SELECT balance FROM credit_accounts WHERE user_id=? FOR UPDATE');
+        $account->execute([$user]);
+        $balance = (int)$account->fetchColumn();
+        $existing = $this->db->prepare('SELECT id,request_sha256 FROM generation_jobs WHERE user_id=? AND idempotency_hash=? LIMIT 1 FOR UPDATE');
+        $existing->execute([$user, $idempotencyHash]);
+        $job = $existing->fetch();
+        if ($job) {
+            $this->db->commit();
+            if (!hash_equals($job['request_sha256'], $requestHash)) throw new ApiError(409, 'Idempotency key was used for a different request.');
+            $this->send(200, ['job' => $this->jobForUser($user, $job['id']), 'idempotentReplay' => true]);
+            return;
+        }
+        if (!is_string($body['quoteToken'] ?? null) || strlen($body['quoteToken']) > 4096) {
+            throw new ApiError(422, 'Quote token is invalid.');
+        }
+        $quote = $this->verifyMockQuote($body['quoteToken']);
+        $quoteId = (string)($quote['quoteId'] ?? '');
+        if (!Support::isUuid($quoteId) || ($quote['userId'] ?? null) !== $user ||
+            ($quote['requestSha256'] ?? null) !== $requestHash || !is_int($quote['credits'] ?? null) ||
+            !is_int($quote['expiresAt'] ?? null) || $quote['expiresAt'] < time()) {
+            throw new ApiError(409, 'Quote is expired or does not match this account and request.');
+        }
+        $quoted = $this->db->prepare('SELECT user_id,request_sha256,credits,expires_at,consumed_job_id FROM job_quotes WHERE id=? FOR UPDATE');
+        $quoted->execute([$quoteId]);
+        $storedQuote = $quoted->fetch();
+        if (!$storedQuote || $storedQuote['user_id'] !== $user ||
+            !hash_equals($storedQuote['request_sha256'], $requestHash) || (int)$storedQuote['credits'] !== $quote['credits'] ||
+            $storedQuote['consumed_job_id'] !== null || strtotime($storedQuote['expires_at'] . ' UTC') < time()) {
+            throw new ApiError(409, 'Quote is expired or already used. Request a new quote.');
+        }
+        $credits = (int)$storedQuote['credits'];
+        if ($balance < $credits) throw new ApiError(402, 'Insufficient simulated credits.');
+        $jobId = Support::uuid();
+        $this->db->prepare("INSERT INTO generation_jobs(id,user_id,quote_id,idempotency_hash,request_sha256,model_id,request_json,reserved_credits,max_attempts) VALUES(?,?,?,?,?,?,?, ?,3)")
+            ->execute([$jobId, $user, $quoteId, $idempotencyHash, $requestHash, $request['modelId'], $requestJson, $credits]);
+        $nextBalance = $balance - $credits;
+        $this->db->prepare('UPDATE credit_accounts SET balance=? WHERE user_id=?')->execute([$nextBalance, $user]);
+        $this->db->prepare("INSERT INTO credit_ledger(user_id,job_id,event_key,event_type,delta,balance_after) VALUES(?,?,?,'reserve',?,?)")
+            ->execute([$user, $jobId, hash('sha256', 'reserve:' . $jobId), -$credits, $nextBalance]);
+        $this->db->prepare('UPDATE job_quotes SET consumed_job_id=? WHERE id=? AND consumed_job_id IS NULL')->execute([$jobId, $quoteId]);
+        $this->db->commit();
+        $this->send(201, ['job' => $this->jobForUser($user, $jobId), 'idempotentReplay' => false]);
+    }
+
+    private function listJobs(string $user): void
+    {
+        $this->requireMockJobs();
+        $q = $this->db->prepare('SELECT id FROM generation_jobs WHERE user_id=? ORDER BY created_at DESC LIMIT 50');
+        $q->execute([$user]);
+        $jobs = [];
+        foreach ($q->fetchAll() as $row) $jobs[] = $this->jobForUser($user, $row['id']);
+        $this->send(200, ['jobs' => $jobs]);
+    }
+
+    private function getJob(string $user, string $id): void
+    {
+        $this->requireMockJobs();
+        $job = $this->jobForUser($user, $id);
+        if ($job === null) throw new ApiError(404, 'Job not found.');
+        $this->send(200, ['job' => $job]);
+    }
+
+    private function jobForUser(string $user, string $id): ?array
+    {
+        $q = $this->db->prepare('SELECT id,model_id,status,attempt_count,max_attempts,reserved_credits,actual_credits,result_json,error_code,created_at,updated_at,finished_at FROM generation_jobs WHERE user_id=? AND id=?');
+        $q->execute([$user, $id]);
+        $row = $q->fetch();
+        if (!$row) return null;
+        return ['id' => $row['id'], 'modelId' => $row['model_id'], 'status' => $row['status'],
+            'attempts' => (int)$row['attempt_count'], 'maxAttempts' => (int)$row['max_attempts'],
+            'reservedCredits' => (int)$row['reserved_credits'], 'chargedCredits' => (int)$row['actual_credits'],
+            'result' => $row['result_json'] === null ? null : json_decode($row['result_json'], true),
+            'errorCode' => $row['error_code'], 'createdAt' => $row['created_at'],
+            'updatedAt' => $row['updated_at'], 'finishedAt' => $row['finished_at']];
+    }
+
+    private function cancelJob(string $user, string $id): void
+    {
+        $this->requireMockJobs();
+        $this->db->beginTransaction();
+        $this->db->prepare('INSERT INTO credit_accounts(user_id,balance) VALUES(?,0) ON DUPLICATE KEY UPDATE user_id=VALUES(user_id)')
+            ->execute([$user]);
+        $account = $this->db->prepare('SELECT balance FROM credit_accounts WHERE user_id=? FOR UPDATE');
+        $account->execute([$user]);
+        $balance = (int)$account->fetchColumn();
+        $q = $this->db->prepare('SELECT status,reserved_credits FROM generation_jobs WHERE id=? AND user_id=? FOR UPDATE');
+        $q->execute([$id, $user]);
+        $job = $q->fetch();
+        if (!$job) throw new ApiError(404, 'Job not found.');
+        if ($job['status'] === 'cancelled') {
+            $this->db->commit(); $this->send(200, ['job' => $this->jobForUser($user, $id), 'alreadyCancelled' => true]); return;
+        }
+        if ($job['status'] !== 'queued') throw new ApiError(409, 'Only queued jobs can be cancelled.');
+        $refund = (int)$job['reserved_credits'];
+        $nextBalance = $balance + $refund;
+        $this->db->prepare('UPDATE credit_accounts SET balance=? WHERE user_id=?')->execute([$nextBalance, $user]);
+        $this->db->prepare("INSERT INTO credit_ledger(user_id,job_id,event_key,event_type,delta,balance_after) VALUES(?,?,?,'refund',?,?)")
+            ->execute([$user, $id, hash('sha256', 'refund:' . $id), $refund, $nextBalance]);
+        $this->db->prepare("UPDATE generation_jobs SET status='cancelled',actual_credits=0,error_code='cancelled_by_user',finished_at=UTC_TIMESTAMP(),lease_token=NULL,lease_until=NULL WHERE id=? AND user_id=?")
+            ->execute([$id, $user]);
+        $this->db->commit();
+        $this->send(200, ['job' => $this->jobForUser($user, $id), 'alreadyCancelled' => false]);
     }
 
     /**
@@ -419,28 +642,46 @@ final class App
         $email = Support::email((string) ($b['email'] ?? ''));
         $password = (string) ($b['password'] ?? '');
         $fingerprint = $this->throttle($email);
-        $q = $this->db->prepare('SELECT id,email,password_hash,email_verified_at FROM users WHERE email=? LIMIT 1');
-        $q->execute([$email]);
-        $user = $q->fetch();
-        if (!$user || !Support::passwordVerify($password, $user['password_hash'])) {
-            $this->recordFailedLogin($fingerprint);
-            throw new ApiError(401, 'Invalid email or password.');
+        $this->db->beginTransaction();
+        try {
+            // Lock the user row so an owner suspension cannot race a new session.
+            $q = $this->db->prepare('SELECT id,email,password_hash,email_verified_at FROM users WHERE email=? LIMIT 1 FOR UPDATE');
+            $q->execute([$email]);
+            $user = $q->fetch();
+            $state = null;
+            if ($user) {
+                $check = $this->db->prepare('SELECT disabled_at FROM user_admin_state WHERE user_id=?');
+                $check->execute([$user['id']]);
+                $state = $check->fetch();
+            }
+            if (!$user || !Support::passwordVerify($password, $user['password_hash']) ||
+                ($state && $state['disabled_at'] !== null)) {
+                $this->db->rollBack();
+                $this->recordFailedLogin($fingerprint);
+                throw new ApiError(401, 'Invalid email or password.');
+            }
+            if ($user['email_verified_at'] === null) {
+                $this->db->rollBack();
+                throw new ApiError(403, 'Verify your email before signing in.');
+            }
+            // Never clear the IP budget on a successful login: a single valid
+            // account must not let attackers reset their IP-wide spray limit.
+            $this->db->prepare('DELETE FROM login_attempts WHERE fingerprint=?')->execute([$fingerprint['email']]);
+            // Preserve long legacy bcrypt password semantics on cPanel builds.
+            if (Support::passwordNeedsRehash($user['password_hash']) && strlen($password) <= 72) {
+                $this->db->prepare('UPDATE users SET password_hash=? WHERE id=?')
+                    ->execute([Support::passwordHash($password), $user['id']]);
+            }
+            $token = bin2hex(random_bytes(32));
+            $hours = max(1, min(168, (int) ($this->config['token_ttl_hours'] ?? 24)));
+            $expires = gmdate('Y-m-d H:i:s', time() + $hours * 3600);
+            $this->db->prepare('INSERT INTO sessions (id,user_id,token_sha256,expires_at) VALUES (?,?,?,?)')
+                ->execute([Support::uuid(), $user['id'], hash('sha256', $token), $expires]);
+            $this->db->commit();
+        } catch (Throwable $e) {
+            if ($this->db->inTransaction()) $this->db->rollBack();
+            throw $e;
         }
-        if ($user['email_verified_at'] === null) throw new ApiError(403, 'Verify your email before signing in.');
-        // Never clear the IP budget on a successful login: a single valid
-        // account must not let attackers reset their IP-wide spray limit.
-        $this->db->prepare('DELETE FROM login_attempts WHERE fingerprint=?')->execute([$fingerprint['email']]);
-        // Preserve the effective behavior of legacy bcrypt passwords longer
-        // than 72 bytes rather than silently changing their login semantics.
-        if (Support::passwordNeedsRehash($user['password_hash']) && strlen($password) <= 72) {
-            $this->db->prepare('UPDATE users SET password_hash=? WHERE id=?')
-                ->execute([Support::passwordHash($password), $user['id']]);
-        }
-        $token = bin2hex(random_bytes(32));
-        $hours = max(1, min(168, (int) ($this->config['token_ttl_hours'] ?? 24)));
-        $expires = gmdate('Y-m-d H:i:s', time() + $hours * 3600);
-        $this->db->prepare('INSERT INTO sessions (id,user_id,token_sha256,expires_at) VALUES (?,?,?,?)')
-            ->execute([Support::uuid(), $user['id'], hash('sha256', $token), $expires]);
         $this->send(200, ['accessToken' => $token, 'tokenType' => 'Bearer',
             'expiresAt' => str_replace(' ', 'T', $expires) . 'Z']);
     }
@@ -449,7 +690,7 @@ final class App
     {
         $auth = (string) ($_SERVER['HTTP_AUTHORIZATION'] ?? $_SERVER['REDIRECT_HTTP_AUTHORIZATION'] ?? '');
         if (!preg_match('/^Bearer ([a-fA-F0-9]{64})$/D', $auth, $m)) throw new ApiError(401, 'Authentication required.');
-        $q = $this->db->prepare('SELECT s.id AS session_id,u.id,u.email FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token_sha256=? AND s.revoked_at IS NULL AND s.expires_at > UTC_TIMESTAMP() LIMIT 1');
+        $q = $this->db->prepare('SELECT s.id AS session_id,u.id,u.email FROM sessions s JOIN users u ON u.id=s.user_id LEFT JOIN user_admin_state uas ON uas.user_id=u.id WHERE s.token_sha256=? AND s.revoked_at IS NULL AND s.expires_at > UTC_TIMESTAMP() AND uas.disabled_at IS NULL LIMIT 1');
         $q->execute([hash('sha256', strtolower($m[1]))]);
         $user = $q->fetch();
         if (!$user) throw new ApiError(401, 'Session expired or revoked.');
@@ -690,5 +931,4 @@ final class App
         return Support::assertPrivateStorage($path, $roots);
     }
 }
-
 

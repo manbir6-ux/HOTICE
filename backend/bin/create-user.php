@@ -8,9 +8,9 @@ try {
     $email = \Hotice\Support::email($argv[1]);
     fwrite(STDERR, 'Password (at least 12 bytes): ');
     // Do not pass passwords on the command line (shell history/process list).
-    if (function_exists('shell_exec')) @shell_exec('stty -echo');
+    if (function_exists('shell_exec')) @shell_exec('stty -echo 2>/dev/null');
     $password = trim((string) fgets(STDIN), "\r\n");
-    if (function_exists('shell_exec')) @shell_exec('stty echo');
+    if (function_exists('shell_exec')) @shell_exec('stty echo 2>/dev/null');
     fwrite(STDERR, "\n");
     if (strlen($password) < 12 || strlen($password) > 256) throw new \RuntimeException('Password length must be 12-256 bytes.');
     $db = (new \Hotice\App($config))->database();
