@@ -9,7 +9,7 @@ CREATE TABLE IF NOT EXISTS users (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Account-scoped visual preferences shared by authenticated HOTICE clients.
--- Preferences are intentionally limited to presentation settings; local
+-- Preferences are intentionally limited to presentation settings. Local
 -- project content remains device-local unless the user explicitly syncs it.
 CREATE TABLE IF NOT EXISTS user_preferences (
   user_id CHAR(36) CHARACTER SET ascii COLLATE ascii_bin NOT NULL PRIMARY KEY,
