@@ -6,6 +6,9 @@ namespace Hotice;
 use PDO;
 use Throwable;
 
+require_once __DIR__ . '/ProviderAdapter.php';
+require_once __DIR__ . '/MockProviderAdapter.php';
+
 /** Local deterministic test worker. It never contacts a model provider. */
 final class MockJobWorker
 {
@@ -74,13 +77,21 @@ final class MockJobWorker
     {
         $scenario = $job['request']['simulate'] ?? 'success';
         $attempt = (int)$job['attempt_count'];
-        $retryCode = match ($scenario) {
-            'timeout_once' => $attempt === 1 ? 'mock_timeout' : null,
-            'rate_limit_once' => $attempt === 1 ? 'mock_rate_limited' : null,
-            'malformed_once' => $attempt === 1 ? 'mock_malformed_response' : null,
-            default => null,
-        };
-        if ($retryCode !== null) {
+        $registry = new ProviderRegistry([new MockProviderAdapter()]);
+        $adapter = $registry->forModel((string)$job['request']['modelId']);
+        $providerRequest = new ProviderRequest(
+            (string)$job['request']['modelId'],
+            '', // Prompts are deliberately absent from the durable dry-run queue row.
+            [],
+            ['simulate' => $scenario, 'attempt' => $attempt],
+        );
+        $operation = $adapter->submit($providerRequest, hash('sha256', "hotice:mock-job:v1\0" . $job['id']));
+        for ($poll = 0; $poll < 2 && in_array($operation->status, ['queued', 'processing'], true); $poll++) {
+            $operation = $adapter->poll($operation->operationId);
+        }
+
+        if ($operation->status === 'failed' && $operation->retryable) {
+            $retryCode = $operation->errorCode ?? 'mock_provider_retryable_failure';
             if ($attempt < (int)$job['max_attempts']) {
                 $db->prepare("UPDATE generation_jobs SET status='queued',available_at=DATE_ADD(UTC_TIMESTAMP(),INTERVAL 2 SECOND),error_code=?,lease_token=NULL,lease_until=NULL WHERE id=? AND status='processing' AND lease_token=?")
                     ->execute([$retryCode, $job['id'], $job['lease_token']]);
@@ -88,13 +99,11 @@ final class MockJobWorker
             }
             return self::finalizeFailure($db, $job, $retryCode);
         }
-        if ($scenario === 'permanent_failure') return self::finalizeFailure($db, $job, 'mock_provider_rejected');
+        if ($operation->status !== 'succeeded') {
+            return self::finalizeFailure($db, $job, $operation->errorCode ?? 'mock_provider_failed');
+        }
 
-        $result = json_encode([
-            'mode' => 'mock_dry_run',
-            'modelId' => $job['request']['modelId'],
-            'message' => 'Dry run completed. No video or provider output was created.',
-        ], JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
+        $result = json_encode($operation->result, JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
         $db->beginTransaction();
         $account = $db->prepare('SELECT balance FROM credit_accounts WHERE user_id=? FOR UPDATE');
         $account->execute([$job['user_id']]);

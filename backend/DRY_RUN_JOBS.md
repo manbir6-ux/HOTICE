@@ -34,6 +34,10 @@ The mock worker is CLI-only and uses a singleton database lock. Run it once per 
 
 The durable mock job row stores only the selected model and simulation scenario; it does not store prompt text. Quote/idempotency binding uses a user-scoped HMAC-SHA256 over the normalized request, keyed with the private server app key, to prevent offline guessing and cross-account prompt correlation after a database-only disclosure. The digest is kept server-side and omitted from job results.
 
+The worker now routes its deterministic mock outcomes through the server-only `ProviderAdapter` contract. Adapters normalize submit, poll and cancel states; `ProviderRegistry` fails closed for unknown or multiply-registered model IDs. The mock adapter supports bounded retryable failures, permanent rejection, idempotency and cancellation without network access or media generation. It is the only adapter registered in this dry-run worker.
+
+This contract is not evidence of a live provider integration. Live calls remain disabled. Production adapters still require a protected transient prompt/attachment path, persistent remote-operation identifiers, official model/region capability evidence, provider-key lifecycle, cost reservation/settlement, and provider-specific lifecycle/reconciliation tests. Do not register a live adapter from user-controlled settings.
+
 ## Verification
 
 `backend/tests/jobs-integration.sh` covers quote binding/tampering, duplicate submissions, idempotency conflicts, per-user isolation, success, simulated permanent failure and refund, timeout/rate-limit/malformed retries, cancellation and balance consistency against MySQL. GitHub Actions uses throwaway users, credentials, database and a local-only five-credit tariff. No real provider keys are configured or used.
