@@ -191,7 +191,7 @@ void main() {
 
     expect(submittedEmail, 'maker@example.com');
     expect(submittedPassword, 'secret password');
-    expect(find.text('secret password'), findsNothing);
+    expect(tester.widget<TextFormField>(find.byType(TextFormField).last).obscureText, isTrue);
     expect(tester.takeException(), isNull);
   });
 }
