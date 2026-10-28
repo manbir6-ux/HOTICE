@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'backend_auth.dart';
 import 'state.dart';
 import 'design.dart';
 
@@ -384,10 +385,14 @@ class _AccountsPageState extends State<AccountsPage> {
                   await widget.onDeleteAccount!(password.text, confirmation.text);
                   if (dialogContext.mounted) Navigator.pop(dialogContext, true);
                 } catch (failure) {
-                  setDialogState(() {
-                    error = failure.toString().replaceFirst('Exception: ', '');
-                    deleting = false;
-                  });
+                  if (dialogContext.mounted) {
+                    setDialogState(() {
+                      error = failure is BackendAuthException
+                          ? failure.message
+                          : 'Could not confirm whether deletion finished. Sign in again to check; device-only projects remain on this device.';
+                      deleting = false;
+                    });
+                  }
                 }
               },
               child: Text(deleting ? 'Deleting…' : 'Permanently delete'),
