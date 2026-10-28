@@ -26,9 +26,11 @@ grep -qi 'set-cookie: HOTICE_OWNER=.*secure.*httponly' <(curl -sS -D - -o /dev/n
 
 owner_email='owner-integration@example.com'
 owner_password='TemporaryOwnerPassword123!'
-owner_output=$(printf '%s\n' "$owner_password" | php backend/bin/create-owner.php "$owner_email")
+owner_output=$(printf '%s\n' "$owner_password" | php backend/bin/create-owner.php "$owner_email" 2>"$TMP_DIR/create-owner.err") || {
+  echo 'Owner provisioning command failed.'; cat "$TMP_DIR/create-owner.err"; exit 1;
+}
 totp_secret=$(printf '%s\n' "$owner_output" | sed -n 's/^Secret: //p')
-test "${#totp_secret}" -ge 20
+if [[ ${#totp_secret} -lt 20 ]]; then echo 'Owner provisioning did not return its TOTP setup secret.'; cat "$TMP_DIR/create-owner.err"; exit 1; fi
 code=$(php -r 'require "backend/src/AdminSecurity.php"; echo \Hotice\AdminSecurity::totp($argv[1], time());' "$totp_secret")
 
 headers="$TMP_DIR/headers"
@@ -37,7 +39,7 @@ login_cookie=$(curl -sS -D "$headers" -o "$TMP_DIR/login" -c "$TMP_DIR/cookies" 
   --data-urlencode "csrf=$(printf '%s' "$page" | sed -n 's/.*name="csrf" value="\([^"]*\)".*/\1/p' | head -1)" \
   --data-urlencode 'action=login' --data-urlencode "email=$owner_email" \
   --data-urlencode "password=$owner_password" --data-urlencode "totp=$code" "$BASE/admin.php")
-test "$login_cookie" = '303'
+if [[ "$login_cookie" != '303' ]]; then echo "Owner login returned HTTP $login_cookie."; cat "$TMP_DIR/login"; exit 1; fi
 session=$(sed -n 's/^[Ss]et-[Cc]ookie: HOTICE_OWNER=\([^;]*\).*/\1/p' "$headers" | tail -1)
 test -n "$session"
 page=$(curl -fsS -H "Cookie: HOTICE_OWNER=$session" "$BASE/admin.php")
