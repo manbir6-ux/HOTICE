@@ -16,6 +16,7 @@ class _ModelCompatibilityPageState extends State<ModelCompatibilityPage> {
 
   String describe(AiCapability item) {
     final duration = item.task != AiTask.video ? 'N/A'
+        : !item.controlsDuration ? 'Auto — output length varies'
         : item.exactSeconds.isNotEmpty
           ? item.exactSeconds.join(', ') + ' seconds'
           : item.minSeconds == null || item.maxSeconds == null
