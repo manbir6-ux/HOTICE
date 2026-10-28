@@ -34,13 +34,13 @@ function deploymentOrigin(input) {
 async function verifyDeployment(input, fetchImpl = fetch) {
   const origin = deploymentOrigin(input);
   const failures = [];
-  const request = async (path) => {
+  const request = async (path, headers = {}) => {
     try {
       return await fetchImpl(`${origin}${path}`, {
         method: 'GET',
         redirect: 'manual',
         cache: 'no-store',
-        headers: { Accept: 'application/json' },
+        headers: { Accept: 'application/json', ...headers },
       });
     } catch {
       failures.push(`${path}: request failed`);
@@ -66,6 +66,10 @@ async function verifyDeployment(input, fetchImpl = fetch) {
     if (!/\bno-store\b/i.test(health.headers.get('cache-control') || '')) {
       failures.push('/health: cache-control must include no-store');
     }
+    const csp = health.headers.get('content-security-policy') || '';
+    if (!/\bdefault-src\s+'none'(?=;|$)/i.test(csp) || !/\bframe-ancestors\s+'none'(?=;|$)/i.test(csp)) {
+      failures.push('/health: CSP must deny all default sources and framing');
+    }
     const hsts = health.headers.get('strict-transport-security') || '';
     const maxAge = Number(hsts.match(/(?:^|;)\s*max-age=(\d+)/i)?.[1] || 0);
     if (maxAge < 31536000) failures.push('/health: HSTS max-age must be at least one year');
@@ -82,6 +86,14 @@ async function verifyDeployment(input, fetchImpl = fetch) {
     }
   }
 
+  const foreignOrigin = await request('/health', { Origin: 'https://hotice-probe.invalid' });
+  if (foreignOrigin && foreignOrigin.status !== 403) {
+    failures.push(`/health: unlisted browser origin must receive HTTP 403, received ${foreignOrigin.status}`);
+  }
+  if (foreignOrigin && foreignOrigin.headers.get('access-control-allow-origin')) {
+    failures.push('/health: unlisted browser origin received an Access-Control-Allow-Origin header');
+  }
+
   for (const path of SECRET_PATHS) {
     const response = await request(path);
     if (response && ![401, 403, 404, 410].includes(response.status)) {
@@ -89,7 +101,7 @@ async function verifyDeployment(input, fetchImpl = fetch) {
     }
   }
 
-  return { ok: failures.length === 0, checkedPaths: 1 + SECRET_PATHS.length, failures };
+  return { ok: failures.length === 0, checkedPaths: SECRET_PATHS.length, failures };
 }
 
 export { deploymentOrigin, verifyDeployment };
@@ -103,7 +115,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
     try {
       const result = await verifyDeployment(input);
       if (result.ok) {
-        console.log(`PASS: HTTPS health and ${result.checkedPaths - 1} protected-path checks passed.`);
+        console.log(`PASS: HTTPS health, foreign-origin denial and ${result.checkedPaths} protected-path checks passed.`);
       } else {
         for (const failure of result.failures) console.error(`FAIL: ${failure}`);
         process.exitCode = 1;
