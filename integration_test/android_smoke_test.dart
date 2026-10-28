@@ -68,6 +68,15 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Appearance & settings'), findsOneWidget);
     expect(tester.takeException(), isNull);
+    final modelCatalog = find.byKey(const ValueKey('model-compatibility-open'));
+    await tester.ensureVisible(modelCatalog);
+    await tester.tap(modelCatalog);
+    await tester.pumpAndSettle();
+    expect(find.text('Provider compatibility'), findsOneWidget);
+    expect(find.text('Search models or providers'), findsOneWidget);
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    expect(find.text('Appearance & settings'), findsOneWidget);
 
     await tester.tap(find.text('More'));
     await tester.pumpAndSettle();
