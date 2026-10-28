@@ -617,7 +617,7 @@ void main() {
     await tester.tap(find.text('Sign in or create account'));
     await tester.pumpAndSettle();
     expect(find.text('Welcome to HOTICE'), findsOneWidget);
-    expect(find.byType(TextFormField), findsOneWidget);
+    expect(find.byType(TextFormField), findsNWidgets(2));
     expect(find.text('Forgot password?'), findsOneWidget);
   });
 
