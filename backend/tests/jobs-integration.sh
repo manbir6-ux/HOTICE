@@ -21,8 +21,11 @@ AUTH="Authorization: Bearer $token"
 OTHER_AUTH="Authorization: Bearer $other_token"
 
 php backend/bin/grant-mock-credits.php "$EMAIL" 100 'initial-test-credit-grant-01'
+echo 'checkpoint: initial credits granted'
 php backend/bin/grant-mock-credits.php "$EMAIL" 100 'initial-test-credit-grant-01' | grep -q 'already applied'
+echo 'checkpoint: credit grant replay is idempotent'
 test "$(curl -fsS -H "$AUTH" "$BASE/v1/me" | jq -er '.mockGeneration.credits')" = '100'
+echo 'checkpoint: account reports simulated credits'
 
 request=$(jq -cn --arg p 'A blue sailboat at sunrise' '{modelId:"hotice.mock.video.v1",prompt:$p,simulate:"success"}')
 quote_body=$(jq -cn --argjson r "$request" '{request:$r}')
@@ -78,3 +81,4 @@ body=$(jq -cn --arg q "$tampered" --argjson r "$request" '{quoteToken:$q,request
 test "$(curl -sS -o /dev/null -w '%{http_code}' -X POST -H "$AUTH" -H 'Content-Type: application/json' -H 'Idempotency-Key: mock-job-tamper-00000001' -d "$body" "$BASE/v1/jobs")" = '422'
 
 echo 'Mock job quote, idempotency, ownership, retries, cancellation, simulated credits and refund checks passed. No provider call or video output was created.'
+
