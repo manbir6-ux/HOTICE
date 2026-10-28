@@ -332,83 +332,12 @@ class _AccountsPageState extends State<AccountsPage> {
 
   Future<void> deleteAccount() async {
     if (_accountActionBusy || widget.onDeleteAccount == null) return;
-    final password = TextEditingController();
-    final confirmation = TextEditingController();
-    bool deleting = false;
-    String? error;
     final removed = await showDialog<bool>(
       context: context,
-      builder: (dialogContext) => StatefulBuilder(
-        builder: (dialogContext, setDialogState) => AlertDialog(
-          title: const Text('Delete HOTICE account?'),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text('This permanently deletes your server account, cloud projects, uploaded media records and job history. Device-local projects remain on this device.'),
-                const SizedBox(height: 16),
-                TextField(
-                  controller: password,
-                  obscureText: true,
-                  autofillHints: const [AutofillHints.password],
-                  decoration: const InputDecoration(labelText: 'Current password'),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: confirmation,
-                  textCapitalization: TextCapitalization.characters,
-                  decoration: const InputDecoration(labelText: 'Type DELETE to confirm'),
-                ),
-                if (error != null) ...[
-                  const SizedBox(height: 12),
-                  Semantics(liveRegion: true, child: Text(
-                    error!, style: TextStyle(color: Theme.of(dialogContext).colorScheme.error),
-                  )),
-                ],
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: deleting ? null : () => Navigator.pop(dialogContext, false),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: deleting ? null : () async {
-                if (confirmation.text != 'DELETE' || password.text.isEmpty) {
-                  setDialogState(() => error = 'Type DELETE exactly and enter your current password.');
-                  return;
-                }
-                setDialogState(() { deleting = true; error = null; });
-                try {
-                  await widget.onDeleteAccount!(password.text, confirmation.text);
-                  if (dialogContext.mounted) Navigator.pop(dialogContext, true);
-                } catch (failure) {
-                  if (failure is BackendAuthException &&
-                      failure.statusCode == 401) {
-                    widget.store.signOut();
-                  }
-                  if (dialogContext.mounted) {
-                    setDialogState(() {
-                      error = failure is BackendAuthException
-                          ? failure.message
-                          : 'Could not confirm whether deletion finished. Sign in again to check; device-only projects remain on this device.';
-                      deleting = false;
-                    });
-                  }
-                }
-              },
-              child: Text(deleting ? 'Deleting…' : 'Permanently delete'),
-            ),
-          ],
-        ),
+      builder: (_) => _AccountDeletionDialog(
+        onDeleteAccount: widget.onDeleteAccount!,
       ),
     );
-    password.clear();
-    confirmation.clear();
-    password.dispose();
-    confirmation.dispose();
     if (removed == true) {
       widget.store.signOut();
       if (mounted) {
@@ -522,4 +451,97 @@ class _AccountsPageState extends State<AccountsPage> {
       ],
     ),
   );
+}
+
+class _AccountDeletionDialog extends StatefulWidget {
+  const _AccountDeletionDialog({required this.onDeleteAccount});
+
+  final Future<Map<String, dynamic>> Function(String password, String confirmation)
+      onDeleteAccount;
+
+  @override
+  State<_AccountDeletionDialog> createState() => _AccountDeletionDialogState();
+}
+
+class _AccountDeletionDialogState extends State<_AccountDeletionDialog> {
+  final _password = TextEditingController();
+  final _confirmation = TextEditingController();
+  bool _deleting = false;
+  String? _error;
+
+  @override
+  void dispose() {
+    _password.dispose();
+    _confirmation.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    if (_deleting) return;
+    if (_confirmation.text != 'DELETE' || _password.text.isEmpty) {
+      setState(() => _error = 'Type DELETE exactly and enter your current password.');
+      return;
+    }
+    setState(() { _deleting = true; _error = null; });
+    try {
+      await widget.onDeleteAccount(_password.text, _confirmation.text);
+      if (mounted) Navigator.pop(context, true);
+    } catch (failure) {
+      if (mounted) {
+        setState(() {
+          _error = failure is BackendAuthException
+              ? failure.message
+              : 'Could not confirm whether deletion finished. Sign in again to check; device-only projects remain on this device.';
+          _deleting = false;
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+        title: const Text('Delete HOTICE account?'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('This permanently deletes your server account, cloud projects, uploaded media records and job history. Device-local projects remain on this device.'),
+              const SizedBox(height: 16),
+              TextField(
+                controller: _password,
+                obscureText: true,
+                autofillHints: const [AutofillHints.password],
+                decoration: const InputDecoration(labelText: 'Current password'),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _confirmation,
+                textCapitalization: TextCapitalization.characters,
+                decoration: const InputDecoration(labelText: 'Type DELETE to confirm'),
+              ),
+              if (_error != null) ...[
+                const SizedBox(height: 12),
+                Semantics(
+                  liveRegion: true,
+                  child: Text(
+                    _error!,
+                    style: TextStyle(color: Theme.of(context).colorScheme.error),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: _deleting ? null : () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: _deleting ? null : _submit,
+            child: Text(_deleting ? 'Deleting…' : 'Permanently delete'),
+          ),
+        ],
+      );
 }
