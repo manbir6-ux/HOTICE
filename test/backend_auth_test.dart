@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:hotice/src/account_credits.dart';
 import 'package:hotice/src/backend_auth.dart';
 import 'package:hotice/src/state.dart';
 import 'package:hotice/src/welcome.dart';
@@ -148,6 +149,98 @@ void main() {
     client.close();
   });
 
+  test(
+      'account export validates and returns only the documented server snapshot',
+      () async {
+        final vault = MemoryTokenStore()..value = token;
+        final client = BackendAuthClient(
+          baseUri: Uri.parse('https://api.example.test'),
+          tokenStore: vault,
+          client: MockClient((request) async {
+            expect(request.method, 'GET');
+            expect(request.url.path, '/v1/me/export');
+            expect(request.headers['authorization'], 'Bearer $token');
+            return jsonResponse(200, {
+              'format': 'hotice-account-export-v1',
+              'account': {'email': 'maker@example.com'},
+              'cloudProjects': [],
+              'generationJobs': [],
+              'includedMediaBytes': false,
+              'deviceLocalProjectsIncluded': false,
+            });
+          }),
+        );
+
+        final export = await client.exportAccountData();
+        expect(export['format'], 'hotice-account-export-v1');
+        expect(export['account'], {'email': 'maker@example.com'});
+        expect(vault.value, token, reason: 'Export must not alter the session.');
+        client.close();
+      });
+
+  test(
+      'account deletion requires exact confirmation and clears token on success',
+      () async {
+        final vault = MemoryTokenStore()..value = token;
+        var calls = 0;
+        final client = BackendAuthClient(
+          baseUri: Uri.parse('https://api.example.test'),
+          tokenStore: vault,
+          client: MockClient((request) async {
+            calls++;
+            expect(request.method, 'DELETE');
+            expect(request.url.path, '/v1/me');
+            expect(request.headers['authorization'], 'Bearer $token');
+            expect(jsonDecode(request.body), {
+              'confirmation': 'DELETE',
+              'password': 'correct horse battery staple',
+            });
+            return jsonResponse(200, {
+              'deleted': true,
+              'accountDataRemoved': true,
+              'queuedMediaFiles': 0,
+            });
+          }),
+        );
+
+        await expectLater(
+          client.deleteAccount(
+              password: 'correct horse battery staple', confirmation: 'delete'),
+          throwsA(isA<BackendAuthException>()),
+        );
+        expect(calls, 0,
+            reason: 'Non-exact confirmation must never reach the API.');
+        expect(vault.value, token);
+        final result = await client.deleteAccount(
+          password: 'correct horse battery staple', confirmation: 'DELETE',
+        );
+        expect(result['deleted'], isTrue);
+        expect(vault.value, isNull);
+        await expectLater(
+          client.deleteAccount(
+              password: 'correct horse battery staple', confirmation: 'DELETE'),
+          throwsA(isA<BackendAuthException>()),
+        );
+        expect(calls, 1,
+            reason: 'A repeated deletion cannot reuse a deleted session.');
+        client.close();
+      });
+
+  test('failed account deletion preserves token so server state can be checked', () async {
+    final vault = MemoryTokenStore()..value = token;
+    final client = BackendAuthClient(
+      baseUri: Uri.parse('https://api.example.test'),
+      tokenStore: vault,
+      client: MockClient((_) async => jsonResponse(403, {'error': 'private detail'})),
+    );
+    await expectLater(
+      client.deleteAccount(password: 'wrong password', confirmation: 'DELETE'),
+      throwsA(isA<BackendAuthException>()),
+    );
+    expect(vault.value, token);
+    client.close();
+  });
+
   test('store marks only server-verified account as authenticated', () {
     final store = HotIceStore();
     store.signInDemo('guest@example.com');
@@ -193,5 +286,59 @@ void main() {
     expect(submittedPassword, 'secret password');
     expect(tester.widget<EditableText>(find.descendant(of: find.byType(TextFormField).last, matching: find.byType(EditableText))).obscureText, isTrue);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('authenticated account page requires exact confirmation before deletion',
+      (tester) async {
+    tester.view.physicalSize = const Size(393, 852);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+    final store = HotIceStore()..signInBackend('maker@example.com');
+    var deleteCalls = 0;
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: AccountsPage(
+          store: store,
+          onExportAccount: () async => {
+            'format': 'hotice-account-export-v1',
+            'account': {'email': 'maker@example.com'},
+          },
+          onDeleteAccount: (password, confirmation) async {
+            deleteCalls++;
+            expect(password, 'correct horse battery staple');
+            expect(confirmation, 'DELETE');
+            return {
+              'deleted': true,
+              'accountDataRemoved': true,
+              'queuedMediaFiles': 0,
+            };
+          },
+        ),
+      ),
+    ));
+    expect(find.text('Export account data'), findsOneWidget);
+    expect(find.text('Delete account'), findsOneWidget);
+
+    await tester.tap(find.text('Delete account'));
+    await tester.pumpAndSettle();
+    expect(find.text('Delete HOTICE account?'), findsOneWidget);
+    final fields = find.byType(TextField);
+    await tester.enterText(fields.at(0), 'correct horse battery staple');
+    await tester.enterText(fields.at(1), 'delete');
+    await tester.tap(find.text('Permanently delete'));
+    await tester.pumpAndSettle();
+    expect(find.text('Type DELETE exactly and enter your current password.'), findsOneWidget);
+    expect(deleteCalls, 0);
+
+    await tester.enterText(fields.at(1), 'DELETE');
+    await tester.tap(find.text('Permanently delete'));
+    await tester.pumpAndSettle();
+    expect(deleteCalls, 1);
+    expect(store.backendAuthenticated, isFalse);
+    expect(tester.takeException(), isNull);
+    store.dispose();
   });
 }

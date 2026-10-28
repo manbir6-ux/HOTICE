@@ -172,6 +172,66 @@ class BackendAuthClient {
     }
   }
 
+  /// Download only the server-held account snapshot. Device-local files are
+  /// deliberately not part of this API response.
+  Future<Map<String, dynamic>> exportAccountData() async {
+    final token = await _tokenStore.read();
+    if (token == null) {
+      throw const BackendAuthException('Sign in again to export your account data.', statusCode: 401);
+    }
+    final response = await _send('GET', 'v1/me/export', token: token);
+    if (response.statusCode == 413) {
+      throw const BackendAuthException(
+        'Your account export exceeds the safe size limit. Contact HOTICE support before deleting your account.',
+        statusCode: 413,
+      );
+    }
+    _checkSuccess(response, 'Sign in again to export your account data.');
+    final data = _decodeObject(response);
+    if (data['format'] != 'hotice-account-export-v1' ||
+        data['account'] is! Map<String, dynamic> ||
+        data['cloudProjects'] is! List ||
+        data['generationJobs'] is! List ||
+        data['includedMediaBytes'] != false ||
+        data['deviceLocalProjectsIncluded'] != false) {
+      throw const BackendAuthException('The HOTICE server returned an invalid account export.');
+    }
+    return data;
+  }
+
+  /// Delete the current server account, then erase the revoked local token.
+  /// Transport errors keep the token so the next authenticated check can
+  /// determine whether the server committed a request whose reply was lost.
+  Future<Map<String, dynamic>> deleteAccount({
+    required String password,
+    required String confirmation,
+  }) async {
+    if (confirmation != 'DELETE' || password.isEmpty || password.length > 256) {
+      throw const BackendAuthException(
+        'Type DELETE exactly and enter your current password.',
+        statusCode: 422,
+      );
+    }
+    final token = await _tokenStore.read();
+    if (token == null) {
+      throw const BackendAuthException('Sign in again before deleting your account.', statusCode: 401);
+    }
+    final response = await _send(
+      'DELETE',
+      'v1/me',
+      token: token,
+      jsonBody: {'confirmation': confirmation, 'password': password},
+    );
+    _checkSuccess(response, 'The current password or deletion confirmation was not accepted.');
+    final data = _decodeObject(response);
+    if (data['deleted'] != true || data['accountDataRemoved'] != true ||
+        data['queuedMediaFiles'] is! int) {
+      throw const BackendAuthException('The HOTICE server returned an invalid deletion response.');
+    }
+    await _tokenStore.delete();
+    return data;
+  }
+
   Future<BackendUser> _loadUser(String token) async {
     final response = await _send('GET', 'v1/me', token: token);
     _checkSuccess(response, 'Your HOTICE session is no longer valid.');
