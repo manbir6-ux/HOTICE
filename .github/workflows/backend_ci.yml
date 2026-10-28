@@ -18,7 +18,7 @@ jobs:
       - uses: shivammathur/setup-php@v2
         with:
           php-version: '8.2'
-          extensions: pdo_mysql, fileinfo
+          extensions: pdo_mysql, fileinfo, openssl
       - name: PHP syntax lint
         run: find backend -type f -name '*.php' -print0 | xargs -0 -n1 php -l
       - name: Self tests
@@ -43,7 +43,7 @@ jobs:
       - uses: shivammathur/setup-php@v2
         with:
           php-version: '8.2'
-          extensions: pdo_mysql, fileinfo
+          extensions: pdo_mysql, fileinfo, openssl
       - name: Write CI-only settings (NOT deployment secrets)
         run: |
           cat > backend/config.php <<'PHP'
@@ -61,6 +61,7 @@ jobs:
             'allow_registration' => true, // ONLY CI test user creation
             'verification_url' => 'https://studio.hotice.test/verify-email',
             'mail_transport' => static function ($to, $subject, $body) {
+              if ($to === 'outbox-retry@example.test') return false; // Exercise retries without contacting real mail.
               $capture = getenv('HOTICE_TEST_MAIL_CAPTURE');
               return is_string($capture) && file_put_contents($capture,
                 json_encode(['to' => $to, 'subject' => $subject, 'body' => $body]) . "\n", FILE_APPEND | LOCK_EX) !== false;
@@ -78,5 +79,9 @@ jobs:
         env:
           HOTICE_TEST_MAIL_CAPTURE: ${{ runner.temp }}/hotice-mail-capture.jsonl
         run: bash backend/tests/http-integration.sh
+      - name: Encrypted mail outbox retry and expiry integration
+        env:
+          HOTICE_TEST_MAIL_CAPTURE: ${{ runner.temp }}/hotice-mail-capture.jsonl
+        run: php backend/tests/email-outbox-integration.php
 
 

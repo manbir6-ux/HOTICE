@@ -47,6 +47,7 @@
 <label for="accountEmail">Email address</label><input id="accountEmail" name="email" type="email" autocomplete="username" maxlength="254" required>
 <label for="accountPassword">Password</label><input id="accountPassword" name="password" type="password" autocomplete="current-password" required>
 <button id="accountSignIn" class="button tiny" type="submit">Sign in securely</button>
+<button id="showPasswordReset" class="tool" type="button">Forgot password?</button>
 <p class="editor-note">Your bearer session stays in memory and is cleared when you reload or close this page.</p>
 </form>
 <form id="accountRegister" autocomplete="on" hidden>
@@ -57,6 +58,8 @@
 <p class="editor-note">We’ll send a one-time verification link. Sign-in stays locked until you verify your email.</p>
 </form>
 <form id="accountResend" autocomplete="on" hidden><label for="resendEmail">Email address</label><input id="resendEmail" type="email" maxlength="254" required><button class="tool" type="submit">Resend verification link</button></form>
+<form id="accountResetRequest" autocomplete="on" hidden><label for="resetRequestEmail">Email address</label><input id="resetRequestEmail" type="email" autocomplete="email" maxlength="254" required><button class="button tiny" type="submit">Send password reset link</button><p class="editor-note">If an eligible account exists, we’ll email a one-time link.</p></form>
+<form id="accountResetComplete" autocomplete="on" hidden><label for="resetNewPassword">New password</label><input id="resetNewPassword" type="password" autocomplete="new-password" minlength="12" maxlength="256" required><label for="resetConfirmPassword">Confirm new password</label><input id="resetConfirmPassword" type="password" autocomplete="new-password" minlength="12" maxlength="256" required><button class="button tiny" type="submit">Set new password</button></form>
 <div id="accountSignedIn" hidden><p>Signed in as <strong id="accountIdentity"></strong></p><p id="accountCloudStatus" class="editor-note"></p><button id="accountSignOut" class="tool" type="button">Sign out</button></div>
 <p class="editor-note">Cloud project sync is not connected to this browser. No project data is uploaded by this page.</p>
 </div>

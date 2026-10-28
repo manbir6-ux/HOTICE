@@ -236,7 +236,9 @@ class SettingsPage extends StatelessWidget {
 
 class AccountsPage extends StatefulWidget {
   final HotIceStore store;
-  const AccountsPage({super.key, required this.store});
+  final String? authenticatedEmail;
+  final Future<void> Function()? onSignOut;
+  const AccountsPage({super.key, required this.store, this.authenticatedEmail, this.onSignOut});
   @override
   State<AccountsPage> createState() => _AccountsPageState();
 }
@@ -266,7 +268,38 @@ class _AccountsPageState extends State<AccountsPage> {
 
   @override
   Widget build(BuildContext context) => PageFrame(
-    child: Column(
+    child: widget.authenticatedEmail != null
+        ? Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const PageTitle(
+                eyebrow: 'HOTICE account',
+                title: 'Your account',
+                subtitle: 'This device is signed in to your HOTICE account.',
+              ),
+              StudioPanel(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: const Icon(Icons.verified_user_outlined),
+                      title: const Text('Signed in'),
+                      subtitle: Text(widget.authenticatedEmail!),
+                    ),
+                    const Text('Projects and creative drafts remain local on this device. Cloud sync and paid generation require separate explicit controls.'),
+                    const SizedBox(height: 14),
+                    OutlinedButton.icon(
+                      onPressed: widget.onSignOut,
+                      icon: const Icon(Icons.logout),
+                      label: const Text('Sign out of HOTICE'),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          )
+        : Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const PageTitle(

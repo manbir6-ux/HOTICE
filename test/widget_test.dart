@@ -610,13 +610,15 @@ void main() {
     expect(find.text('Untitled cinematic film'), findsWidgets);
   });
 
-  testWidgets('welcome enters demo login screen', (tester) async {
+  testWidgets('welcome opens secure account sign-in', (tester) async {
     await tester.pumpWidget(const HotIceApp());
+    await tester.pumpAndSettle();
     expect(find.text('Create without limits.'), findsOneWidget);
-    await tester.tap(find.text('Continue with a demo email'));
+    await tester.tap(find.text('Sign in or create account'));
     await tester.pumpAndSettle();
     expect(find.text('Welcome to HOTICE'), findsOneWidget);
-    expect(find.byType(TextFormField), findsOneWidget);
+    expect(find.byType(TextFormField), findsNWidgets(2));
+    expect(find.text('Forgot password?'), findsOneWidget);
   });
 
   testWidgets('generation page tolerates an account with no projects',

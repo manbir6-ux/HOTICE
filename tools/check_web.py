@@ -88,6 +88,8 @@ def main():
     assert "accountApi('/v1/auth/register'" in script
     assert "accountApi('/v1/auth/verify-email'" in script
     assert "accountApi('/v1/auth/verification/resend'" in script
+    assert "accountApi('/v1/auth/password-reset/request'" in script
+    assert "accountApi('/v1/auth/password-reset/complete'" in script
     assert "window.history.replaceState" in script, "Verification tokens must be removed from browser history"
     assert 'name="referrer" content="no-referrer"' in html
     assert "Account access is provisioned by HOTICE; self-registration is not available" not in html
