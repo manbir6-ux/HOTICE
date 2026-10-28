@@ -33,7 +33,9 @@ For the static HOTICE web app, set its public `meta[name="hotice-api-origin"]` t
 | Method/path | Function |
 | --- | --- |
 | `GET /health` | Service check (no secrets) |
-| `POST /v1/auth/register` | Disabled in production defaults; prereq email verification + anti-abuse |
+| `POST /v1/auth/register` | Disabled by default; creates a pending account and sends a single-use 30-minute verification link when explicitly enabled |
+| `POST /v1/auth/verify-email` | Validates a one-time email token; pending accounts cannot sign in |
+| `POST /v1/auth/verification/resend` | Rate-limited, enumeration-resistant request for a fresh verification message |
 | `POST /v1/auth/login` | Password -> random short-lived bearer token, SHA-256 stored server-side |
 | `POST /v1/auth/logout` | Revoke active session |
 | `GET /v1/me` | User identity and **server-calculated** cloud status/quota |
@@ -59,7 +61,7 @@ GitHub Actions `HOTICE PHP Backend Security & API` also spins up an ephemeral My
 ### Known unfinished requirements
 
 - Flutter integration for local SQLite/secure storage plus optional cloud login/sync; user consent and explicit backup selection.
-- Registration email verification, password reset, abuse protection/CAPTCHA, real account lifecycle, token refresh/rotation, multi-device session management.
+- Password reset, abuse protection/CAPTCHA, real account lifecycle, token refresh/rotation, multi-device session management.
 - Payment provider webhook signature verification, idempotent credit ledger, subscription renewal/cancel/refund and server-controlled plan catalog.
 - AI model proxy/provider adapters, secure file signing, async job queue/callback verification, token/cost reservation and reconciliation.
 - Large media uploads with chunking/object storage; cloud-client encryption if required; retention, antivirus/file scanning, abuse review, legal/compliance, disaster recovery, capacity scaling, physical-device testing.
@@ -69,4 +71,5 @@ GitHub Actions `HOTICE PHP Backend Security & API` also spins up an ephemeral My
 - Login and registration failure throttling now tracks **separate HMAC-hashed email and REMOTE_ADDR budgets** (12/email, 50/IP per rolling 15 minutes). Successful login clears its own email failure counter only, **not** the IP counter. Use scheduled `bin/cleanup.php` to expire records. For distributed abuse, add a trusted edge/WAF; this in-database throttle is only one layer and may treat multiple clients sharing NAT as one IP.
 - Media storage is validated using canonical `realpath` and checked against the actual PHP `DOCUMENT_ROOT`, configured cPanel `public_webroot_path`, and the app's `backend/public` directory. Both nested webroots and parent directories are rejected. **Never choose `public_html`, a subdirectory of it, or its parent as media storage.** Installer checks before running SQL migrations.
 - Application keys and personal media still require protected cPanel backups, file permissions, proper SSL, and a real deployment security review. Existing paid cloud entitlement is not real subscription billing.
+
 

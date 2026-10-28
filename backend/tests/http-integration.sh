@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$(dirname "$0")/../.."
+source backend/tests/auth-helper.sh
 BASE='http://127.0.0.1:18884'
 php -S 127.0.0.1:18884 -t backend/public backend/public/router.php >/tmp/hotice-php-test.log 2>&1 &
 server_pid=$!
@@ -35,8 +36,7 @@ php -r 'require "backend/src/App.php"; try { new Hotice\App(["app_key"=>str_repe
 php -r 'require "backend/src/App.php"; try { new Hotice\App(["app_key"=>str_repeat("a",64),"web_allowed_origins"=>["https://studio.example.com/path"],"db"=>["dsn"=>"invalid:dsn","user"=>"","password"=>""]]); exit(1); } catch (RuntimeException $e) { if (!str_contains(strtolower($e->getMessage()),"origin")) exit(1); }'
 EMAIL='cloud-integration@example.com'
 PASS='TemporaryTestPassword123!'
-register=$(curl -sS -w '\n%{http_code}' -H 'Content-Type: application/json' -d "{\"email\":\"$EMAIL\",\"password\":\"$PASS\"}" "$BASE/v1/auth/register")
-test "${register##*$'\n'}" = '201'
+register_and_verify "$EMAIL" "$PASS"
 login=$(curl -fsS -H 'Content-Type: application/json' -d "{\"email\":\"$EMAIL\",\"password\":\"$PASS\"}" "$BASE/v1/auth/login")
 token=$(echo "$login" | jq -er '.accessToken')
 test "${#token}" -eq 64
@@ -70,7 +70,7 @@ cmp /tmp/hotice-ci-test.png /tmp/hotice-ci-download.png
 # A *different entitled account* must not access, overwrite, erase or
 # enumerate the first account's cloud data; free-vs-paid checks are insufficient.
 other_email='cloud-isolation@example.com'
-curl -fsS -H 'Content-Type: application/json' -d "{\"email\":\"$other_email\",\"password\":\"$PASS\"}" "$BASE/v1/auth/register" | jq -e '.registered == true' >/dev/null
+register_and_verify "$other_email" "$PASS"
 other_token=$(curl -fsS -H 'Content-Type: application/json' -d "{\"email\":\"$other_email\",\"password\":\"$PASS\"}" "$BASE/v1/auth/login" | jq -er '.accessToken')
 php backend/bin/grant-trial.php "$other_email" 32 1
 OTHER_AUTH="Authorization: Bearer $other_token"
@@ -110,3 +110,4 @@ status=$(curl -sS -o /dev/null -w '%{http_code}' -H 'Content-Type: application/j
 test "$status" = '429'
 
 echo 'HOTICE MySQL + HTTP API integration: passed (auth, entitlement, project conflict, media, delete, logout).'
+
