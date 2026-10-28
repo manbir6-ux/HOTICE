@@ -32,6 +32,8 @@ This is a **working PHP 8.2+ and MySQL/MariaDB service implementation**, intende
 | `POST /v1/auth/register` | Disabled in production defaults; prereq email verification + anti-abuse |
 | `POST /v1/auth/login` | Password -> random short-lived bearer token, SHA-256 stored server-side |
 | `POST /v1/auth/logout` | Revoke active session |
+| `GET /v1/auth/sessions` | List up to 100 active sessions belonging to the authenticated user; identifies the current session |
+| `DELETE /v1/auth/sessions/{uuid}` | Revoke one of the authenticated user's active sessions; other users' and expired sessions return 404 |
 | `GET /v1/me` | User identity and **server-calculated** cloud status/quota |
 | `GET /v1/models` | Authenticated server-authoritative availability manifest; currently dry-run only |
 | `GET /v1/projects` | Cloud project metadata list (active or 30-day read-only grace) |
@@ -42,7 +44,7 @@ This is a **working PHP 8.2+ and MySQL/MariaDB service implementation**, intende
 | `GET /v1/files/{uuid}` | Authenticated private download |
 | `DELETE /v1/files/{uuid}` | Remove own media and reclaim quota |
 
-**Security rules:** HTTPS required by default, JSON body size limits, `password_hash`, per-email+IP login attempt throttle, sessions store token hashes only, constant-type errors avoid sensitive SQL leakage, PDO prepared statements, real owner ID in every query, UUIDv4 IDs, revision conflict checks, per-user transactional cloud quotas, media type inspection using `finfo`, random file names, files outside web root, no permissive CORS and no hardcoded provider keys. The app must store access tokens using OS secure storage when integration starts.
+**Security rules:** HTTPS required by default, JSON body size limits, `password_hash`, per-email+IP login attempt throttle, sessions store token hashes only, session inventory and revocation are scoped to the authenticated account, constant-type errors avoid sensitive SQL leakage, PDO prepared statements, real owner ID in every query, UUIDv4 IDs, revision conflict checks, per-user transactional cloud quotas, media type inspection using `finfo`, random file names, files outside web root, no permissive CORS and no hardcoded provider keys. The app must store access tokens using OS secure storage when integration starts.
 
 The `/v1/models` response is authenticated and server-authoritative. The current release only advertises `hotice.mock.video.v1` when the private server setting allows mock jobs and the owner-controlled feature flag is enabled. It reports no output media and always states that live provider generation is disabled. Stored API keys and research catalogs never enable a model by themselves. The owner override cannot bypass the server master gate; pausing blocks quotes, submissions and the CLI worker while preserving authenticated job inspection and cancellation/refunds for queued dry runs.
 
