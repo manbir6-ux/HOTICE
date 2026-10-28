@@ -61,6 +61,72 @@ CREATE TABLE IF NOT EXISTS admin_login_attempts (
   KEY ix_admin_attempts_fingerprint (fingerprint, occurred_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- Development-only mock generation ledger. Credits are simulated units, not money.
+CREATE TABLE IF NOT EXISTS credit_accounts (
+  user_id CHAR(36) CHARACTER SET ascii COLLATE ascii_bin NOT NULL PRIMARY KEY,
+  balance BIGINT UNSIGNED NOT NULL DEFAULT 0,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  CONSTRAINT fk_credit_account_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS job_quotes (
+  id CHAR(36) CHARACTER SET ascii COLLATE ascii_bin NOT NULL PRIMARY KEY,
+  user_id CHAR(36) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  request_sha256 CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  credits BIGINT UNSIGNED NOT NULL,
+  expires_at DATETIME NOT NULL,
+  consumed_job_id CHAR(36) CHARACTER SET ascii COLLATE ascii_bin NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  KEY ix_job_quotes_user (user_id, expires_at),
+  CONSTRAINT fk_job_quote_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS generation_jobs (
+  id CHAR(36) CHARACTER SET ascii COLLATE ascii_bin NOT NULL PRIMARY KEY,
+  user_id CHAR(36) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  quote_id CHAR(36) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  idempotency_hash CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  request_sha256 CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  model_id VARCHAR(80) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  request_json MEDIUMTEXT NOT NULL,
+  status ENUM('queued','processing','succeeded','failed','cancelled') NOT NULL DEFAULT 'queued',
+  attempt_count TINYINT UNSIGNED NOT NULL DEFAULT 0,
+  max_attempts TINYINT UNSIGNED NOT NULL DEFAULT 3,
+  available_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  lease_token CHAR(32) CHARACTER SET ascii COLLATE ascii_bin NULL,
+  lease_until DATETIME NULL,
+  reserved_credits BIGINT UNSIGNED NOT NULL,
+  actual_credits BIGINT UNSIGNED NOT NULL DEFAULT 0,
+  result_json MEDIUMTEXT NULL,
+  error_code VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  finished_at DATETIME NULL,
+  UNIQUE KEY uq_job_idempotency (user_id, idempotency_hash),
+  UNIQUE KEY uq_job_quote (quote_id),
+  KEY ix_job_worker (status, available_at),
+  KEY ix_job_lease (status, lease_until),
+  KEY ix_job_user_history (user_id, created_at),
+  CONSTRAINT fk_job_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  CONSTRAINT fk_job_quote FOREIGN KEY (quote_id) REFERENCES job_quotes(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS credit_ledger (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  user_id CHAR(36) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  job_id CHAR(36) CHARACTER SET ascii COLLATE ascii_bin NULL,
+  event_key CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  event_type ENUM('grant','reserve','settle','refund') NOT NULL,
+  delta BIGINT NOT NULL,
+  balance_after BIGINT UNSIGNED NOT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_credit_event (event_key),
+  KEY ix_credit_user_history (user_id, created_at),
+  KEY ix_credit_job (job_id),
+  CONSTRAINT fk_credit_ledger_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  CONSTRAINT fk_credit_ledger_job FOREIGN KEY (job_id) REFERENCES generation_jobs(id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS sessions (
   id CHAR(36) CHARACTER SET ascii COLLATE ascii_bin NOT NULL PRIMARY KEY,
   user_id CHAR(36) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,

@@ -63,6 +63,9 @@ jobs:
             'max_project_bytes' => 131072,
             'max_cloud_projects' => 1,
             'max_files_per_project' => 1,
+            'mock_jobs_enabled' => true,
+            'mock_job_cost_credits' => 5,
+            'mock_job_quote_ttl_seconds' => 300,
           ];
           PHP
       - name: Initialize SQL schema
@@ -71,3 +74,5 @@ jobs:
         run: bash backend/tests/http-integration.sh
       - name: Owner MFA console and encrypted provider settings
         run: bash backend/tests/admin-integration.sh
+      - name: Mock generation quotes, idempotency, retries and refunds
+        run: bash backend/tests/jobs-integration.sh

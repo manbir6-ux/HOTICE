@@ -19,6 +19,10 @@ return [
     'max_project_bytes' => 128 * 1024,
     'max_cloud_projects' => 100, // server-owned per-account metadata limit
     'max_files_per_project' => 200, // avoid shared-host inode/database abuse
+    // Opt-in only for staging dry runs. This never enables real provider calls.
+    'mock_jobs_enabled' => false,
+    'mock_job_cost_credits' => 5,
+    'mock_job_quote_ttl_seconds' => 300,
     // Never put secret keys inside Flutter, JS, SQL, or Git. No live AI adapter in v0.1.
     'providers' => [
         'openai' => ['api_key' => ''],
