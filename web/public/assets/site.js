@@ -458,7 +458,10 @@
   try {
     const configured = (apiOriginMeta?.content || '').trim();
     const parsed = new URL(configured);
-    if (parsed.protocol === 'https:' && parsed.origin === configured &&
+    const localPage = ['localhost', '127.0.0.1'].includes(window.location.hostname);
+    const secureApiOrigin = parsed.protocol === 'https:' ||
+      (parsed.protocol === 'http:' && localPage && ['localhost', '127.0.0.1'].includes(parsed.hostname));
+    if (secureApiOrigin && parsed.origin === configured &&
         !parsed.username && !parsed.password && !parsed.search && !parsed.hash) {
       accountApiOrigin = parsed.origin;
     }
@@ -468,7 +471,7 @@
 
   if (!accountApiOrigin) {
     status('accountStatus',
-      'Account sign-in is unavailable: configure the exact HTTPS HOTICE API origin for this deployment.');
+      'Account sign-in is unavailable: configure the exact HTTPS HOTICE API origin (loopback HTTP is only for local development).');
     accountForm?.querySelectorAll('input, button').forEach((control) => {
       control.disabled = true;
     });
@@ -940,5 +943,4 @@
     }
   });
 })();
-
 

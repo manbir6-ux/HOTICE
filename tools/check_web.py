@@ -90,6 +90,7 @@ def main():
     assert "accountApi('/v1/auth/login'" in script and "accountApi('/v1/me'" in script
     assert "accountApi('/v1/auth/logout'" in script
     assert "credentials: 'omit'" in script and "redirect: 'error'" in script
+    assert "parsed.protocol === 'http:' && localPage" in script, "Insecure API origins must be limited to local development"
     assert "localStorage.setItem('hotice.accessToken'" not in script
     assert "sessionStorage.setItem('hotice.accessToken'" not in script
     assert "indexedDB.open(projectDbName, 1)" in script, "Browser projects must persist locally"
@@ -112,5 +113,4 @@ if __name__ == "__main__":
     except Exception as exc:
         print("WEB CHECK FAILED:", str(exc), file=sys.stderr)
         raise
-
 
