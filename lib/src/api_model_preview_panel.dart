@@ -12,8 +12,8 @@ class ApiVideoPreviewPanel extends StatefulWidget {
 
 class _ApiVideoPreviewPanelState extends State<ApiVideoPreviewPanel> {
   String selectedId = 'google/omni-1.1:text-video';
-  String? aspect;
-  String? resolution;
+  String? aspect = '16:9';
+  String? resolution = '360p';
   int? seconds;
 
   AiCapability get model => HoticeAiCatalog.find(selectedId)!;
@@ -26,12 +26,6 @@ class _ApiVideoPreviewPanelState extends State<ApiVideoPreviewPanel> {
       resolution = next.resolutions.isEmpty ? null : next.resolutions.first;
       seconds = next.controlsDuration ? next.minSeconds : null;
     });
-  }
-
-  @override
-  void initState() {
-    super.initState();
-    changeModel(selectedId);
   }
 
   @override
