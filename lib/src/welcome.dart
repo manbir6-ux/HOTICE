@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'backend_auth.dart';
 import 'design.dart';
 import 'state.dart';
 import 'diagnostics.dart';
