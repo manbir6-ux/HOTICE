@@ -191,7 +191,7 @@ void main() {
         findsOneWidget);
     final submit = tester.widget<ButtonStyleButton>(
       find.ancestor(
-        of: find.text('Queue server dry run'),
+        of: find.text('Run staging check'),
         matching: find.byWidgetPredicate((widget) => widget is ButtonStyleButton),
       ),
     );

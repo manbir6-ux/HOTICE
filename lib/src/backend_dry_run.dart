@@ -90,9 +90,9 @@ class _BackendDryRunPageState extends State<BackendDryRunPage> {
     final job = _job;
     final client = widget.client;
     return ListView(padding: const EdgeInsets.all(20), children: [
-      Text('API queue verification', style: Theme.of(context).textTheme.headlineSmall),
+      Text('Server dry run', style: Theme.of(context).textTheme.headlineSmall),
       const SizedBox(height: 8),
-      const Text('Staging dry run only. Verifies authentication, quotes, queueing and status updates. It does not call an AI provider, create a video or use cash credits.'),
+      const Text('Staging check only. The HOTICE server verifies availability and job handling. It does not generate a video, call an AI provider or spend money.'),
       const SizedBox(height: 16),
       if (client == null) const _Notice('Server API is not configured in this build.')
       else if (!widget.isAuthenticated) const _Notice('Sign in with a server account to submit a dry run. Guest demo mode cannot access server jobs.')
@@ -117,7 +117,7 @@ class _BackendDryRunPageState extends State<BackendDryRunPage> {
         FilledButton.icon(onPressed: _busy || _catalogBusy ||
             _catalog?.mockVideoDryRun == null || job != null ||
             _prompt.text.trim().isEmpty ? null : _submit,
-          icon: const Icon(Icons.cloud_upload_outlined), label: Text(_busy ? 'Working…' : 'Queue server dry run')),
+          icon: const Icon(Icons.cloud_upload_outlined), label: Text(_busy ? 'Working…' : 'Run staging check')),
         if (job != null) ...[
           const SizedBox(height: 16),
           Card(child: Padding(padding: const EdgeInsets.all(16), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
