@@ -35,3 +35,14 @@ The Generate workspace has a separate **Server dry run** tab. It requires both a
 The only model accepted is `hotice.mock.video.v1`. The backend must have `mock_jobs_enabled=true`, which is intended only for controlled dry-run environments. This path creates no media, contacts no model provider, does not use real paid credits, and does not send project/avatar files. A disabled server rejects the operation. Do not enable the mock flag on a public production service.
 
 CI tests validate request paths, bearer headers, idempotency header, job parsing, poll and cancel calls with mocked HTTP. The backend MySQL integration separately validates the real API and worker lifecycle. This does not prove cPanel deployment or live provider generation.
+
+
+## Static web build and cPanel
+
+CI builds the Flutter web bundle as a separate artifact. To build it for a real cPanel API, use the HTTPS API origin at build time:
+
+```sh
+flutter build web --release --dart-define=HOTICE_API_BASE_URL=https://api.your-domain.example
+```
+
+Upload the contents of `build/web/` to the web app's document root. Configure the API subdomain separately with `backend/public/` as its document root, and keep PHP source, configuration, database dumps, and private media outside all public roots as described in `backend/README.md`. The API origin is public configuration and is not a secret. Never compile provider keys, database passwords, session tokens, or payment credentials into the web bundle. A same-origin or cross-origin deployment must be tested with HTTPS and the intended browser security policy before opening public sign-in.
