@@ -8,8 +8,8 @@ AiRequest video(AiCapability spec, {
   task: AiTask.video,
   prompt: 'A stylish cinematic street scene',
   seconds: seconds,
-  aspect: ratio ?? spec.aspects.first,
-  resolution: resolution ?? spec.resolutions.first,
+  aspect: ratio ?? (spec.aspects.isEmpty ? null : spec.aspects.first),
+  resolution: resolution ?? (spec.resolutions.isEmpty ? null : spec.resolutions.first),
   assets: assets,
 );
 
