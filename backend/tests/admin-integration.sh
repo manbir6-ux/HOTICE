@@ -10,7 +10,8 @@ trap 'if [[ -n "$SERVER_PID" ]]; then kill "$SERVER_PID" 2>/dev/null || true; fi
 cat >"$TMP_DIR/https-router.php" <<'PHP'
 <?php
 $_SERVER['HTTPS'] = 'on';
-require getenv('HOTICE_TEST_ROOT') . '/backend/public/router.php';
+$routeResult = require getenv('HOTICE_TEST_ROOT') . '/backend/public/router.php';
+if ($routeResult === false) return false;
 PHP
 HOTICE_TEST_ROOT="$PWD" php -S 127.0.0.1:18885 -t backend/public "$TMP_DIR/https-router.php" >"$TMP_DIR/server.log" 2>&1 &
 SERVER_PID=$!
@@ -20,7 +21,7 @@ for _ in $(seq 1 40); do
   if [[ "$page" == *'Owner sign in'* ]]; then break; fi
   sleep 0.25
 done
-if [[ "$page" != *'Owner sign in'* ]]; then cat "$TMP_DIR/server.log"; exit 1; fi
+if [[ "$page" != *'Owner sign in'* ]]; then printf 'Unexpected admin response: %s\n' "${page:0:200}"; cat "$TMP_DIR/server.log"; exit 1; fi
 grep -qi 'set-cookie: HOTICE_OWNER=.*secure.*httponly' <(curl -sS -D - -o /dev/null "$BASE/admin.php")
 
 owner_email='owner-integration@example.com'
