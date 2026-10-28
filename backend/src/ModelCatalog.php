@@ -12,9 +12,9 @@ final class ModelCatalog
      * This deliberately lists only the local dry-run model. Research profiles
      * and configured provider keys do not enable billable model submission.
      */
-    public static function response(array $config): array
+    public static function response(array $config, ?bool $mockGenerationEnabled = null): array
     {
-        $enabled = ($config['mock_jobs_enabled'] ?? false) === true;
+        $enabled = $mockGenerationEnabled ?? (($config['mock_jobs_enabled'] ?? false) === true);
         $models = [];
         if ($enabled) {
             $models[] = [
@@ -45,4 +45,5 @@ final class ModelCatalog
         ];
     }
 }
+
 

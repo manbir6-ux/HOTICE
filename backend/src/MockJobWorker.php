@@ -6,12 +6,14 @@ namespace Hotice;
 use PDO;
 use Throwable;
 
+require_once __DIR__ . '/FeatureFlags.php';
+
 /** Local deterministic test worker. It never contacts a model provider. */
 final class MockJobWorker
 {
     public static function runOne(PDO $db, array $config): array
     {
-        if (($config['mock_jobs_enabled'] ?? false) !== true) throw new \RuntimeException('Mock job worker is disabled.');
+        if (!FeatureFlags::mockGenerationEnabled($db, $config)) return ['status' => 'disabled'];
         if ((int)$db->query("SELECT GET_LOCK('hotice_mock_job_worker',0)")->fetchColumn() !== 1) {
             return ['status' => 'worker_busy'];
         }
@@ -142,3 +144,4 @@ final class MockJobWorker
             ->execute([$error, $id]);
     }
 }
+

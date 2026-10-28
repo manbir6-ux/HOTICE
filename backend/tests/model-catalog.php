@@ -1,8 +1,10 @@
 <?php
 declare(strict_types=1);
 require_once __DIR__ . '/../src/ModelCatalog.php';
+require_once __DIR__ . '/../src/FeatureFlags.php';
 
 use Hotice\ModelCatalog;
+use Hotice\FeatureFlags;
 
 function checkCatalog(bool $ok, string $message): void
 {
@@ -26,5 +28,10 @@ checkCatalog($model['availability'] === 'dry_run' && $model['enabled'] === true,
 checkCatalog($model['outputs'] === [], 'dry run claims no media output');
 checkCatalog($model['pricing'] === ['kind' => 'simulated_credits', 'credits' => 7, 'moneyValue' => 0, 'currency' => null], 'mock pricing has zero monetary value');
 checkCatalog($enabled['liveGenerationEnabled'] === false, 'provider calls remain unavailable');
+checkCatalog(FeatureFlags::effectiveMockGeneration(true, null), 'missing owner override inherits the staging master gate');
+checkCatalog(!FeatureFlags::effectiveMockGeneration(true, false), 'owner can disable a server-allowed dry run');
+checkCatalog(!FeatureFlags::effectiveMockGeneration(false, true), 'owner cannot override a disabled server master gate');
+checkCatalog(ModelCatalog::response(['mock_jobs_enabled' => true], false)['models'] === [], 'owner disablement removes the model from server availability');
 echo "Model catalog tests passed.\n";
+
 

@@ -42,6 +42,15 @@ CREATE TABLE IF NOT EXISTS provider_secrets (
   CONSTRAINT fk_provider_secret_admin FOREIGN KEY (updated_by) REFERENCES admin_accounts(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- Owner overrides may narrow server-enabled features, never bypass config master gates.
+CREATE TABLE IF NOT EXISTS system_feature_flags (
+  flag_key VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL PRIMARY KEY,
+  enabled TINYINT UNSIGNED NOT NULL,
+  updated_by CHAR(36) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  CONSTRAINT fk_feature_flag_admin FOREIGN KEY (updated_by) REFERENCES admin_accounts(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS admin_audit_log (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
   admin_id CHAR(36) CHARACTER SET ascii COLLATE ascii_bin NULL,
@@ -187,3 +196,4 @@ CREATE TABLE IF NOT EXISTS cloud_files (
   CONSTRAINT fk_files_project FOREIGN KEY (project_id) REFERENCES cloud_projects(id) ON DELETE CASCADE,
   CONSTRAINT fk_files_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+

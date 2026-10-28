@@ -22,6 +22,10 @@ php backend/bin/grant-mock-credits.php user@example.com 100 'staging-grant-20261
 
 The idempotency key is retained only as a hash in the append-only ledger. Repeating the same command adds no duplicate credits. Do not use this command to record real payments.
 
+## Owner-controlled staging feature flag
+
+When the private server master setting allows mock jobs, the MFA-protected owner console can enable or disable the mock-generation feature flag. This owner override can only narrow the master setting. Disabling it removes the mock model from GET /v1/models, blocks new quotes/submissions, and pauses the worker. Users can still inspect or cancel queued mock jobs; cancellation refunds their simulated reservation once. Re-run the installer after upgrade to create the system_feature_flags table.
+
 ## User contract
 
 1. Authenticate with a bearer session.
@@ -53,4 +57,5 @@ submission; live adapters require their own reviewed release gate.
 The endpoint requires an authenticated user session like the other `/v1`
 routes. The API globally sends `Cache-Control: no-store`, so changes to a
 server feature flag are not hidden by intermediary caches.
+
 

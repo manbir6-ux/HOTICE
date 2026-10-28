@@ -44,7 +44,7 @@ This is a **working PHP 8.2+ and MySQL/MariaDB service implementation**, intende
 
 **Security rules:** HTTPS required by default, JSON body size limits, `password_hash`, per-email+IP login attempt throttle, sessions store token hashes only, constant-type errors avoid sensitive SQL leakage, PDO prepared statements, real owner ID in every query, UUIDv4 IDs, revision conflict checks, per-user transactional cloud quotas, media type inspection using `finfo`, random file names, files outside web root, no permissive CORS and no hardcoded provider keys. The app must store access tokens using OS secure storage when integration starts.
 
-The `/v1/models` response is authenticated and is the server authority for enabled generation modes. The current release only advertises `hotice.mock.video.v1` when mock jobs are explicitly enabled. It reports no output media and always states that live provider generation is disabled. Stored API keys and research catalogs never enable a model by themselves.
+The `/v1/models` response is authenticated and server-authoritative. The current release only advertises `hotice.mock.video.v1` when the private server setting allows mock jobs and the owner-controlled feature flag is enabled. It reports no output media and always states that live provider generation is disabled. Stored API keys and research catalogs never enable a model by themselves. The owner override cannot bypass the server master gate; pausing blocks quotes, submissions and the CLI worker while preserving authenticated job inspection and cancellation/refunds for queued dry runs.
 
 ### Test locally / in CI
 
@@ -68,4 +68,5 @@ GitHub Actions `HOTICE PHP Backend Security & API` also spins up an ephemeral My
 - Login and registration failure throttling now tracks **separate HMAC-hashed email and REMOTE_ADDR budgets** (12/email, 50/IP per rolling 15 minutes). Successful login clears its own email failure counter only, **not** the IP counter. Use scheduled `bin/cleanup.php` to expire records. For distributed abuse, add a trusted edge/WAF; this in-database throttle is only one layer and may treat multiple clients sharing NAT as one IP.
 - Media storage is validated using canonical `realpath` and checked against the actual PHP `DOCUMENT_ROOT`, configured cPanel `public_webroot_path`, and the app's `backend/public` directory. Both nested webroots and parent directories are rejected. **Never choose `public_html`, a subdirectory of it, or its parent as media storage.** Installer checks before running SQL migrations.
 - Application keys and personal media still require protected cPanel backups, file permissions, proper SSL, and a real deployment security review. Existing paid cloud entitlement is not real subscription billing.
+
 
