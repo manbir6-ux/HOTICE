@@ -183,7 +183,7 @@ void main() {
     );
 
     await tester.pumpWidget(MaterialApp(
-      home: BackendDryRunPage(client: client, isAuthenticated: true),
+      home: Scaffold(body: BackendDryRunPage(client: client, isAuthenticated: true)),
     ));
     await tester.pumpAndSettle();
 
