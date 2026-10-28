@@ -1,7 +1,9 @@
 <?php
 declare(strict_types=1);
 require_once dirname(__DIR__) . '/src/Support.php';
+require_once dirname(__DIR__) . '/src/AdminSecurity.php';
 use Hotice\ApiError;
+use Hotice\AdminSecurity;
 use Hotice\Support;
 $assertions = 0;
 function check(bool $ok, string $label): void {
@@ -14,6 +16,14 @@ for ($i = 0; $i < 100; $i++) {
     check(Support::isUuid($uuid), 'uuid4 generation');
     check(!Support::isUuid(str_replace('-', '', $uuid)), 'no malformed uuid');
 }
+check(AdminSecurity::base32Encode('12345678901234567890') === 'GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ', 'TOTP base32 encoding');
+check(AdminSecurity::totp('GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ', 59) === '287082', 'RFC 6238 TOTP vector');
+check(AdminSecurity::verifyTotp('GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ', '287082', 59), 'valid TOTP accepted');
+check(!AdminSecurity::verifyTotp('GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ', '000000', 59), 'invalid TOTP rejected');
+$appKey = str_repeat('ab', 32);
+$sealed = AdminSecurity::encryptProviderKey('openai', 'secret-example', $appKey);
+check(AdminSecurity::decryptProviderKey('openai', $sealed['ciphertext'], $sealed['nonce'], $sealed['tag'], $appKey) === 'secret-example', 'provider secret encryption roundtrip');
+try { AdminSecurity::decryptProviderKey('google', $sealed['ciphertext'], $sealed['nonce'], $sealed['tag'], $appKey); check(false, 'provider keys bound to provider'); } catch (RuntimeException) { check(true, 'provider keys bound to provider'); }
 check(Support::email(' A@EXAMPLE.COM ') === 'a@example.com', 'normalize email');
 try { Support::email('not-an-email'); check(false, 'invalid email rejected'); } catch (ApiError $e) { check($e->status === 422, 'invalid email'); }
 check(Support::secureFileName(str_repeat('a', 64)), 'valid storage name');
