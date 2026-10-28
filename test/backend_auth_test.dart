@@ -191,7 +191,7 @@ void main() {
 
     expect(submittedEmail, 'maker@example.com');
     expect(submittedPassword, 'secret password');
-    expect(tester.widget<TextFormField>(find.byType(TextFormField).last).obscureText, isTrue);
+    expect(tester.widget<EditableText>(find.descendant(of: find.byType(TextFormField).last, matching: find.byType(EditableText))).obscureText, isTrue);
     expect(tester.takeException(), isNull);
   });
 }
