@@ -49,6 +49,8 @@ This is a **working PHP 8.2+ and MySQL/MariaDB service implementation**, intende
 
 Password changes require the current password and a new 12–256-byte password. A successful change atomically updates the password hash, revokes all existing bearer sessions, and returns a new token/session ID. Clients must replace the saved token immediately; retries using any pre-change token will fail. Password recovery by email is not implemented, so public registration remains disabled by default.
 
+New password hashes pre-hash the complete UTF-8 byte string before applying PHP `PASSWORD_DEFAULT`, so long passphrases are fully covered even on cPanel PHP builds where the default algorithm is bcrypt. Older hashes continue to verify and migrate after successful login where migration preserves their historical behavior; longer legacy bcrypt passwords are migrated only after the user explicitly changes the password.
+
 The `/v1/models` response is authenticated and server-authoritative. The current release only advertises `hotice.mock.video.v1` when the private server setting allows mock jobs and the owner-controlled feature flag is enabled. It reports no output media and always states that live provider generation is disabled. Stored API keys and research catalogs never enable a model by themselves. The owner override cannot bypass the server master gate; pausing blocks quotes, submissions and the CLI worker while preserving authenticated job inspection and cancellation/refunds for queued dry runs.
 
 ### Test locally / in CI

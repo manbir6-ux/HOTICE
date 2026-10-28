@@ -16,6 +16,18 @@ token=$(echo "$login" | jq -er '.accessToken')
 session_id=$(echo "$login" | jq -er '.sessionId')
 test "${#token}" -eq 64
 AUTH="Authorization: Bearer $token"
+long_email='long-password@example.com'
+long_prefix="${PASS}${PASS}"
+while [ "${#long_prefix}" -lt 72 ]; do long_prefix="${long_prefix}x"; done
+long_prefix="${long_prefix:0:72}"
+long_password="${long_prefix}suffix-one"
+different_long_password="${long_prefix}suffix-two"
+curl -fsS -H 'Content-Type: application/json' -d "{\"email\":\"$long_email\",\"password\":\"$long_password\"}" "$BASE/v1/auth/register" | jq -e '.registered == true' >/dev/null
+status=$(curl -sS -o /dev/null -w '%{http_code}' -H 'Content-Type: application/json' \
+  -d "{\"email\":\"$long_email\",\"password\":\"$different_long_password\"}" "$BASE/v1/auth/login")
+test "$status" = '401'
+long_login=$(curl -fsS -H 'Content-Type: application/json' -d "{\"email\":\"$long_email\",\"password\":\"$long_password\"}" "$BASE/v1/auth/login")
+LONG_AUTH="Authorization: Bearer $(echo "$long_login" | jq -er '.accessToken')"
 curl -fsS -H "$AUTH" "$BASE/v1/me" | jq -e '.cloud.active == false' >/dev/null
 status=$(curl -sS -o /dev/null -w '%{http_code}' -H "$AUTH" "$BASE/v1/projects")
 test "$status" = '403'
@@ -87,7 +99,7 @@ curl -fsS -X DELETE -H "$SECOND_AUTH" "$BASE/v1/auth/sessions/$session_id" | jq 
 status=$(curl -sS -o /dev/null -w '%{http_code}' -H "$AUTH" "$BASE/v1/me")
 test "$status" = '401'
 curl -fsS -H "$SECOND_AUTH" "$BASE/v1/me" | jq -e '.user.email == "cloud-integration@example.com"' >/dev/null
-NEW_PASS='ChangedTestPassword456!'
+NEW_PASS="${PASS}${PASS}${PASS}"
 rotated=$(curl -fsS -X POST -H "$SECOND_AUTH" -H 'Content-Type: application/json' \
   -d "{\"currentPassword\":\"$PASS\",\"newPassword\":\"$NEW_PASS\"}" "$BASE/v1/auth/password")
 echo "$rotated" | jq -e '.passwordChanged == true and .tokenType == "Bearer"' >/dev/null
@@ -105,6 +117,7 @@ updated_login=$(curl -fsS -H 'Content-Type: application/json' \
   -d "{\"email\":\"$EMAIL\",\"password\":\"$NEW_PASS\"}" "$BASE/v1/auth/login")
 updated_token=$(echo "$updated_login" | jq -er '.accessToken')
 UPDATED_AUTH="Authorization: Bearer $updated_token"
+curl -fsS -X POST -H "$LONG_AUTH" "$BASE/v1/auth/logout" | jq -e '.ok == true' >/dev/null
 curl -fsS -X POST -H "$ROTATED_AUTH" "$BASE/v1/auth/logout" | jq -e '.ok == true' >/dev/null
 status=$(curl -sS -o /dev/null -w '%{http_code}' -H "$ROTATED_AUTH" "$BASE/v1/me")
 test "$status" = '401'
@@ -124,4 +137,4 @@ status=$(curl -sS -o /dev/null -w '%{http_code}' -H 'Content-Type: application/j
   -d "{\"email\":\"$spray_email\",\"password\":\"InvalidPassword13\"}" "$BASE/v1/auth/login")
 test "$status" = '429'
 
-echo 'HOTICE MySQL + HTTP API integration: passed (auth, password rotation, session inventory/revocation, entitlement, project conflict, media, delete, logout).'
+echo 'HOTICE MySQL + HTTP API integration: passed (long-password handling, auth, password rotation, session inventory/revocation, entitlement, project conflict, media, delete, logout).'

@@ -26,6 +26,18 @@ check(AdminSecurity::decryptProviderKey('openai', $sealed['ciphertext'], $sealed
 try { AdminSecurity::decryptProviderKey('google', $sealed['ciphertext'], $sealed['nonce'], $sealed['tag'], $appKey); check(false, 'provider keys bound to provider'); } catch (RuntimeException) { check(true, 'provider keys bound to provider'); }
 check(Support::email(' A@EXAMPLE.COM ') === 'a@example.com', 'normalize email');
 try { Support::email('not-an-email'); check(false, 'invalid email rejected'); } catch (ApiError $e) { check($e->status === 422, 'invalid email'); }
+$longPassword = str_repeat('a', 72) . 'first-suffix';
+$differentLongPassword = str_repeat('a', 72) . 'other-suffix';
+$longPasswordHash = Support::passwordHash($longPassword);
+check(Support::passwordVerify($longPassword, $longPasswordHash), 'prehashed long password verifies');
+check(!Support::passwordVerify($differentLongPassword, $longPasswordHash), 'long password suffix is covered by hash');
+check(!Support::passwordNeedsRehash($longPasswordHash), 'current password hash marker recognized');
+$nulPassword = "PasswordWith\0BinaryByte123!";
+check(Support::passwordVerify($nulPassword, Support::passwordHash($nulPassword)), 'modern password hash preserves NUL bytes');
+$legacyPassword = 'LegacyPassword123!';
+$legacyPasswordHash = password_hash($legacyPassword, PASSWORD_DEFAULT);
+check(Support::passwordVerify($legacyPassword, $legacyPasswordHash), 'legacy password hash remains verifiable');
+check(Support::passwordNeedsRehash($legacyPasswordHash), 'legacy password hash requests upgrade');
 check(Support::secureFileName(str_repeat('a', 64)), 'valid storage name');
 check(!Support::secureFileName('../secret'), 'reject traversal');
 check(Support::jsonString(['a' => 'b'], 50) === '{"a":"b"}', 'JSON serialization');

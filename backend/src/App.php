@@ -395,7 +395,7 @@ final class App
         // Use a generic response: do not disclose whether email is registered.
         $q = $this->db->prepare('INSERT INTO users (id,email,password_hash) VALUES (?,?,?)');
         try {
-            $q->execute([Support::uuid(), $email, password_hash($password, PASSWORD_DEFAULT)]);
+            $q->execute([Support::uuid(), $email, Support::passwordHash($password)]);
         } catch (\PDOException $e) {
             if ($e->getCode() !== '23000') throw $e;
             $this->recordFailedLogin($f);
@@ -422,7 +422,7 @@ final class App
                 $check->execute([$user['id']]);
                 $state = $check->fetch();
             }
-            if (!$user || !password_verify($password, $user['password_hash']) ||
+            if (!$user || !Support::passwordVerify($password, $user['password_hash']) ||
                 ($state && $state['disabled_at'] !== null)) {
                 $this->db->rollBack();
                 $this->recordFailedLogin($fingerprint);
@@ -431,9 +431,11 @@ final class App
             // Never clear the IP budget on a successful login: a single valid
             // account must not let attackers reset their IP-wide spray limit.
             $this->db->prepare('DELETE FROM login_attempts WHERE fingerprint=?')->execute([$fingerprint['email']]);
-            if (password_needs_rehash($user['password_hash'], PASSWORD_DEFAULT)) {
+            // Do not silently choose a new suffix for a legacy bcrypt password
+            // longer than its historical 72-byte effective input.
+            if (Support::passwordNeedsRehash($user['password_hash']) && strlen($password) <= 72) {
                 $this->db->prepare('UPDATE users SET password_hash=? WHERE id=?')
-                    ->execute([password_hash($password, PASSWORD_DEFAULT), $user['id']]);
+                    ->execute([Support::passwordHash($password), $user['id']]);
             }
             $token = bin2hex(random_bytes(32));
             $hours = max(1, min(168, (int) ($this->config['token_ttl_hours'] ?? 24)));
@@ -490,15 +492,15 @@ final class App
             $q = $this->db->prepare('SELECT password_hash FROM users WHERE id=? LIMIT 1 FOR UPDATE');
             $q->execute([$user['id']]);
             $passwordHash = $q->fetchColumn();
-            if (!is_string($passwordHash) || !password_verify($currentPassword, $passwordHash)) {
+            if (!is_string($passwordHash) || !Support::passwordVerify($currentPassword, $passwordHash)) {
                 throw new ApiError(401, 'Current password is incorrect.');
             }
-            if (password_verify($newPassword, $passwordHash)) {
+            if (Support::passwordVerify($newPassword, $passwordHash)) {
                 throw new ApiError(422, 'New password must differ from the current password.');
             }
 
             $this->db->prepare('UPDATE users SET password_hash=? WHERE id=?')
-                ->execute([password_hash($newPassword, PASSWORD_DEFAULT), $user['id']]);
+                ->execute([Support::passwordHash($newPassword), $user['id']]);
             // Rotate every bearer token, including the request's session.
             // The caller must replace its credential with the new one returned below.
             $this->db->prepare('UPDATE sessions SET revoked_at=UTC_TIMESTAMP() WHERE user_id=? AND revoked_at IS NULL')

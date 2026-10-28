@@ -21,7 +21,7 @@ try {
     $sealed = \Hotice\AdminSecurity::encryptTotpSecret($secret, (string)$config['app_key']);
     $db = (new \Hotice\App($config))->database();
     $db->prepare('INSERT INTO admin_accounts(id,email,password_hash,totp_secret_ciphertext,totp_nonce,totp_tag) VALUES(?,?,?,?,?,?)')
-        ->execute([\Hotice\Support::uuid(), $email, password_hash($password, PASSWORD_DEFAULT),
+        ->execute([\Hotice\Support::uuid(), $email, \Hotice\Support::passwordHash($password),
             $sealed['ciphertext'], $sealed['nonce'], $sealed['tag']]);
     $label = rawurlencode('HOTICE:' . $email);
     $uri = 'otpauth://totp/' . $label . '?secret=' . $secret . '&issuer=HOTICE&algorithm=SHA1&digits=6&period=30';

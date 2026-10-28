@@ -8,6 +8,7 @@ require_once dirname(__DIR__) . '/src/FeatureFlags.php';
 use Hotice\AdminSecurity;
 use Hotice\App;
 use Hotice\FeatureFlags;
+use Hotice\Support;
 
 final class OwnerPanelError extends RuntimeException {}
 
@@ -94,7 +95,7 @@ try {
             $q->execute([$email]);
             $candidate = $q->fetch();
             $valid = false;
-            if ($candidate && password_verify((string) ($_POST['password'] ?? ''), $candidate['password_hash'])) {
+            if ($candidate && Support::passwordVerify((string) ($_POST['password'] ?? ''), $candidate['password_hash'])) {
                 try {
                     $secret = AdminSecurity::decryptTotpSecret($candidate['totp_secret_ciphertext'],
                         $candidate['totp_nonce'], $candidate['totp_tag'], $appKey);
@@ -106,6 +107,11 @@ try {
                 foreach ($fingerprints as $fp) $ins->execute([$fp]);
                 adminAudit($db, null, 'owner_login_failed');
                 throw new OwnerPanelError('Sign-in failed. Check your details and authenticator code.');
+            }
+            $ownerPassword = (string) ($_POST['password'] ?? '');
+            if (Support::passwordNeedsRehash($candidate['password_hash']) && strlen($ownerPassword) <= 72) {
+                $db->prepare('UPDATE admin_accounts SET password_hash=? WHERE id=?')
+                    ->execute([Support::passwordHash($ownerPassword), $candidate['id']]);
             }
             $db->prepare('DELETE FROM admin_login_attempts WHERE fingerprint=?')->execute([$fingerprints[0]]);
             session_regenerate_id(true);
