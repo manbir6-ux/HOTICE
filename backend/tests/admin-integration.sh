@@ -63,7 +63,7 @@ attempt_body=$(jq -cn --arg q "$attempt_quote" --argjson r "$attempt_request" '{
 attempt_job=$(curl -fsS -X POST -H "Authorization: Bearer $user_token" -H 'Content-Type: application/json' \\
   -H 'Idempotency-Key: owner-view-attempt-00000001' -d "$attempt_body" "$BASE/v1/jobs" | jq -er '.job.id')
 php backend/bin/jobs-worker.php --once | jq -e '.status == "succeeded"' >/dev/null
-attempt_operation=$(php -r 'require "backend/src/App.php"; $c=require "backend/config.php"; $db=(new \\Hotice\\App($c))->database(); $q=$db->prepare("SELECT remote_operation_id FROM provider_attempts WHERE job_id=?"); $q->execute([$argv[1]]); echo $q->fetchColumn();' "$attempt_job")
+attempt_operation=$(php -r 'require "backend/src/App.php"; $c=require "backend/config.php"; $db=(new \Hotice\App($c))->database(); $q=$db->prepare("SELECT remote_operation_id FROM provider_attempts WHERE job_id=?"); $q->execute([$argv[1]]); echo $q->fetchColumn();' "$attempt_job")
 page=$(curl -fsS -H "Cookie: HOTICE_OWNER=$session" "$BASE/admin.php")
 [[ "$page" == *"$attempt_job"* && "$page" == *"$attempt_operation"* && "$page" == *"$managed_email"* ]]
 csrf=$(printf '%s' "$page" | sed -n 's/.*name="csrf" value="\([^\"]*\)".*/\1/p' | head -1)
