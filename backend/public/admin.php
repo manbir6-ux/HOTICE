@@ -165,6 +165,45 @@ try {
                 $message = 'User access enabled. The user must sign in again.';
             }
             $db->commit();
+        } elseif ($action === 'grant_cloud_trial' || $action === 'revoke_cloud_trial') {
+            $target = (string) ($_POST['user_id'] ?? '');
+            if (!\Hotice\Support::isUuid($target)) throw new OwnerPanelError('User selection is invalid.');
+            $db->beginTransaction();
+            $lock = $db->prepare('SELECT id FROM users WHERE id=? FOR UPDATE');
+            $lock->execute([$target]);
+            if (!$lock->fetch()) { $db->rollBack(); throw new OwnerPanelError('User was not found.'); }
+            $currentQuery = $db->prepare('SELECT source FROM cloud_entitlements WHERE user_id=? FOR UPDATE');
+            $currentQuery->execute([$target]);
+            $currentSource = $currentQuery->fetchColumn();
+            if ($action === 'grant_cloud_trial') {
+                $mib = filter_var($_POST['quota_mib'] ?? null, FILTER_VALIDATE_INT);
+                $days = filter_var($_POST['days'] ?? null, FILTER_VALIDATE_INT);
+                if (!$mib || $mib < 1 || $mib > 1024 || !$days || $days < 1 || $days > 60) {
+                    $db->rollBack(); throw new OwnerPanelError('Trial limit is 1–1024 MiB for 1–60 days.');
+                }
+                if ($currentSource !== false && $currentSource !== 'admin_trial') {
+                    $db->rollBack(); throw new OwnerPanelError('Paid cloud access is controlled by verified billing.');
+                }
+                $expires = gmdate('Y-m-d H:i:s', time() + $days * 86400);
+                if ($currentSource === 'admin_trial') {
+                    $db->prepare("UPDATE cloud_entitlements SET plan_code='trial',quota_bytes=?,expires_at=? WHERE user_id=? AND source='admin_trial'")
+                        ->execute([$mib * 1048576, $expires, $target]);
+                } else {
+                    $db->prepare("INSERT INTO cloud_entitlements(user_id,source,plan_code,quota_bytes,used_bytes,expires_at) VALUES(?,'admin_trial','trial',?,0,?)")
+                        ->execute([$target, $mib * 1048576, $expires]);
+                }
+                adminAudit($db, $adminId, 'cloud_trial_granted', 'user', $target);
+                $message = 'Admin test cloud trial granted. This is not a payment or subscription.';
+            } else {
+                if ($currentSource !== 'admin_trial') {
+                    $db->rollBack(); throw new OwnerPanelError('Only an admin test trial can be ended here.');
+                }
+                $db->prepare("UPDATE cloud_entitlements SET expires_at=UTC_TIMESTAMP() WHERE user_id=? AND source='admin_trial'")
+                    ->execute([$target]);
+                adminAudit($db, $adminId, 'cloud_trial_ended', 'user', $target);
+                $message = 'Admin test trial ended. Read-only export grace remains available for 30 days.';
+            }
+            $db->commit();
         } else {
             throw new OwnerPanelError('Action unavailable.');
         }
@@ -208,9 +247,10 @@ function csrfInput(): string { return '<input type="hidden" name="csrf" value="'
 <p><button type="submit">Save encrypted key</button></p></form>
 <?php if ($saved): ?><form method="post"><?=csrfInput()?><input type="hidden" name="action" value="delete_provider"><input type="hidden" name="provider" value="<?=h($provider)?>"><button class="danger" type="submit">Remove key</button><p class="muted small">Removal takes effect immediately.</p></form><?php endif; ?></article>
 <?php endforeach; ?></div></section><?php endif; ?>
-<section><h2>User access</h2><p class="muted">Disable an account to block API access and revoke its active sessions. Re-enabling requires a fresh sign-in. Owner-console accounts are managed separately through the CLI.</p><article class="card"><div style="overflow-x:auto"><table><thead><tr><th>Email</th><th>Created</th><th>Access</th><th>Action</th></tr></thead><tbody>
-<?php $q=$db->query('SELECT u.id,u.email,u.created_at,s.disabled_at FROM users u LEFT JOIN user_admin_state s ON s.user_id=u.id ORDER BY u.created_at DESC LIMIT 50'); foreach($q->fetchAll() as $managed): $disabled=$managed['disabled_at']!==null; ?>
-<tr><td><?=h((string)$managed['email'])?></td><td><?=h((string)$managed['created_at'])?></td><td><span class="status <?=$disabled?'off':''?>"><?=$disabled?'Disabled':'Enabled'?></span></td><td><form method="post"><?=csrfInput()?><input type="hidden" name="user_id" value="<?=h((string)$managed['id'])?>"><input type="hidden" name="action" value="<?=$disabled?'enable_user':'disable_user'?>"><button class="<?=$disabled?'secondary':'danger'?>" type="submit"><?=$disabled?'Enable access':'Disable access'?></button></form></td></tr>
+<section><h2>User access</h2><p class="muted">Disable an account to block API access and revoke its active sessions. Admin test trials grant temporary cloud storage only; they never represent verified payment. Paid entitlements are controlled by verified billing. Owner-console accounts are managed separately through the CLI.</p><article class="card"><div style="overflow-x:auto"><table><thead><tr><th>Email</th><th>Created</th><th>Access</th><th>Account action</th><th>Cloud entitlement</th><th>Test trial action</th></tr></thead><tbody>
+<?php $q=$db->query('SELECT u.id,u.email,u.created_at,s.disabled_at,e.source,e.plan_code,e.quota_bytes,e.used_bytes,e.expires_at FROM users u LEFT JOIN user_admin_state s ON s.user_id=u.id LEFT JOIN cloud_entitlements e ON e.user_id=u.id ORDER BY u.created_at DESC LIMIT 50'); foreach($q->fetchAll() as $managed): $disabled=$managed['disabled_at']!==null; ?>
+<?php $hasCloud=$managed['source']!==null; $paidCloud=$managed['source']==='verified_billing'; $cloudActive=$hasCloud && strtotime((string)$managed['expires_at'].' UTC')>time(); ?>
+<tr><td><?=h((string)$managed['email'])?></td><td><?=h((string)$managed['created_at'])?></td><td><span class="status <?=$disabled?'off':''?>"><?=$disabled?'Disabled':'Enabled'?></span></td><td><form method="post"><?=csrfInput()?><input type="hidden" name="user_id" value="<?=h((string)$managed['id'])?>"><input type="hidden" name="action" value="<?=$disabled?'enable_user':'disable_user'?>"><button class="<?=$disabled?'secondary':'danger'?>" type="submit"><?=$disabled?'Enable access':'Disable access'?></button></form></td><td><?php if (!$hasCloud): ?>No cloud access<?php elseif ($paidCloud): ?>Verified billing · <?=h((string)$managed['plan_code'])?><?php else: ?>Admin trial · <?=$cloudActive?'active':'expired'?> · <?=h((string)$managed['used_bytes'])?> / <?=h((string)$managed['quota_bytes'])?> bytes<?php endif; ?></td><td><?php if (!$paidCloud): ?><form method="post"><?=csrfInput()?><input type="hidden" name="user_id" value="<?=h((string)$managed['id'])?>"><input type="hidden" name="action" value="grant_cloud_trial"><label>Quota MiB <input name="quota_mib" type="number" min="1" max="1024" value="100" required></label><label>Duration days <input name="days" type="number" min="1" max="60" value="7" required></label><button type="submit">Grant test trial</button></form><?php if ($managed['source']==='admin_trial'): ?><form method="post"><?=csrfInput()?><input type="hidden" name="user_id" value="<?=h((string)$managed['id'])?>"><input type="hidden" name="action" value="revoke_cloud_trial"><button class="danger" type="submit">End test trial</button></form><?php endif; ?><?php else: ?>Billing controlled<?php endif; ?></td></tr>
 <?php endforeach; ?></tbody></table></div><p class="muted small">Showing the 50 most recently created accounts. Every change is audited.</p></article></section>
 <section><h2>Service health</h2><div class="grid">
 <?php try { $counts=[]; foreach (['users'=>'users','cloud accounts'=>'cloud_entitlements','cloud projects'=>'cloud_projects','private media objects'=>'cloud_files'] as $label=>$table) {$counts[$label]=(int)$db->query('SELECT COUNT(*) FROM '.$table)->fetchColumn();} ?>

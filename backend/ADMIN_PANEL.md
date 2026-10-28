@@ -15,11 +15,12 @@ The owner console is served at `https://api.your-domain.example/admin.php`. It i
 - Owner password + TOTP sign-in; no public owner enrollment.
 - Encrypted server-side provider-key configuration for OpenAI, Google, Runway, and ElevenLabs.
 - Owner-only user access disable/reactivate controls; disabling revokes current API sessions and blocks new sign-ins until re-enabled.
+- Temporary admin test cloud trials can be granted or ended without changing billing-sourced entitlements. Ending a trial begins the existing 30-day read-only export grace.
 - Read-only counts for cloud entitlements, projects, and private media records; recent admin audit events.
 - Honest queue status: no asynchronous generation queue exists yet.
 
 ## Still required before public release
 
-The console does not yet provide role administration, verified subscription or credit controls, uploads/jobs moderation, model capability/cost editing, feature flags, service telemetry, MFA recovery, multiple-owner governance, or independent monitoring. User access management currently shows the 50 most recently created regular app accounts; add secure search and pagination before large-scale operations. Provider-key rotation and restore drills, cross-account authorization tests, cPanel staging acceptance, backups and key escrow remain required. Do not enter real production provider credentials until staging controls and a security review are complete.
+The console does not yet provide role administration, verified subscription or credit controls, uploads/jobs moderation, model capability/cost editing, feature flags, service telemetry, MFA recovery, multiple-owner governance, or independent monitoring. User access management currently shows the 50 most recently created regular app accounts; add secure search and pagination before large-scale operations. Test trials are manual staging controls, not subscription processing or payment evidence. Provider-key rotation and restore drills, cross-account authorization tests, cPanel staging acceptance, backups and key escrow remain required. Do not enter real production provider credentials until staging controls and a security review are complete.
 
 After the CLI prints the authenticator setup URI, treat it as a one-time secret. The TOTP seed and provider secrets are encrypted in MySQL, but backups still require restricted access and retention. Do not paste keys into support tickets, issue comments, or app builds.
