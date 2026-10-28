@@ -23,6 +23,13 @@ OTHER_AUTH="Authorization: Bearer $other_token"
 php backend/bin/grant-mock-credits.php "$EMAIL" 100 'initial-test-credit-grant-01'
 php backend/bin/grant-mock-credits.php "$EMAIL" 100 'initial-test-credit-grant-01' | grep -q 'already applied'
 test "$(curl -fsS -H "$AUTH" "$BASE/v1/me" | jq -er '.mockGeneration.credits')" = '100'
+unauth_status=$(curl -sS -o /tmp/hotice-models-unauthorized.json -w '%{http_code}' "$BASE/v1/models")
+test "$unauth_status" = '401'
+catalog=$(curl -fsS -H "$AUTH" "$BASE/v1/models")
+test "$(echo "$catalog" | jq -er '.liveGenerationEnabled')" = 'false'
+test "$(echo "$catalog" | jq -er '.models | length')" = '1'
+test "$(echo "$catalog" | jq -er '.models[0].availability')" = 'dry_run'
+test "$(echo "$catalog" | jq -er '.models[0].pricing.moneyValue')" = '0'
 
 request=$(jq -cn --arg p 'A blue sailboat at sunrise' '{modelId:"hotice.mock.video.v1",prompt:$p,simulate:"success"}')
 quote_body=$(jq -cn --argjson r "$request" '{request:$r}')
@@ -92,4 +99,5 @@ php backend/bin/jobs-worker.php --once | jq -e '.status == "idle"' >/dev/null
 test "$(curl -fsS -H "$AUTH" "$BASE/v1/me" | jq -er '.mockGeneration.credits')" = '80'
 
 echo 'Mock job quote, idempotency, ownership, retries, cancellation, simulated credits and refund checks passed. No provider call or video output was created.'
+
 
