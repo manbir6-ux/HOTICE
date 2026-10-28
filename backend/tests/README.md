@@ -1,1 +1,2 @@
-The PHP core smoke test runs without a database. The GitHub Actions integration suite requires ephemeral MySQL and starts the API over localhost HTTP **only inside CI**. Production configuration always requires HTTPS; this is not an exemption for cPanel hosting.
+The PHP core smoke test runs without a database. The GitHub Actions integration suite requires ephemeral MySQL and starts the API over localhost HTTP **only inside CI**. Production configuration always requires HTTPS; this is not an exemption for cPanel hosting. CI captures email in a runner-temporary JSONL file and verifies registration, one-time token rotation, password reset, replay rejection, and session revocation; no messages are sent to real mailboxes.
+

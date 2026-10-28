@@ -450,6 +450,8 @@
   const accountForm = get('accountLogin');
   const registerForm = get('accountRegister');
   const resendForm = get('accountResend');
+  const resetRequestForm = get('accountResetRequest');
+  const resetCompleteForm = get('accountResetComplete');
   const accountSignIn = get('accountSignIn');
   const accountSignedIn = get('accountSignedIn');
   const apiOriginMeta = document.querySelector('meta[name="hotice-api-origin"]');
@@ -474,6 +476,8 @@
     });
     registerForm?.querySelectorAll('input, button').forEach((control) => { control.disabled = true; });
     resendForm?.querySelectorAll('input, button').forEach((control) => { control.disabled = true; });
+    resetRequestForm?.querySelectorAll('input, button').forEach((control) => { control.disabled = true; });
+    resetCompleteForm?.querySelectorAll('input, button').forEach((control) => { control.disabled = true; });
   } else {
     status('accountStatus',
       'Secure account service configured. Sign in to verify your account; this preview does not sync project data.');
@@ -506,10 +510,13 @@
     accountForm.hidden = mode !== 'login';
     registerForm.hidden = mode !== 'register';
     resendForm.hidden = mode !== 'resend';
+    resetRequestForm.hidden = mode !== 'reset-request';
+    resetCompleteForm.hidden = mode !== 'reset-complete';
   }
 
   get('showLogin')?.addEventListener('click', () => selectAccountForm('login'));
   get('showRegister')?.addEventListener('click', () => selectAccountForm('register'));
+  get('showPasswordReset')?.addEventListener('click', () => selectAccountForm('reset-request'));
 
   registerForm?.addEventListener('submit', async (event) => {
     event.preventDefault();
@@ -555,23 +562,73 @@
     } finally { submit.disabled = false; }
   });
 
+  resetRequestForm?.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const email = get('resetRequestEmail').value.trim();
+    const submit = resetRequestForm.querySelector('button');
+    submit.disabled = true;
+    try {
+      await accountApi('/v1/auth/password-reset/request', {method: 'POST', body: {email}});
+      status('accountStatus', 'If an eligible account exists, a password reset link will be sent.');
+    } catch (error) {
+      status('accountStatus', error.status === 429
+        ? 'Too many requests. Try again later.'
+        : 'The account service could not process that request. Try again later.');
+    } finally { submit.disabled = false; }
+  });
+
+  let resetToken = null;
+  resetCompleteForm?.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const password = get('resetNewPassword').value;
+    const confirm = get('resetConfirmPassword').value;
+    if (password !== confirm) { status('accountStatus', 'Those passwords do not match.'); return; }
+    const passwordBytes = new TextEncoder().encode(password).length;
+    if (passwordBytes < 12 || passwordBytes > 256) {
+      status('accountStatus', 'Use a password between 12 and 256 bytes.'); return;
+    }
+    const submit = resetCompleteForm.querySelector('button');
+    submit.disabled = true;
+    try {
+      await accountApi('/v1/auth/password-reset/complete', {method: 'POST', body: {token: resetToken, password}});
+      resetToken = null;
+      get('resetNewPassword').value = '';
+      get('resetConfirmPassword').value = '';
+      selectAccountForm('login');
+      status('accountStatus', 'Password updated and existing sessions revoked. Sign in with your new password.');
+    } catch (error) {
+      status('accountStatus', error.status === 400
+        ? 'This password reset link is invalid or expired. Request a fresh link.'
+        : 'The account service could not reset the password. Try again later.');
+    } finally { submit.disabled = false; }
+  });
+
   // Remove one-time tokens from the address bar before sending them to API.
   const verificationUrl = new URL(window.location.href);
   const fragmentParams = new URLSearchParams(verificationUrl.hash.replace(/^#/, ''));
   const verificationToken = fragmentParams.get('token') || verificationUrl.searchParams.get('token');
-  if (verificationToken) {
+  const incomingResetToken = fragmentParams.get('reset') || verificationUrl.searchParams.get('reset');
+  if (verificationToken || incomingResetToken) {
     verificationUrl.searchParams.delete('token');
+    verificationUrl.searchParams.delete('reset');
     fragmentParams.delete('token');
+    fragmentParams.delete('reset');
     const cleanHash = fragmentParams.toString();
     window.history.replaceState({}, '', verificationUrl.pathname + verificationUrl.search + (cleanHash ? '#' + cleanHash : ''));
-    if (/^[a-f0-9]{64}$/i.test(verificationToken) && accountApiOrigin) {
+    if (incomingResetToken && /^[a-f0-9]{64}$/i.test(incomingResetToken) && accountApiOrigin) {
+      resetToken = incomingResetToken;
+      selectAccountForm('reset-complete');
+      status('accountStatus', 'Choose a new password. This one-time link expires in 30 minutes.');
+    } else if (verificationToken && /^[a-f0-9]{64}$/i.test(verificationToken) && accountApiOrigin) {
       status('accountStatus', 'Verifying your email address…');
       accountApi('/v1/auth/verify-email', {method: 'POST', body: {token: verificationToken}})
         .then(() => { selectAccountForm('login'); status('accountStatus', 'Email verified. You can now sign in securely.'); })
         .catch(() => { selectAccountForm('resend'); status('accountStatus', 'This verification link is invalid or expired. Request a fresh link.'); });
     } else {
-      selectAccountForm('resend');
-      status('accountStatus', 'This verification link is invalid or the account service is not configured.');
+      selectAccountForm(incomingResetToken ? 'reset-request' : 'resend');
+      status('accountStatus', incomingResetToken
+        ? 'This password reset link is invalid or the account service is not configured.'
+        : 'This verification link is invalid or the account service is not configured.');
     }
   }
 

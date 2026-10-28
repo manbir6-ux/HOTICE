@@ -36,6 +36,8 @@ For the static HOTICE web app, set its public `meta[name="hotice-api-origin"]` t
 | `POST /v1/auth/register` | Disabled by default; creates a pending account and sends a single-use 30-minute verification link when explicitly enabled |
 | `POST /v1/auth/verify-email` | Validates a one-time email token; pending accounts cannot sign in |
 | `POST /v1/auth/verification/resend` | Rate-limited, enumeration-resistant request for a fresh verification message |
+| `POST /v1/auth/password-reset/request` | Enumeration-resistant password reset request for verified accounts |
+| `POST /v1/auth/password-reset/complete` | Single-use reset; rotates the password and revokes all sessions |
 | `POST /v1/auth/login` | Password -> random short-lived bearer token, SHA-256 stored server-side |
 | `POST /v1/auth/logout` | Revoke active session |
 | `GET /v1/me` | User identity and **server-calculated** cloud status/quota |
@@ -61,7 +63,7 @@ GitHub Actions `HOTICE PHP Backend Security & API` also spins up an ephemeral My
 ### Known unfinished requirements
 
 - Flutter integration for local SQLite/secure storage plus optional cloud login/sync; user consent and explicit backup selection.
-- Password reset, abuse protection/CAPTCHA, real account lifecycle, token refresh/rotation, multi-device session management.
+- Abuse protection/CAPTCHA, real account lifecycle, token refresh/rotation, multi-device session management.
 - Payment provider webhook signature verification, idempotent credit ledger, subscription renewal/cancel/refund and server-controlled plan catalog.
 - AI model proxy/provider adapters, secure file signing, async job queue/callback verification, token/cost reservation and reconciliation.
 - Large media uploads with chunking/object storage; cloud-client encryption if required; retention, antivirus/file scanning, abuse review, legal/compliance, disaster recovery, capacity scaling, physical-device testing.

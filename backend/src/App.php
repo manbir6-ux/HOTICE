@@ -114,6 +114,12 @@ final class App
             if ($route === '/v1/auth/verification/resend' && $method === 'POST') {
                 $this->resendVerification(); return;
             }
+            if ($route === '/v1/auth/password-reset/request' && $method === 'POST') {
+                $this->requestPasswordReset(); return;
+            }
+            if ($route === '/v1/auth/password-reset/complete' && $method === 'POST') {
+                $this->completePasswordReset(); return;
+            }
             if ($route === '/v1/auth/login' && $method === 'POST') {
                 $this->login(); return;
             }
@@ -288,16 +294,18 @@ final class App
         $url = rtrim($base, '/') . '#token=' . rawurlencode($token);
         $subject = 'Verify your HOTICE account';
         $body = "Verify your email address within 30 minutes by opening this link:\n\n$url\n\nIf you did not create this account, ignore this message.";
+        $this->sendAccountEmail($email, $subject, $body);
+    }
+
+    private function sendAccountEmail(string $email, string $subject, string $body): bool
+    {
         $testTransport = $this->config['mail_transport'] ?? null;
         if (is_callable($testTransport)) {
-            if (!$testTransport($email, $subject, $body)) throw new \RuntimeException('Verification message delivery failed.');
-            return;
+            return (bool)$testTransport($email, $subject, $body);
         }
         $from = (string) ($this->config['mail_from'] ?? '');
-        if (!filter_var($from, FILTER_VALIDATE_EMAIL) || !mail($email, $subject, $body,
-            "From: HOTICE <$from>\r\nContent-Type: text/plain; charset=UTF-8")) {
-            throw new \RuntimeException('Verification message delivery failed.');
-        }
+        return filter_var($from, FILTER_VALIDATE_EMAIL) !== false && mail($email, $subject, $body,
+            "From: HOTICE <$from>\r\nContent-Type: text/plain; charset=UTF-8");
     }
 
     private function resendVerification(): void
@@ -338,6 +346,70 @@ final class App
             throw $e;
         }
         $this->send(200, ['verified' => true]);
+    }
+
+    private function requestPasswordReset(): void
+    {
+        $b = Support::jsonInput(2048);
+        $email = Support::email((string)($b['email'] ?? ''));
+        $fingerprints = $this->throttle($email);
+        $this->recordFailedLogin($fingerprints);
+        $this->db->beginTransaction();
+        try {
+            $q = $this->db->prepare('SELECT id FROM users WHERE email=? AND email_verified_at IS NOT NULL LIMIT 1 FOR UPDATE');
+            $q->execute([$email]);
+            $userId = $q->fetchColumn();
+            if ($userId) {
+                $recent = $this->db->prepare('SELECT id FROM password_reset_tokens WHERE user_id=? AND created_at>DATE_SUB(UTC_TIMESTAMP(), INTERVAL 1 MINUTE) LIMIT 1');
+                $recent->execute([$userId]);
+                if (!$recent->fetch()) {
+                    $this->db->prepare('UPDATE password_reset_tokens SET used_at=UTC_TIMESTAMP() WHERE user_id=? AND used_at IS NULL')
+                        ->execute([$userId]);
+                    $token = bin2hex(random_bytes(32));
+                    $expires = gmdate('Y-m-d H:i:s', time() + 30 * 60);
+                    $this->db->prepare('INSERT INTO password_reset_tokens (id,user_id,token_sha256,expires_at) VALUES (?,?,?,?)')
+                        ->execute([Support::uuid(), $userId, hash('sha256', $token), $expires]);
+                }
+            }
+            $this->db->commit();
+        } catch (Throwable $e) {
+            if ($this->db->inTransaction()) $this->db->rollBack();
+            throw $e;
+        }
+        if ($userId && isset($token)) {
+            $url = rtrim((string)$this->config['verification_url'], '/') . '#reset=' . rawurlencode($token);
+            $this->sendAccountEmail($email, 'Reset your HOTICE password',
+                "Reset your password within 30 minutes by opening this link:\n\n$url\n\nIf you did not request this, ignore this message.");
+        }
+        // Same status and response for existing, unknown, and unverified users.
+        $this->send(202, ['accepted' => true]);
+    }
+
+    private function completePasswordReset(): void
+    {
+        $b = Support::jsonInput(4096);
+        $token = (string)($b['token'] ?? '');
+        $password = (string)($b['password'] ?? '');
+        if (!preg_match('/^[a-f0-9]{64}$/D', $token)) throw new ApiError(400, 'Password reset link is invalid or expired.');
+        if (strlen($password) < 12 || strlen($password) > 256) throw new ApiError(422, 'Password must be 12–256 bytes.');
+        $this->db->beginTransaction();
+        try {
+            $q = $this->db->prepare('SELECT id,user_id FROM password_reset_tokens WHERE token_sha256=? AND used_at IS NULL AND expires_at>UTC_TIMESTAMP() LIMIT 1 FOR UPDATE');
+            $q->execute([hash('sha256', $token)]);
+            $row = $q->fetch();
+            if (!$row) throw new ApiError(400, 'Password reset link is invalid or expired.');
+            $this->db->prepare('UPDATE users SET password_hash=? WHERE id=?')
+                ->execute([Support::passwordHash($password), $row['user_id']]);
+            $this->db->prepare('UPDATE sessions SET revoked_at=UTC_TIMESTAMP() WHERE user_id=? AND revoked_at IS NULL')
+                ->execute([$row['user_id']]);
+            $this->db->prepare('UPDATE password_reset_tokens SET used_at=UTC_TIMESTAMP() WHERE user_id=? AND used_at IS NULL')
+                ->execute([$row['user_id']]);
+            $this->db->commit();
+        } catch (Throwable $e) {
+            if ($this->db->inTransaction()) $this->db->rollBack();
+            throw $e;
+        }
+        $this->send(200, ['passwordReset' => true, 'sessionsRevoked' => true]);
     }
 
     private function login(): void

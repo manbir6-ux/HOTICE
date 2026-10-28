@@ -8,6 +8,10 @@ server_pid=$!
 trap 'kill "$server_pid" 2>/dev/null || true' EXIT
 for i in $(seq 1 40); do if curl -fsS "$BASE/health" >/dev/null; then break; fi; sleep 0.25; done
 curl -fsS "$BASE/health" | jq -e '.status == "ok"' >/dev/null
+unknown_reset=$(curl -sS -w '\n%{http_code}' -H 'Content-Type: application/json' \
+  -d '{"email":"unknown-reset@example.com"}' "$BASE/v1/auth/password-reset/request")
+test "${unknown_reset##*$'\n'}" = '202'
+echo "${unknown_reset%$'\n'*}" | jq -e '.accepted == true' >/dev/null
 cors_headers=$(mktemp)
 curl -sS -D "$cors_headers" -o /dev/null -H 'Origin: https://studio.hotice.test' "$BASE/health"
 grep -iq '^Access-Control-Allow-Origin: https://studio.hotice.test' "$cors_headers"
@@ -94,6 +98,15 @@ curl -fsS -X DELETE -H "$AUTH" "$BASE/v1/projects/$id" | jq -e '.deleted == true
 curl -fsS -H "$AUTH" "$BASE/v1/me" | jq -e '.cloud.usedBytes == 0' >/dev/null
 status=$(curl -sS -o /dev/null -w '%{http_code}' -H "$AUTH" "$BASE/v1/files/$file")
 test "$status" = '404'
+NEW_PASS='NewTemporaryPassword456!'
+reset_password "$EMAIL" "$NEW_PASS"
+status=$(curl -sS -o /dev/null -w '%{http_code}' -H "$AUTH" "$BASE/v1/me")
+test "$status" = '401'
+status=$(curl -sS -o /dev/null -w '%{http_code}' -H 'Content-Type: application/json' \
+  -d "{\"email\":\"$EMAIL\",\"password\":\"$PASS\"}" "$BASE/v1/auth/login")
+test "$status" = '401'
+token=$(curl -fsS -H 'Content-Type: application/json' -d "{\"email\":\"$EMAIL\",\"password\":\"$NEW_PASS\"}" "$BASE/v1/auth/login" | jq -er '.accessToken')
+AUTH="Authorization: Bearer $token"
 curl -fsS -X POST -H "$AUTH" "$BASE/v1/auth/logout" | jq -e '.ok == true' >/dev/null
 status=$(curl -sS -o /dev/null -w '%{http_code}' -H "$AUTH" "$BASE/v1/me")
 test "$status" = '401'
