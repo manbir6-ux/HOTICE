@@ -50,7 +50,7 @@ test -n "$csrf"
 managed_email='managed-user@example.com'
 managed_password='TemporaryManagedPassword123!'
 curl -fsS -H 'Content-Type: application/json' -d "{\"email\":\"$managed_email\",\"password\":\"$managed_password\"}" "$BASE/v1/auth/register" >/dev/null
-user_id=$(php -r 'require "backend/src/App.php"; $c=require "backend/config.php"; $db=(new \Hotice\App($c))->database(); $q=$db->prepare("SELECT id FROM users WHERE email=?"); $q->execute([$argv[1]]); echo $q->fetchColumn();' "$managed_email")
+user_id=$(php -r 'require "backend/src/App.php"; $c=require "backend/config.php"; $db=(new \Hotice\App($c))->database(); $q=$db->prepare("SELECT id FROM users WHERE email=?"); $q->execute(["verified_billing","pro",$argv[1]]); echo $q->fetchColumn();' "$managed_email")
 test -n "$user_id"
 user_login=$(curl -fsS -H 'Content-Type: application/json' -d "{\"email\":\"$managed_email\",\"password\":\"$managed_password\"}" "$BASE/v1/auth/login")
 user_token=$(echo "$user_login" | jq -er '.accessToken')
@@ -89,7 +89,7 @@ test "$status" = '303'
 curl -fsS -H "$trial_auth" "$BASE/v1/me" | jq -e '.cloud.active == false and .cloud.readable == true' >/dev/null
 
 # An owner trial action cannot replace an entitlement managed by verified billing.
-php -r 'require "backend/src/App.php"; $c=require "backend/config.php"; $db=(new \Hotice\App($c))->database(); $q=$db->prepare("UPDATE cloud_entitlements SET source=\x27verified_billing\x27,plan_code=\x27pro\x27,quota_bytes=67108864,expires_at=DATE_ADD(UTC_TIMESTAMP(),INTERVAL 7 DAY) WHERE user_id=?"); $q->execute([$argv[1]]);' "$user_id"
+php -r 'require "backend/src/App.php"; $c=require "backend/config.php"; $db=(new \Hotice\App($c))->database(); $q=$db->prepare("UPDATE cloud_entitlements SET source=?,plan_code=?,quota_bytes=67108864,expires_at=DATE_ADD(UTC_TIMESTAMP(),INTERVAL 7 DAY) WHERE user_id=?"); $q->execute([$argv[1]]);' "$user_id"
 page=$(curl -fsS -H "Cookie: HOTICE_OWNER=$session" "$BASE/admin.php")
 csrf=$(printf '%s' "$page" | sed -n 's/.*name="csrf" value="\([^\"]*\)".*/\1/p' | head -1)
 status=$(curl -sS -o "$TMP_DIR/trial-denied" -w '%{http_code}' -H "Cookie: HOTICE_OWNER=$session" \
@@ -98,7 +98,7 @@ status=$(curl -sS -o "$TMP_DIR/trial-denied" -w '%{http_code}' -H "Cookie: HOTIC
   --data-urlencode 'quota_mib=1' --data-urlencode 'days=1' "$BASE/admin.php")
 test "$status" = '200'
 grep -q 'Paid cloud access is controlled by verified billing' "$TMP_DIR/trial-denied"
-php -r 'require "backend/src/App.php"; $c=require "backend/config.php"; $db=(new \Hotice\App($c))->database(); $q=$db->prepare("SELECT source,plan_code,quota_bytes FROM cloud_entitlements WHERE user_id=?"); $q->execute([$argv[1]]); $e=$q->fetch(); if (!$e || $e["source"]!==\x27verified_billing\x27 || $e["plan_code"]!==\x27pro\x27 || (int)$e["quota_bytes"]!==67108864) exit(1);' "$user_id"
+php -r 'require "backend/src/App.php"; $c=require "backend/config.php"; $db=(new \Hotice\App($c))->database(); $q=$db->prepare("SELECT source,plan_code,quota_bytes FROM cloud_entitlements WHERE user_id=?"); $q->execute([$argv[1]]); $e=$q->fetch(); if (!$e || $e["source"]!=="verified_billing" || $e["plan_code"]!=="pro" || (int)$e["quota_bytes"]!==67108864) exit(1);' "$user_id"
 
 test_key='ci-only-provider-secret-never-a-real-key'
 status=$(curl -sS -D "$headers" -o /dev/null -w '%{http_code}' \
