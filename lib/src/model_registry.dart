@@ -48,7 +48,13 @@ class AiCapability {
     final errors = <String>[];
     if (status != AiStatus.active) errors.add('Model is unavailable or not yet fully verified.');
     if (request.task != task) errors.add('Wrong task for this model.');
-    if (request.prompt.trim().isEmpty) errors.add('Prompt cannot be empty.');
+    if (task != AiTask.transcription && request.prompt.trim().isEmpty) {
+      errors.add('Prompt cannot be empty.');
+    }
+    if (task == AiTask.transcription &&
+        request.assets.where((a) => a.role == AiMediaRole.audioReference).length != 1) {
+      errors.add('Transcription needs exactly one audio upload.');
+    }
     if (task == AiTask.video) {
       final length = request.seconds;
       if ((!controlsDuration && length != null) ||
@@ -241,6 +247,35 @@ class HoticeAiCatalog {
       status: AiStatus.active,
       docsUrl: 'https://elevenlabs.io/docs/api-reference/text-to-speech/convert',
       notes: 'Voice ID, model availability, char limits and billing must come from backend.',
+    ),
+    AiCapability(
+      id: 'openai/gpt-transcribe:audio', provider: 'OpenAI API',
+      name: 'GPT Transcribe · Audio to Text',
+      task: AiTask.transcription, route: 'POST /v1/audio/transcriptions',
+      status: AiStatus.active,
+      docsUrl: 'https://developers.openai.com/api/docs/guides/speech-to-text',
+      roles: [AiMediaRole.audioReference], audioLimit: 1,
+      notes: 'Up to 25 MB, supported format list documented; no automatic promise of word timestamps. Separate voice identification pipeline where required.',
+    ),
+    AiCapability(
+      id: 'google/gemini-3.5-transcribe:audio',
+      provider: 'Google Gemini API',
+      name: 'Gemini 3.5 Transcribe · Word timing',
+      task: AiTask.transcription, route: 'POST /v1beta/interactions',
+      status: AiStatus.active,
+      docsUrl: 'https://ai.google.dev/gemini-api/docs/models/gemini-3.5-transcribe',
+      roles: [AiMediaRole.audioReference], audioLimit: 1,
+      notes: '1h basic audio; 30m when diarization or word timestamps active. Timestamps incompatible with custom vocabulary; diarization also conflicts with custom vocabulary. Feature switches must validate together.',
+    ),
+    AiCapability(
+      id: 'openai/gpt-4o-transcribe-diarize:deprecated',
+      provider: 'OpenAI API',
+      name: 'GPT-4o Transcribe Diarize · Deprecated',
+      task: AiTask.transcription, route: 'POST /v1/audio/transcriptions',
+      status: AiStatus.researchOnly,
+      docsUrl: 'https://developers.openai.com/api/docs/guides/speech-to-text',
+      roles: [AiMediaRole.audioReference], audioLimit: 1,
+      notes: 'Scheduled API shutdown 26 February 2027; do not integrate as a new default.',
     ),
     AiCapability(
       id: 'openai/sora-2:retired', provider: 'OpenAI API',
