@@ -455,6 +455,8 @@
   const accountEntryActions = get('accountEntryActions');
   const accountSignIn = get('accountSignIn');
   const accountSignedIn = get('accountSignedIn');
+  const accountDeleteForm = get('accountDeleteForm');
+  const accountExportButton = get('accountExport');
   const apiOriginMeta = document.querySelector('meta[name="hotice-api-origin"]');
   let accountToken = null;
   let accountApiOrigin = null;
@@ -1130,6 +1132,7 @@
           : 'Cloud access is inactive. Device-only projects remain available.';
       accountForm.hidden = true;
       accountSignedIn.hidden = false;
+      accountDeleteForm.hidden = false;
       status('accountStatus', 'Signed in and verified with the HOTICE server.');
       refreshCloudControls();
       refreshMockControls();
@@ -1173,6 +1176,93 @@
     } catch (_) {
       status('accountStatus',
         'Signed out in this browser, but server revocation could not be confirmed. The session may remain valid until it expires.');
+    }
+  });
+
+  accountExportButton?.addEventListener('click', async () => {
+    if (!accountToken || !accountApiOrigin || accountExportButton.disabled) return;
+    accountExportButton.disabled = true;
+    status('accountStatus', 'Preparing your HOTICE account export…');
+    try {
+      const response = await fetch(accountApiOrigin + '/v1/me/export', {
+        method: 'GET', mode: 'cors', credentials: 'omit', cache: 'no-store', redirect: 'error',
+        headers: {Accept: 'application/json', Authorization: 'Bearer ' + accountToken},
+      });
+      if (!response.ok) {
+        const error = new Error('HOTICE account export failed.');
+        error.status = response.status;
+        throw error;
+      }
+      const blob = await response.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = objectUrl;
+      link.download = 'hotice-account-export.json';
+      link.hidden = true;
+      document.body.append(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+      status('accountStatus', 'Account export downloaded. Device-only projects and media bytes are not part of this export.');
+    } catch (error) {
+      status('accountStatus', error.status === 413
+        ? 'Your account export exceeds the safe size limit. Contact HOTICE support before deleting your account.'
+        : error.status === 401
+          ? 'Your session expired. Sign in again to export your account data.'
+          : 'Could not download the account export. Your account was not changed.');
+    } finally {
+      accountExportButton.disabled = false;
+    }
+  });
+
+  accountDeleteForm?.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const button = get('accountDelete');
+    const confirmation = get('accountDeleteConfirmation');
+    const password = get('accountDeletePassword');
+    if (!accountToken || !accountApiOrigin || button.disabled) return;
+    if (confirmation.value !== 'DELETE') {
+      status('accountDeleteStatus', 'Type DELETE exactly to confirm. Your account is unchanged.');
+      return;
+    }
+    button.disabled = true;
+    status('accountDeleteStatus', 'Verifying your password and deleting server-held account data…');
+    try {
+      const result = await accountApi('/v1/me', {
+        method: 'DELETE', token: accountToken,
+        body: {confirmation: confirmation.value, password: password.value},
+      });
+      if (result.deleted !== true || result.accountDataRemoved !== true) {
+        throw new Error('Invalid HOTICE account deletion response.');
+      }
+      accountToken = null;
+      mockGenerationEnabled = false;
+      currentMockQuote = null;
+      accountCanWriteCloud = false;
+      accountCanReadCloud = false;
+      accountSignedIn.hidden = true;
+      accountDeleteForm.reset();
+      accountDeleteForm.hidden = true;
+      selectAccountForm('login');
+      if (projectConsent) projectConsent.checked = false;
+      cloudProjectCache = [];
+      get('cloudProjects')?.replaceChildren();
+      get('mockJobs')?.replaceChildren();
+      refreshCloudControls();
+      refreshMockControls();
+      refreshLocalProjects();
+      status('accountStatus', result.queuedMediaFiles > 0
+        ? 'Your account was deleted. Some private media is queued for secure server cleanup. Device-only projects remain on this device.'
+        : 'Your account and server-held data were deleted. Device-only projects remain on this device.');
+    } catch (error) {
+      status('accountDeleteStatus', error.status === 403
+        ? 'The current password was not accepted. Your account is unchanged.'
+        : error.status === 422
+          ? 'Type DELETE exactly and provide your current password. Your account is unchanged.'
+          : 'Could not confirm account deletion. Your account is unchanged; try again or sign out.');
+    } finally {
+      button.disabled = false;
+      password.value = '';
     }
   });
 

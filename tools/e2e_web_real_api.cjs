@@ -186,6 +186,30 @@ async function main() {
     await page.locator('#accountPassword').fill(rotatedPassword);
     await page.locator('#accountSignIn').click();
     await page.getByText('Signed in and verified with the HOTICE server.').waitFor();
+    const exportDownloadPromise = page.waitForEvent('download');
+    await page.locator('#accountExport').click();
+    const exportDownload = await exportDownloadPromise;
+    assert.equal(exportDownload.suggestedFilename(), 'hotice-account-export.json');
+    const exportPath = path.join(require('node:os').tmpdir(), `hotice-export-${process.pid}.json`);
+    await exportDownload.saveAs(exportPath);
+    const exportData = JSON.parse(fs.readFileSync(exportPath, 'utf8'));
+    fs.unlinkSync(exportPath);
+    assert.equal(exportData.format, 'hotice-account-export-v1');
+    assert.equal(exportData.account.email, registerEmail);
+    assert.equal(exportData.includedMediaBytes, false);
+    assert.equal(exportData.deviceLocalProjectsIncluded, false);
+    assert.equal(apiResponses.find((response) => response.path === '/v1/me/export')?.status, 200,
+      'Account export must download through the authenticated shared API.');
+    await page.locator('#accountDeletePassword').fill(rotatedPassword);
+    await page.locator('#accountDeleteConfirmation').fill('DELETE');
+    await page.locator('#accountDelete').click();
+    await page.getByText('Your account and server-held data were deleted. Device-only projects remain on this device.').waitFor();
+    const deletionRequest = apiRequests.filter((request) => request.path === '/v1/me' && request.method === 'DELETE').at(-1);
+    assert.deepEqual(deletionRequest?.body, {confirmation: 'DELETE', password: rotatedPassword},
+      'Account deletion must send the exact confirmation and current password to the authenticated API.');
+    assert.equal(apiResponses.filter((response) => response.path === '/v1/me' && response.method === 'DELETE').at(-1)?.status, 200);
+    assert.equal(await page.locator('#accountSignedIn').isVisible(), false,
+      'The deleted account must be removed from the signed-in browser state.');
     assert.equal(await page.evaluate(() => localStorage.length + sessionStorage.length), 0,
       'Browser credentials must stay out of web storage after all account workflows.');
     assert.deepEqual(errors, []);
@@ -197,6 +221,8 @@ async function main() {
       'bearer token absent from browser storage',
       'browser registration, pending-account sign-in denial and email verification',
       'browser password reset, session revocation and old-password rejection',
+      'authenticated account export download and privacy boundaries',
+      'password-confirmed account deletion and browser session cleanup',
     ], apiOrigin, realProviderCalls: 0}));
   } finally {
     await browser.close();
