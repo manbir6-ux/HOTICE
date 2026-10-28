@@ -1,7 +1,8 @@
 # HOTICE — Ready to Publish release contract
 
-**Decision record:** [GitHub Issue #33](https://github.com/parmtech/HOTICE/issues/33)  
-**State:** NOT READY TO PUBLISH. This document defines evidence required to change that state.  
+**Decision record:** [GitHub Issue #33](https://github.com/parmtech/HOTICE/issues/33)
+
+**State:** NOT READY TO PUBLISH. This document defines evidence required to change that state.
 **Last reviewed:** 28 October 2026.
 
 “Ready to publish” means the release candidate has passed every applicable gate below. A mock provider, green unit test, debug APK, or source-only review is not evidence of a live production service.
