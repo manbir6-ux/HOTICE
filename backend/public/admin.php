@@ -1,0 +1,199 @@
+<?php
+declare(strict_types=1);
+
+require_once dirname(__DIR__) . '/src/App.php';
+require_once dirname(__DIR__) . '/src/AdminSecurity.php';
+
+use Hotice\AdminSecurity;
+use Hotice\App;
+
+final class OwnerPanelError extends RuntimeException {}
+
+function h(string $value): string { return htmlspecialchars($value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); }
+function redirectAdmin(): never { header('Location: /admin.php', true, 303); exit; }
+function adminAudit(PDO $db, ?string $admin, string $event, ?string $type = null, ?string $id = null): void
+{
+    $db->prepare('INSERT INTO admin_audit_log(admin_id,event_code,target_type,target_id) VALUES(?,?,?,?)')
+        ->execute([$admin, $event, $type, $id]);
+}
+
+header('X-Content-Type-Options: nosniff');
+header('X-Frame-Options: DENY');
+header("Content-Security-Policy: default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'");
+header('Cache-Control: no-store, max-age=0');
+header('Referrer-Policy: no-referrer');
+header('Permissions-Policy: camera=(), microphone=(), geolocation=()');
+$https = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') || (int) ($_SERVER['SERVER_PORT'] ?? 0) === 443;
+if (!$https) { http_response_code(426); exit('HTTPS is required.'); }
+header('Strict-Transport-Security: max-age=31536000');
+if (!extension_loaded('openssl')) { http_response_code(503); exit('Owner panel unavailable.'); }
+
+ini_set('session.use_strict_mode', '1');
+ini_set('session.use_only_cookies', '1');
+ini_set('session.cookie_httponly', '1');
+ini_set('session.cookie_secure', '1');
+ini_set('session.cookie_samesite', 'Strict');
+session_name('HOTICE_OWNER');
+session_set_cookie_params(['lifetime' => 0, 'path' => '/', 'secure' => true, 'httponly' => true, 'samesite' => 'Strict']);
+session_start();
+if (!isset($_SESSION['csrf']) || !is_string($_SESSION['csrf'])) $_SESSION['csrf'] = bin2hex(random_bytes(32));
+$message = '';
+$error = '';
+if (isset($_SESSION['flash']) && is_string($_SESSION['flash'])) {
+    $message = $_SESSION['flash'];
+    unset($_SESSION['flash']);
+}
+
+try {
+    $configPath = dirname(__DIR__) . '/config.php';
+    if (!is_file($configPath)) throw new OwnerPanelError('Unavailable');
+    $config = require $configPath;
+    if (!is_array($config)) throw new RuntimeException('Unavailable');
+    $app = new App($config);
+    $db = $app->database();
+    $appKey = (string) ($config['app_key'] ?? '');
+    $providers = ['openai' => 'OpenAI', 'google' => 'Google', 'runway' => 'Runway', 'elevenlabs' => 'ElevenLabs'];
+
+    $adminId = isset($_SESSION['admin_id']) && is_string($_SESSION['admin_id']) ? $_SESSION['admin_id'] : null;
+    $owner = null;
+    if ($adminId !== null) {
+        $q = $db->prepare('SELECT id,email FROM admin_accounts WHERE id=? AND disabled_at IS NULL');
+        $q->execute([$adminId]);
+        $owner = $q->fetch() ?: null;
+        if (!$owner) { $_SESSION = []; session_regenerate_id(true); $_SESSION['csrf'] = bin2hex(random_bytes(32)); $adminId = null; }
+        elseif (!isset($_SESSION['auth_at'], $_SESSION['last_seen']) ||
+            time() - (int)$_SESSION['last_seen'] > 1800 || time() - (int)$_SESSION['auth_at'] > 43200) {
+            $_SESSION = []; session_regenerate_id(true); $_SESSION['csrf'] = bin2hex(random_bytes(32)); $adminId = null; $owner = null;
+        } else {
+            $_SESSION['last_seen'] = time();
+        }
+    }
+
+    if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
+        $postedCsrf = (string) ($_POST['csrf'] ?? '');
+        if (!hash_equals((string) $_SESSION['csrf'], $postedCsrf)) {
+            http_response_code(400); throw new OwnerPanelError('Refresh the page and try again.');
+        }
+        $action = (string) ($_POST['action'] ?? '');
+        if ($owner === null && $action === 'login') {
+            $email = strtolower(trim((string) ($_POST['email'] ?? '')));
+            if (strlen($email) > 254 || !filter_var($email, FILTER_VALIDATE_EMAIL)) $email = 'invalid';
+            $ip = (string) ($_SERVER['REMOTE_ADDR'] ?? 'unknown');
+            $fingerprints = [
+                hash_hmac('sha256', 'owner-email:' . $email, $appKey),
+                hash_hmac('sha256', 'owner-ip:' . $ip, $appKey),
+            ];
+            $count = $db->prepare('SELECT COUNT(*) FROM admin_login_attempts WHERE fingerprint=? AND occurred_at>DATE_SUB(UTC_TIMESTAMP(),INTERVAL 15 MINUTE)');
+            foreach ([$fingerprints[0] => 8, $fingerprints[1] => 30] as $fp => $limit) {
+                $count->execute([$fp]);
+                if ((int) $count->fetchColumn() >= $limit) throw new OwnerPanelError('Too many attempts. Try again later.');
+            }
+            $q = $db->prepare('SELECT id,email,password_hash,totp_secret_ciphertext,totp_nonce,totp_tag FROM admin_accounts WHERE email=? AND disabled_at IS NULL LIMIT 1');
+            $q->execute([$email]);
+            $candidate = $q->fetch();
+            $valid = false;
+            if ($candidate && password_verify((string) ($_POST['password'] ?? ''), $candidate['password_hash'])) {
+                try {
+                    $secret = AdminSecurity::decryptTotpSecret($candidate['totp_secret_ciphertext'],
+                        $candidate['totp_nonce'], $candidate['totp_tag'], $appKey);
+                    $valid = AdminSecurity::verifyTotp($secret, trim((string) ($_POST['totp'] ?? '')));
+                } catch (Throwable) { $valid = false; }
+            }
+            if (!$valid) {
+                $ins = $db->prepare('INSERT INTO admin_login_attempts(fingerprint,occurred_at) VALUES(?,UTC_TIMESTAMP())');
+                foreach ($fingerprints as $fp) $ins->execute([$fp]);
+                adminAudit($db, null, 'owner_login_failed');
+                throw new OwnerPanelError('Sign-in failed. Check your details and authenticator code.');
+            }
+            $db->prepare('DELETE FROM admin_login_attempts WHERE fingerprint=?')->execute([$fingerprints[0]]);
+            session_regenerate_id(true);
+            $_SESSION['admin_id'] = $candidate['id'];
+            $_SESSION['auth_at'] = time();
+            $_SESSION['last_seen'] = time();
+            $_SESSION['csrf'] = bin2hex(random_bytes(32));
+            $db->prepare('UPDATE admin_accounts SET last_login_at=UTC_TIMESTAMP() WHERE id=?')->execute([$candidate['id']]);
+            adminAudit($db, $candidate['id'], 'owner_login');
+            redirectAdmin();
+        }
+        if ($owner === null) throw new OwnerPanelError('Sign-in is required.');
+        if ($action === 'logout') {
+            adminAudit($db, $adminId, 'owner_logout');
+            $_SESSION = [];
+            if (ini_get('session.use_cookies')) {
+                $params = session_get_cookie_params();
+                setcookie(session_name(), '', ['expires' => time() - 3600, 'path' => $params['path'],
+                    'secure' => true, 'httponly' => true, 'samesite' => 'Strict']);
+            }
+            session_destroy(); redirectAdmin();
+        }
+        if ($action === 'save_provider' || $action === 'delete_provider') {
+            $provider = (string) ($_POST['provider'] ?? '');
+            if (!isset($providers[$provider])) throw new OwnerPanelError('Unknown provider.');
+            if ($action === 'delete_provider') {
+                $db->prepare('DELETE FROM provider_secrets WHERE provider=?')->execute([$provider]);
+                adminAudit($db, $adminId, 'provider_secret_deleted', 'provider', $provider);
+                $message = $providers[$provider] . ' key removed.';
+            } else {
+                $secret = trim((string) ($_POST['secret'] ?? ''));
+                if ($secret === '' || strlen($secret) > 4096 || preg_match('/[\r\n\x00]/', $secret)) {
+                    throw new OwnerPanelError('Enter a single-line key up to 4096 bytes.');
+                }
+                $sealed = AdminSecurity::encryptProviderKey($provider, $secret, $appKey);
+                $stmt = $db->prepare('INSERT INTO provider_secrets(provider,ciphertext,nonce,tag,updated_by) VALUES(?,?,?,?,?) ON DUPLICATE KEY UPDATE ciphertext=VALUES(ciphertext),nonce=VALUES(nonce),tag=VALUES(tag),updated_by=VALUES(updated_by)');
+                $stmt->execute([$provider, $sealed['ciphertext'], $sealed['nonce'], $sealed['tag'], $adminId]);
+                adminAudit($db, $adminId, 'provider_secret_saved', 'provider', $provider);
+                $message = $providers[$provider] . ' key saved encrypted.';
+            }
+        } else {
+            throw new OwnerPanelError('Action unavailable.');
+        }
+        $_SESSION['flash'] = $message;
+        redirectAdmin();
+    }
+} catch (Throwable $e) {
+    if (!isset($error) || $error === '') $error = $e instanceof OwnerPanelError && $e->getMessage() !== 'Unavailable'
+        ? $e->getMessage() : 'Owner panel is temporarily unavailable.';
+    if (!($e instanceof OwnerPanelError) || $e->getMessage() === 'Unavailable') {
+        error_log('HOTICE owner panel request failed (' . get_class($e) . ')');
+    }
+}
+
+function csrfInput(): string { return '<input type="hidden" name="csrf" value="' . h((string) ($_SESSION['csrf'] ?? '')) . '">'; }
+?><!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HOTICE owner console</title>
+<style>
+:root{color-scheme:dark;--bg:#0b1220;--panel:#141e30;--text:#f4f7ff;--muted:#a6b2c8;--line:#2d3a50;--accent:#54c9e8;--bad:#ff9c9c}*{box-sizing:border-box}body{margin:0;background:radial-gradient(ellipse at 20% 0,#182946,var(--bg) 55%);color:var(--text);font:16px/1.5 system-ui,-apple-system,Segoe UI,sans-serif}.wrap{max-width:1040px;margin:0 auto;padding:28px 20px 60px}.top,.row{display:flex;align-items:center;justify-content:space-between;gap:16px}.brand{font-size:1.2rem;font-weight:800;letter-spacing:.08em}.brand span{color:var(--accent)}h1{font-size:clamp(1.8rem,4vw,2.6rem);margin:28px 0 4px}h2{margin:0 0 6px}.muted{color:var(--muted)}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(255px,1fr));gap:16px;margin:20px 0}.card{background:color-mix(in srgb,var(--panel),transparent 5%);border:1px solid var(--line);border-radius:18px;padding:20px;box-shadow:0 15px 40px #0002}.status{display:inline-flex;align-items:center;border:1px solid #416b61;color:#a7f2d3;border-radius:99px;padding:3px 10px;font-size:.82rem}.status.off{border-color:#655b3a;color:#ffdda0}label{display:block;font-weight:650;margin:13px 0 6px}input{width:100%;padding:12px;border-radius:10px;border:1px solid var(--line);background:#0c1422;color:var(--text);font:inherit}button{border:0;border-radius:10px;padding:11px 15px;background:linear-gradient(100deg,#52cbe8,#9273fa);color:#08111d;font-weight:750;font:inherit;cursor:pointer}.secondary{background:#233047;color:var(--text);border:1px solid var(--line)}.danger{background:#44252c;color:#ffd1d1;border:1px solid #78444d}.notice{padding:12px 15px;border-radius:12px;background:#163245;border:1px solid #25546b}.error{background:#3e222a;border-color:#76424b;color:var(--bad)}table{width:100%;border-collapse:collapse}td,th{text-align:left;padding:9px 6px;border-bottom:1px solid var(--line);vertical-align:top}th{color:var(--muted);font-weight:600}.narrow{max-width:460px;margin:6vh auto}.small{font-size:.88rem}@media(max-width:560px){.wrap{padding:18px 14px 40px}.top{align-items:flex-start}.row{align-items:flex-start;flex-direction:column}td,th{font-size:.9rem}}
+</style></head><body><main class="wrap">
+<div class="top"><div class="brand"><span>◆</span> HOTICE <span class="muted">OWNER</span></div>
+<?php if (!empty($owner)): ?><form method="post"><?=csrfInput()?><input type="hidden" name="action" value="logout"><button class="secondary" type="submit">Sign out</button></form><?php endif; ?></div>
+<?php if ($error !== ''): ?><p class="notice error" role="alert"><?=h($error)?></p><?php endif; ?>
+<?php if ($message !== ''): ?><p class="notice" role="status"><?=h($message)?></p><?php endif; ?>
+<?php if (empty($owner)): ?>
+<section class="card narrow"><p class="muted">Private operations access</p><h1>Owner sign in</h1><p class="muted">Enter your owner password and current authenticator code.</p>
+<form method="post" autocomplete="on"><?=csrfInput()?><input type="hidden" name="action" value="login">
+<label for="email">Owner email</label><input id="email" name="email" type="email" autocomplete="username" maxlength="254" required>
+<label for="password">Password</label><input id="password" name="password" type="password" autocomplete="current-password" maxlength="256" required>
+<label for="totp">Authenticator code</label><input id="totp" name="totp" inputmode="numeric" pattern="[0-9]{6}" autocomplete="one-time-code" maxlength="6" required>
+<p><button type="submit">Sign in securely</button></p></form><p class="muted small">HTTPS, an owner-only account, CSRF protection and authenticator verification are required.</p></section>
+<?php else: ?>
+<h1>Operations overview</h1><p class="muted">Signed in as <?=h((string)$owner['email'])?>. Provider credentials are encrypted at rest and never shown again.</p>
+<?php if (!empty($providers)): ?><section><h2>Provider credentials</h2><p class="muted">Saving a key replaces the encrypted server-side value. Blank fields never reveal existing keys.</p><div class="grid">
+<?php foreach ($providers as $provider => $label): $q=$db->prepare('SELECT updated_at FROM provider_secrets WHERE provider=?');$q->execute([$provider]);$saved=$q->fetch(); ?>
+<article class="card"><div class="row"><h2><?=h($label)?></h2><span class="status <?=$saved?'':'off'?>"><?=$saved?'Configured':'Not configured'?></span></div>
+<?php if ($saved): ?><p class="muted small">Last updated <?=h((string)$saved['updated_at'])?></p><?php endif; ?>
+<form method="post" autocomplete="off"><?=csrfInput()?><input type="hidden" name="action" value="save_provider"><input type="hidden" name="provider" value="<?=h($provider)?>">
+<label for="key-<?=h($provider)?>">New API key</label><input id="key-<?=h($provider)?>" name="secret" type="password" autocomplete="new-password" maxlength="4096" placeholder="Paste to replace key" required>
+<p><button type="submit">Save encrypted key</button></p></form>
+<?php if ($saved): ?><form method="post"><?=csrfInput()?><input type="hidden" name="action" value="delete_provider"><input type="hidden" name="provider" value="<?=h($provider)?>"><button class="danger" type="submit">Remove key</button><p class="muted small">Removal takes effect immediately.</p></form><?php endif; ?></article>
+<?php endforeach; ?></div></section><?php endif; ?>
+<section><h2>Service health</h2><div class="grid">
+<?php try { $counts=[]; foreach (['users'=>'users','cloud accounts'=>'cloud_entitlements','cloud projects'=>'cloud_projects','private media objects'=>'cloud_files'] as $label=>$table) {$counts[$label]=(int)$db->query('SELECT COUNT(*) FROM '.$table)->fetchColumn();} ?>
+<article class="card"><span class="status">Database connected</span><table><tbody><?php foreach($counts as $label=>$count): ?><tr><th><?=h($label)?></th><td><?=h((string)$count)?></td></tr><?php endforeach; ?></tbody></table><p class="muted small">Counts only; no personal project content or credentials are displayed.</p></article>
+<?php } catch (Throwable) { ?><article class="card"><span class="status off">Partial</span><p class="muted">Some optional tables are unavailable. Run the documented database installer.</p></article><?php } ?>
+<article class="card"><h2>Generation jobs</h2><p class="muted">No asynchronous job queue is installed. Provider calls remain disabled until a controlled server worker, signed quotes, limits and settlement are implemented.</p></article></div></section>
+<section><h2>Recent owner audit events</h2><article class="card"><table><thead><tr><th>Time (UTC)</th><th>Event</th><th>Target</th></tr></thead><tbody>
+<?php $q=$db->query('SELECT occurred_at,event_code,target_type,target_id FROM admin_audit_log ORDER BY id DESC LIMIT 20'); foreach($q->fetchAll() as $event): ?><tr><td><?=h((string)$event['occurred_at'])?></td><td><?=h((string)$event['event_code'])?></td><td><?=h(trim((string)$event['target_type'].' '.(string)$event['target_id']))?></td></tr><?php endforeach; ?>
+</tbody></table></article></section>
+<p class="muted small">This operations panel is an early owner-console slice, not the full production administration system. User roles, subscription controls, uploads/jobs management, backup drills, MFA recovery and service monitoring still require release gates.</p>
+<?php endif; ?></main></body></html>
