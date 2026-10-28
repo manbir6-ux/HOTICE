@@ -3,6 +3,7 @@ import 'avatar_identity.dart';
 import 'design.dart';
 import 'state.dart';
 import 'dialogs.dart';
+import 'music_audio.dart';
 
 /// Offline storyboard templates are deliberately NOT AI outputs or transcriptions.
 class MusicStoryboardTemplates {
@@ -18,10 +19,34 @@ class MusicStoryboardTemplates {
   }
 }
 
+/// A locally edited shot schedule, not audio-derived timestamps.
+class MusicTimelineCue {
+  const MusicTimelineCue(this.startSeconds, this.endSeconds);
+  final int startSeconds;
+  final int endSeconds;
+}
+
+class MusicStoryboardTimeline {
+  static List<MusicTimelineCue> arrange(List<StoryboardShot> shots) {
+    var cursor = 0;
+    return [
+      for (final shot in shots)
+        MusicTimelineCue(cursor, cursor += shot.estimatedSeconds < 0
+            ? 0 : shot.estimatedSeconds),
+    ];
+  }
+
+  static String clock(int seconds) {
+    final safe = seconds < 0 ? 0 : seconds;
+    return '${(safe ~/ 60).toString().padLeft(2, '0')}:${(safe % 60).toString().padLeft(2, '0')}';
+  }
+}
+
 class MusicVideoStudioPage extends StatefulWidget {
   final HotIceStore store;
   final String? initialProjectId;
-  const MusicVideoStudioPage({super.key, required this.store, this.initialProjectId});
+  final bool audioActive;
+  const MusicVideoStudioPage({super.key, required this.store, this.initialProjectId, this.audioActive = true});
 
   @override
   State<MusicVideoStudioPage> createState() => _MusicVideoStudioPageState();
@@ -31,6 +56,8 @@ class _MusicVideoStudioPageState extends State<MusicVideoStudioPage> {
   final story = TextEditingController();
   final Map<String, String> _unsavedStories = {};
   final Map<String, List<StoryboardShot>> _unsavedShots = {};
+  final Map<String, String> _unsavedStyles = {};
+  final Map<String, String> _unsavedAvatars = {};
   String? projectId;
   String selectedStyle = 'Cinematic realism';
   String selectedAvatar = 'None';
@@ -59,8 +86,14 @@ class _MusicVideoStudioPageState extends State<MusicVideoStudioPage> {
     if (projectId != null) {
       _unsavedStories[projectId!] = story.text;
       _unsavedShots[projectId!] = List<StoryboardShot>.of(shots);
+      _unsavedStyles[projectId!] = selectedStyle;
+      _unsavedAvatars[projectId!] = selectedAvatar;
     }
     projectId = next;
+    // Visual style and recurring Actor belong to the project just like its
+    // story. Never carry a different film's creative settings across tabs.
+    selectedStyle = next == null ? styles.first : (_unsavedStyles[next] ?? styles.first);
+    selectedAvatar = next == null ? 'None' : (_unsavedAvatars[next] ?? 'None');
     story.text = next == null ? '' : (_unsavedStories[next] ?? '');
     shots = next == null
         ? <StoryboardShot>[]
@@ -113,6 +146,16 @@ class _MusicVideoStudioPageState extends State<MusicVideoStudioPage> {
     setState(() {
       final original = shots[index];
       shots[index] = StoryboardShot(original.title, updated, original.estimatedSeconds);
+    });
+  }
+
+  void setShotDuration(int index, int seconds) {
+    if (index < 0 || index >= shots.length || seconds < 4 || seconds > 10) {
+      return;
+    }
+    setState(() {
+      final original = shots[index];
+      shots[index] = StoryboardShot(original.title, original.description, seconds);
     });
   }
 
@@ -195,6 +238,8 @@ class _MusicVideoStudioPageState extends State<MusicVideoStudioPage> {
     if (!avatars.contains(selectedAvatar)) selectedAvatar = 'None';
     final matches = widget.store.avatars.where((a) => a.name == selectedAvatar);
     final avatar = matches.isEmpty ? null : matches.first;
+    final cues = MusicStoryboardTimeline.arrange(shots);
+    final totalSeconds = cues.isEmpty ? 0 : cues.last.endSeconds;
     return PageFrame(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -220,7 +265,7 @@ class _MusicVideoStudioPageState extends State<MusicVideoStudioPage> {
                   const SizedBox(height: 17),
                   DropdownButtonFormField<String>(
                     key: ValueKey(projectId),
-                    value: projectId,
+                    initialValue: projectId,
                     isExpanded: true,
                     decoration: const InputDecoration(labelText: 'Project'),
                     items: [
@@ -259,7 +304,8 @@ class _MusicVideoStudioPageState extends State<MusicVideoStudioPage> {
                   ),
                   const SizedBox(height: 12),
                   DropdownButtonFormField<String>(
-                    value: selectedAvatar,
+                    key: ValueKey('music-avatar-$projectId'),
+                    initialValue: selectedAvatar,
                     isExpanded: true,
                     decoration: const InputDecoration(
                       labelText: 'Recurring character (optional)',
@@ -288,31 +334,9 @@ class _MusicVideoStudioPageState extends State<MusicVideoStudioPage> {
                 ],
               ),
             );
-            const audio = StudioPanel(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    leading: Icon(Icons.library_music_outlined, size: 33),
-                    title: Text('Song & audio'),
-                    subtitle: Text('Upload and timeline integration coming later'),
-                  ),
-                  Divider(),
-                  Text('Upcoming workflow',
-                      style: TextStyle(fontWeight: FontWeight.w700)),
-                  SizedBox(height: 12),
-                  Text('1. Add a song with your permission'),
-                  SizedBox(height: 7),
-                  Text('2. Review and correct lyrics and word timings'),
-                  SizedBox(height: 7),
-                  Text('3. Choose a script-planning model'),
-                  SizedBox(height: 7),
-                  Text('4. Match video shots with music and export'),
-                  SizedBox(height: 13),
-                  DemoNotice('No audio is uploaded, analysed or recorded in this demo.'),
-                ],
-              ),
+            final audio = MusicSongPreviewPanel(
+              key: ValueKey('song-preview-$projectId'),
+              active: widget.audioActive,
             );
             if (wide) {
               return Row(
@@ -320,7 +344,7 @@ class _MusicVideoStudioPageState extends State<MusicVideoStudioPage> {
                 children: [
                   Expanded(flex: 6, child: setup),
                   const SizedBox(width: 16),
-                  const Expanded(flex: 4, child: audio),
+                  Expanded(flex: 4, child: audio),
                 ],
               );
             }
@@ -329,7 +353,10 @@ class _MusicVideoStudioPageState extends State<MusicVideoStudioPage> {
           const SizedBox(height: 24),
           Text('Storyboard timeline', style: Theme.of(context).textTheme.titleLarge),
           const SizedBox(height: 7),
-          const Text('Editable shot ideas only · timings are placeholders, not synced to a song.'),
+          const Text('Edit scene durations (4–10 s). Positions are manual estimates, not beat or lyric sync.'),
+          const SizedBox(height: 6),
+          Text('Estimated runtime: ${MusicStoryboardTimeline.clock(totalSeconds)}',
+              style: Theme.of(context).textTheme.titleSmall),
           const SizedBox(height: 14),
           if (shots.isEmpty)
             const StudioPanel(
@@ -354,12 +381,38 @@ class _MusicVideoStudioPageState extends State<MusicVideoStudioPage> {
                           child: Text(shots[i].title,
                               style: Theme.of(context).textTheme.titleMedium),
                         ),
-                        Text(shots[i].estimatedSeconds.toString() + 's est.',
-                            style: const TextStyle(fontSize: 12)),
+                        Text(
+                          '${MusicStoryboardTimeline.clock(cues[i].startSeconds)}–${MusicStoryboardTimeline.clock(cues[i].endSeconds)}',
+                          style: const TextStyle(fontSize: 12),
+                        ),
                       ],
                     ),
                     const SizedBox(height: 10),
                     Text(shots[i].description),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      spacing: 6,
+                      children: [
+                        const Icon(Icons.timer_outlined, size: 17),
+                        const Text('Scene seconds:'),
+                        DropdownButton<int>(
+                          key: ValueKey('music-shot-duration-$i'),
+                          value: const [4, 5, 6, 7, 8, 9, 10]
+                                  .contains(shots[i].estimatedSeconds)
+                              ? shots[i].estimatedSeconds
+                              : null,
+                          hint: Text('${shots[i].estimatedSeconds}'),
+                          items: [
+                            for (var seconds = 4; seconds <= 10; seconds++)
+                              DropdownMenuItem(value: seconds, child: Text('$seconds')),
+                          ],
+                          onChanged: (value) {
+                            if (value != null) setShotDuration(i, value);
+                          },
+                        ),
+                      ],
+                    ),
                     const SizedBox(height: 10),
                     Wrap(
                       spacing: 5,

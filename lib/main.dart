@@ -256,6 +256,7 @@ class _StudioShellState extends State<StudioShell> {
                           initialProjectId: openedProjectId,
                           initialTemplate: selectedTemplate,
                           templateRevision: templateRevision,
+                          isActive: selected == 1,
                         ),
                         AvatarsPage(store: store),
                         CreditsPage(store: store),

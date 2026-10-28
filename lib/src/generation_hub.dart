@@ -10,9 +10,10 @@ class GenerationHubPage extends StatefulWidget {
   final String? initialProjectId;
   final InspirationTemplate? initialTemplate;
   final int templateRevision;
+  final bool isActive;
   const GenerationHubPage({
     super.key, required this.store, this.initialProjectId,
-    this.initialTemplate, this.templateRevision = 0,
+    this.initialTemplate, this.templateRevision = 0, this.isActive = true,
   });
 
   @override
@@ -83,6 +84,7 @@ class _GenerationHubPageState extends State<GenerationHubPage> {
               MusicVideoStudioPage(
                 store: widget.store,
                 initialProjectId: widget.initialProjectId,
+                audioActive: widget.isActive && musicMode,
               ),
             ],
           ),

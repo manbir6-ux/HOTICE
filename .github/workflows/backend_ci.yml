@@ -1,0 +1,71 @@
+name: HOTICE PHP Backend Security & API
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'backend/**'
+      - '.github/workflows/backend_ci.yml'
+  pull_request:
+    paths:
+      - 'backend/**'
+      - '.github/workflows/backend_ci.yml'
+jobs:
+  php-static:
+    name: PHP syntax and defensive core tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          extensions: pdo_mysql, fileinfo
+      - name: PHP syntax lint
+        run: find backend -type f -name '*.php' -print0 | xargs -0 -n1 php -l
+      - name: Self tests
+        run: php backend/tests/smoke.php
+
+  php-mysql-integration:
+    name: Auth, cloud entitlement, media and storage integration
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: local_ci_only_password
+          MYSQL_DATABASE: hotice_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h localhost -uroot -plocal_ci_only_password"
+          --health-interval=10s --health-timeout=5s --health-retries=12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          extensions: pdo_mysql, fileinfo
+      - name: Write CI-only settings (NOT deployment secrets)
+        run: |
+          cat > backend/config.php <<'PHP'
+          <?php
+          return [
+            'db' => [
+              'dsn' => 'mysql:host=127.0.0.1;dbname=hotice_test;charset=utf8mb4',
+              'user' => 'root',
+              'password' => 'local_ci_only_password',
+            ],
+            'app_key' => str_repeat('a', 64),
+            'storage_path' => __DIR__ . '/private-media',
+            'require_https' => false, // ONLY CI HTTP localhost
+            'allow_registration' => true, // ONLY CI test user creation
+            'token_ttl_hours' => 1,
+            'max_file_bytes' => 1048576,
+            'max_project_bytes' => 131072,
+            'max_cloud_projects' => 1,
+            'max_files_per_project' => 1,
+          ];
+          PHP
+      - name: Initialize SQL schema
+        run: php backend/bin/install.php
+      - name: HTTP cloud API integration
+        run: bash backend/tests/http-integration.sh

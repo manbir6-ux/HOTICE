@@ -26,6 +26,46 @@ class ProjectsPage extends StatelessWidget {
     }
   }
 
+  Future<void> rename(BuildContext context, HotProject project) async {
+    final title = await showHotIceTextDialog(
+      context,
+      title: 'Rename project',
+      label: 'Project title',
+      confirmLabel: 'Save name',
+      initialValue: project.title,
+      maxLength: 60,
+    );
+    if (!context.mounted || title == null) return;
+    if (!store.renameProject(project.id, title)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Project could not be renamed.')),
+      );
+    }
+  }
+
+  Future<void> delete(BuildContext context, HotProject project) async {
+    final draftCount = store.drafts.where((draft) => draft.projectId == project.id).length;
+    final planCount = store.musicPlans.where((plan) => plan.projectId == project.id).length;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Delete project?'),
+        content: Text('Delete "${project.title}" and its $draftCount saved scene drafts '
+            'and $planCount storyboards from this demo session? This cannot be undone.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('Delete project')),
+        ],
+      ),
+    );
+    if (!context.mounted || confirmed != true) return;
+    if (!store.deleteProject(project.id)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Project no longer exists.')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return PageFrame(
@@ -43,8 +83,25 @@ class ProjectsPage extends StatelessWidget {
             onPressed: () => add(context),
           ),
           const SizedBox(height: 16),
-          const DemoNotice('Projects are saved in memory for this demo session.'),
+          const DemoNotice(
+            'Demo only: projects, scenes and storyboards are stored in memory '
+            'and will be lost when the app restarts. Device storage and '
+            'paid cloud backup are not connected yet.',
+          ),
           const SizedBox(height: 22),
+          if (store.projects.isEmpty)
+            StudioPanel(child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(Icons.movie_creation_outlined, size: 36,
+                    color: Theme.of(context).colorScheme.primary),
+                const SizedBox(height: 12),
+                Text('Your next film starts here',
+                    style: Theme.of(context).textTheme.titleMedium),
+                const SizedBox(height: 6),
+                const Text('Create a project to plan scenes or a music video.'),
+              ],
+            )),
           LayoutBuilder(builder: (context, box) {
             final columns = box.maxWidth > 810
                 ? 3
@@ -74,11 +131,35 @@ class ProjectsPage extends StatelessWidget {
                           children: [
                             FilmPreview(title: project.title),
                             const SizedBox(height: 12),
-                            Text(project.title,
-                                maxLines: 2,
+                            LayoutBuilder(builder: (context, constraints) {
+                              final title = Text(project.title, maxLines: 2,
                                 overflow: TextOverflow.ellipsis,
-                                style: Theme.of(context).textTheme.titleMedium),
-                            const SizedBox(height: 5),
+                                style: Theme.of(context).textTheme.titleMedium);
+                              final menu = PopupMenuButton<String>(
+                                key: ValueKey('project-options-${project.id}'),
+                                tooltip: 'Project options',
+                                icon: const Icon(Icons.more_vert_rounded),
+                                onSelected: (action) async {
+                                  if (action == 'rename') await rename(context, project);
+                                  if (action == 'delete') await delete(context, project);
+                                },
+                                itemBuilder: (_) => const [
+                                  PopupMenuItem(value: 'rename', child: Text('Rename')),
+                                  PopupMenuItem(value: 'delete', child: Text('Delete')),
+                                ],
+                              );
+                              if (constraints.maxWidth < 64) {
+                                return Column(crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [title, menu]);
+                              }
+                              return Row(children: [Expanded(child: title), menu]);
+                            }),
+                            const SizedBox(height: 6),
+                            Text('${store.drafts.where((item) => item.projectId == project.id).length} '
+                                'scene drafts · ${store.musicPlans.where((item) => item.projectId == project.id).length} '
+                                'storyboards', maxLines: 2, overflow: TextOverflow.ellipsis,
+                                style: Theme.of(context).textTheme.bodySmall),
+                            const SizedBox(height: 6),
                             const Text('Open project →',
                                 style: TextStyle(fontSize: 12)),
                           ],
@@ -116,8 +197,18 @@ class _GenerationPageState extends State<GenerationPage> {
   final prompt = TextEditingController();
   // Each in-progress scene belongs to one film project in this demo session.
   final Map<String, String> _unsavedPrompts = {};
+  final Map<String, String> _unsavedModels = {};
+  final Map<String, String> _unsavedRatios = {};
+  final Map<String, int> _unsavedDurations = {};
+  final Map<String, String> _unsavedAvatars = {};
+  final Map<String, List<SceneActor>> _unsavedActors = {};
+  final Map<String, List<SceneReference>> _unsavedReferences = {};
+  final Map<String, String> _unsavedNegativePrompts = {};
+  final Map<String, String> _unsavedSeeds = {};
+  final Map<String, bool> _unsavedSounds = {};
   String? project;
   String model = 'cinematic_demo';
+  String avatarName = 'None';
 
   VideoModelProfile get profile => demoModelById(model);
   String ratio = '16:9';
@@ -146,6 +237,7 @@ class _GenerationPageState extends State<GenerationPage> {
     // silently carrying unsupported references to the next model.
     sceneActors.clear();
     references.clear();
+    avatarName = 'None';
     negativePrompt.clear();
     seedText.clear();
     soundEnabled = false;
@@ -160,9 +252,52 @@ class _GenerationPageState extends State<GenerationPage> {
 
   void _selectProject(String? next) {
     if (project == next) return;
-    if (project != null) _unsavedPrompts[project!] = prompt.text;
+    if (project != null) {
+      final current = project!;
+      _unsavedPrompts[current] = prompt.text;
+      _unsavedModels[current] = model;
+      _unsavedRatios[current] = ratio;
+      _unsavedDurations[current] = seconds;
+      _unsavedAvatars[current] = avatarName;
+      _unsavedActors[current] = List<SceneActor>.of(sceneActors);
+      _unsavedReferences[current] = List<SceneReference>.of(references);
+      _unsavedNegativePrompts[current] = negativePrompt.text;
+      _unsavedSeeds[current] = seedText.text;
+      _unsavedSounds[current] = soundEnabled;
+    }
     project = next;
     prompt.text = next == null ? '' : (_unsavedPrompts[next] ?? '');
+    final savedModel = next == null ? null : _unsavedModels[next];
+    model = demoVideoModels.any((candidate) => candidate.id == savedModel)
+        ? savedModel!
+        : 'cinematic_demo';
+    final chosen = demoModelById(model);
+    final savedDuration = next == null ? null : _unsavedDurations[next];
+    seconds = savedDuration != null && chosen.durations.contains(savedDuration)
+        ? savedDuration
+        : (chosen.durations.contains(8) ? 8 : chosen.durations.first);
+    final savedRatio = next == null ? null : _unsavedRatios[next];
+    ratio = savedRatio != null && chosen.ratiosFor(seconds).contains(savedRatio)
+        ? savedRatio
+        : chosen.ratiosFor(seconds).first;
+    avatarName = next == null ? 'None' : (_unsavedAvatars[next] ?? 'None');
+    if (avatarName != 'None' &&
+        !widget.store.avatars.any((actor) => actor.name == avatarName)) {
+      avatarName = 'None';
+    }
+    sceneActors
+      ..clear()
+      ..addAll(next == null ? const <SceneActor>[] : (_unsavedActors[next] ?? const <SceneActor>[]));
+    references
+      ..clear()
+      ..addAll(next == null ? const <SceneReference>[] : (_unsavedReferences[next] ?? const <SceneReference>[]));
+    sceneActors.removeWhere((cast) =>
+        !widget.store.avatars.any((actor) => actor.name == cast.avatarName));
+    references.removeWhere((reference) => chosen.maximumFor(reference.type) == 0);
+    negativePrompt.text = next == null ? '' : (_unsavedNegativePrompts[next] ?? '');
+    seedText.text = next == null ? '' : (_unsavedSeeds[next] ?? '');
+    soundEnabled = next == null ? false : (_unsavedSounds[next] ?? false);
+    selectedTemplate = null;
   }
 
   @override
@@ -292,19 +427,28 @@ class _GenerationPageState extends State<GenerationPage> {
         });
       }
       final selected = matches.first;
+      final primaryActor = widget.store.avatars.where((actor) => actor.name == avatarName);
+      final preparedPrompt = sceneActors.isNotEmpty
+          ? AvatarPromptComposer.composeActors(
+              scenePrompt: source,
+              cast: List<SceneActor>.unmodifiable(sceneActors),
+              library: widget.store.avatars,
+              model: profile,
+            )
+          : AvatarPromptComposer.compose(
+              scenePrompt: source,
+              avatar: primaryActor.isEmpty ? null : primaryActor.first,
+              model: profile,
+            );
       widget.store.queueDraft(GenerationDraft(
         projectId: selected.id,
         modelId: profile.id,
         project: selected.title,
-        prompt: AvatarPromptComposer.composeActors(
-          scenePrompt: source,
-          cast: List<SceneActor>.unmodifiable(sceneActors),
-          library: widget.store.avatars,
-          model: profile,
-        ),
+        prompt: preparedPrompt,
         model: profile.label,
         aspectRatio: ratio,
         durationSeconds: seconds,
+        avatarName: avatarName,
         actors: List<SceneActor>.unmodifiable(sceneActors),
         referenceFiles: List<SceneReference>.unmodifiable(references),
         negativePrompt: negativePrompt.text.trim(),
@@ -340,7 +484,7 @@ class _GenerationPageState extends State<GenerationPage> {
           const SizedBox(height: 15),
           DropdownButtonFormField<String>(
             key: ValueKey(project),
-            value: project,
+            initialValue: project,
             decoration: const InputDecoration(labelText: 'Project'),
             isExpanded: true,
             items: widget.store.projects.map((item) =>
@@ -364,7 +508,8 @@ class _GenerationPageState extends State<GenerationPage> {
           ),
           const SizedBox(height: 13),
           DropdownButtonFormField<String>(
-            value: model,
+            key: ValueKey('normal-model-$project'),
+            initialValue: model,
             isExpanded: true,
             decoration: const InputDecoration(labelText: 'Model preview'),
             items: [
@@ -379,6 +524,20 @@ class _GenerationPageState extends State<GenerationPage> {
           const Text(
             'These are demo capability profiles, not connected AI providers.',
             style: TextStyle(fontSize: 12),
+          ),
+          const SizedBox(height: 13),
+          DropdownButtonFormField<String>(
+            key: ValueKey('normal-avatar-$project'),
+            initialValue: avatarName,
+            decoration: const InputDecoration(labelText: 'Avatar'),
+            items: [
+              const DropdownMenuItem(value: 'None', child: Text('None')),
+              for (final actor in widget.store.avatars)
+                DropdownMenuItem(value: actor.name, child: Text(actor.name)),
+            ],
+            onChanged: (value) {
+              if (value != null) setState(() => avatarName = value);
+            },
           ),
           const SizedBox(height: 13),
           if (selectedTemplate != null) ...[

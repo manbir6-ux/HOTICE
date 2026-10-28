@@ -281,7 +281,7 @@ class _AvatarsPageState extends State<AvatarsPage> {
                 ),
                 const SizedBox(height: 12),
                 DropdownButtonFormField<String>(
-                  value: style,
+                  initialValue: style,
                   isExpanded: true,
                   decoration: const InputDecoration(labelText: 'Look and feel'),
                   items: const [
@@ -356,7 +356,7 @@ class _AvatarsPageState extends State<AvatarsPage> {
                 padding: const EdgeInsets.all(8),
                 child: ListTile(
                   leading: CircleAvatar(
-                    backgroundColor: accent.withOpacity(.14),
+                    backgroundColor: accent.withValues(alpha: .14),
                     child: Text(avatar.name[0].toUpperCase()),
                   ),
                   title: Text(avatar.name,

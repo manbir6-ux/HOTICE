@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:flutter/material.dart';
 import 'video_models.dart';
 
@@ -9,6 +11,20 @@ const int minimumPurchaseUsd = 10;
 bool isValidDemoEmail(String value) {
   final email = value.trim();
   return RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(email);
+}
+
+/// New device projects use UUIDv4 IDs suitable for a future opt-in cloud API.
+/// Older seeded demo project IDs remain legacy examples; never upload those
+/// without an explicit migration to UUIDs and ownership verification.
+String createLocalProjectId() {
+  final random = Random.secure();
+  final bytes = List<int>.generate(16, (_) => random.nextInt(256));
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  final hex = bytes.map((value) => value.toRadixString(16).padLeft(2, '0')).join();
+  return '${hex.substring(0, 8)}-${hex.substring(8, 12)}-'
+      '${hex.substring(12, 16)}-${hex.substring(16, 20)}-'
+      '${hex.substring(20, 32)}';
 }
 
 class HotProject {
@@ -202,13 +218,60 @@ class HotIceStore extends ChangeNotifier {
 
   String addProject(String title) {
     final trimmed = title.trim();
-    if (trimmed.isEmpty) {
-      throw ArgumentError.value(title, 'title', 'Project title is empty');
+    if (trimmed.isEmpty || trimmed.length > 60) {
+      throw ArgumentError.value(title, 'title', 'Project title must be 1–60 characters.');
     }
-    final id = DateTime.now().microsecondsSinceEpoch.toString();
+    final id = createLocalProjectId();
     projects.insert(0, HotProject(id, trimmed, DateTime.now()));
     notifyListeners();
     return id;
+  }
+
+  /// Rename only a project owned by the currently selected demo workspace.
+  /// Keep its stable ID and refresh labels captured in existing scene drafts.
+  bool renameProject(String projectId, String newTitle) {
+    final title = newTitle.trim();
+    final index = projects.indexWhere((p) => p.id == projectId);
+    if (index < 0 || title.isEmpty || title.length > 60) return false;
+    final current = projects[index];
+    if (current.title == title) return true;
+    projects[index] = HotProject(current.id, title, current.createdAt);
+    for (var i = 0; i < drafts.length; i++) {
+      final old = drafts[i];
+      if (old.projectId != projectId) continue;
+      drafts[i] = GenerationDraft(
+        project: title,
+        prompt: old.prompt,
+        model: old.model,
+        aspectRatio: old.aspectRatio,
+        durationSeconds: old.durationSeconds,
+        createdAt: old.createdAt,
+        projectId: old.projectId,
+        avatarName: old.avatarName,
+        modelId: old.modelId,
+        requestedAttachments: old.requestedAttachments,
+        actors: old.actors,
+        referenceFiles: old.referenceFiles,
+        negativePrompt: old.negativePrompt,
+        seed: old.seed,
+        soundEnabled: old.soundEnabled,
+      );
+    }
+    notifyListeners();
+    return true;
+  }
+
+  /// Permanently remove the in-memory project and all associated draft data
+  /// in this one demo profile. A UI confirmation is required before calling.
+  /// This is not a cloud-delete or biometric Actor vault operation.
+  bool deleteProject(String projectId) {
+    final index = projects.indexWhere((p) => p.id == projectId);
+    if (index < 0) return false;
+    projects.removeAt(index);
+    drafts.removeWhere((draft) => draft.projectId == projectId);
+    musicPlans.removeWhere((plan) => plan.projectId == projectId);
+    notifyListeners();
+    return true;
   }
 
   /// Avoid duplicate values in the avatar dropdown.
@@ -258,6 +321,10 @@ class HotIceStore extends ChangeNotifier {
             !avatars.any((av) => av.name == a.avatarName))) {
       throw StateError('Scene actor names must be unique and refer to an existing actor.');
     }
+    if (draft.avatarName != 'None' &&
+        !avatars.any((avatar) => avatar.name == draft.avatarName)) {
+      throw StateError('Selected Actor is not in this demo workspace.');
+    }
     if (draft.referenceFiles.any((file) =>
         file.fileName.trim().isEmpty || file.bytes < 0)) {
       throw StateError('Invalid reference file metadata.');
@@ -284,7 +351,25 @@ class HotIceStore extends ChangeNotifier {
         throw StateError('Unsupported model settings, actors, or attachments.');
       }
     }
-    drafts.insert(0, draft);
+    // Capture a stable, detached job snapshot after validation.
+    final canonicalProject = projects.where((p) => p.id == draft.projectId);
+    drafts.insert(0, GenerationDraft(
+      project: canonicalProject.isEmpty ? draft.project : canonicalProject.first.title,
+      prompt: draft.prompt,
+      model: draft.model,
+      aspectRatio: draft.aspectRatio,
+      durationSeconds: draft.durationSeconds,
+      createdAt: draft.createdAt,
+      projectId: draft.projectId,
+      avatarName: draft.avatarName,
+      modelId: draft.modelId,
+      requestedAttachments: List<VideoAttachment>.unmodifiable(draft.requestedAttachments),
+      actors: List<SceneActor>.unmodifiable(draft.actors),
+      referenceFiles: List<SceneReference>.unmodifiable(draft.referenceFiles),
+      negativePrompt: draft.negativePrompt,
+      seed: draft.seed,
+      soundEnabled: draft.soundEnabled,
+    ));
     notifyListeners();
   }
 
@@ -299,7 +384,18 @@ class HotIceStore extends ChangeNotifier {
         !avatars.any((avatar) => avatar.name == plan.avatarName)) {
       throw StateError('Avatar belongs to a different workspace.');
     }
-    musicPlans.insert(0, plan);
+    if (plan.shots.any((shot) => shot.estimatedSeconds <= 0 ||
+        shot.estimatedSeconds > 600 || shot.description.trim().isEmpty)) {
+      throw StateError('Storyboard shots require a description and a valid duration.');
+    }
+    musicPlans.insert(0, MusicVideoPlan(
+      projectId: plan.projectId,
+      storyBrief: plan.storyBrief.trim(),
+      visualStyle: plan.visualStyle,
+      avatarName: plan.avatarName,
+      shots: List<StoryboardShot>.unmodifiable(plan.shots),
+      createdAt: plan.createdAt,
+    ));
     notifyListeners();
   }
 
