@@ -770,6 +770,9 @@
         cloudProjectStatus('Cloud writing is unavailable or the entitlement expired. Your local project is unchanged.');
       } else if (error.status === 413 || error.status === 422) {
         cloudProjectStatus('The server rejected this project size or format. Your local project is unchanged.');
+      } else if (error.message === 'Inline media is not included in browser project sync.' ||
+          error.message === 'Project is too large for this browser sync flow.') {
+        cloudProjectStatus(error.message);
       } else {
         cloudProjectStatus('Cloud sync could not be confirmed. Your local project remains on this device; check the cloud list before retrying.');
       }
