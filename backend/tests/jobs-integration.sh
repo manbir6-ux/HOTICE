@@ -33,6 +33,7 @@ key='mock-job-success-00000001'
 first=$(curl -sS -X POST -H "$AUTH" -H 'Content-Type: application/json' -H "Idempotency-Key: $key" -d "$body" "$BASE/v1/jobs")
 job=$(echo "$first" | jq -er '.job.id')
 test "$(echo "$first" | jq -er '.job.status')" = 'queued'
+php -r 'require "backend/src/App.php"; $c=require "backend/config.php"; $db=(new Hotice\\App($c))->database(); $q=$db->prepare("SELECT request_json FROM generation_jobs WHERE id=?"); $q->execute([$argv[1]]); $stored=json_decode((string)$q->fetchColumn(),true); if (!is_array($stored) || isset($stored["prompt"]) || array_keys($stored)!==["modelId","simulate"]) exit(1);' "$job"
 replay=$(curl -sS -X POST -H "$AUTH" -H 'Content-Type: application/json' -H "Idempotency-Key: $key" -d "$body" "$BASE/v1/jobs")
 test "$(echo "$replay" | jq -er '.idempotentReplay')" = 'true'
 changed=$(jq -cn --arg q "$quote" '{quoteToken:$q,request:{modelId:"hotice.mock.video.v1",prompt:"Different prompt",simulate:"success"}}')
