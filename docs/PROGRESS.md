@@ -10,6 +10,17 @@
 - [ ] Physical Android/iOS scan accuracy, orientation calibration and camera-permission/lifecycle field QA. CI emulator smoke tests do not prove face scanning works.
 - [ ] Secure encrypted on-device avatar vault, actual multi-view 3D reconstruction and export, native model APIs and verified identity fidelity.
 
+## AI Model compatibility foundation — 28 October 2026 (feature branch)
+
+- [x] Source-backed provider-scoped catalog spanning video, image, script, speech and transcription candidate models; retired API endpoints fail closed.
+- [x] Exact task/role/duration/ratio/resolution validation with unknown media limits rejected. Static research is not considered an authorized live quote.
+- [x] Searchable Model Compatibility page linked from Settings and Normal Video.
+- [x] Expiring versioned trusted-backend manifest parser with exact format tuples and duplicate/unsupported-role rejection.
+- [x] Server-only PHP Google Omni/Runway text-video request envelope builders with secret isolation, fixed hosts and approval gates, plus CI policy tests.
+- [ ] Actual authenticated cPanel server API, key setup and live provider connectivity; production verified catalog, paid model probes, uploads, job queue, billing and end-to-end tests.
+
+See [API_MODEL_COMPATIBILITY.md](API_MODEL_COMPATIBILITY.md).
+
 ## Smart reference work-in-progress — 28 October 2026 (feature branch)
 
 - [x] Typed smart reference selection engine in source with image/GLB capability gates, pose-aware scoring, manual locks, consent checks and account/project ownership validation.
