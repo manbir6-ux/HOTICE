@@ -399,6 +399,191 @@ class HotIceStore extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Versioned local snapshot for the encrypted device archive. It contains
+  /// project text and metadata only; never auth tokens, billing state, or raw
+  /// camera/media bytes. Every user-authored draft field is round-tripped.
+  Map<String, dynamic> exportLocalSnapshot() => {
+        'schema': 1,
+        'selectedAccount': selectedAccount,
+        'theme': themeMode.name,
+        'accent': accent.name,
+        'font': font.name,
+        'workspaces': {
+          for (final entry in _workspaces.entries)
+            entry.key: {
+              'projects': [
+                for (final p in entry.value.projects)
+                  {'id': p.id, 'title': p.title, 'createdAt': p.createdAt.toIso8601String()}
+              ],
+              'avatars': [
+                for (final a in entry.value.avatars)
+                  {'name': a.name, 'style': a.style, 'identityNotes': a.identityNotes}
+              ],
+              'drafts': [
+                for (final d in entry.value.drafts)
+                  {
+                    'projectId': d.projectId,
+                    'project': d.project,
+                    'prompt': d.prompt,
+                    'model': d.model,
+                    'modelId': d.modelId,
+                    'aspectRatio': d.aspectRatio,
+                    'durationSeconds': d.durationSeconds,
+                    'createdAt': d.createdAt.toIso8601String(),
+                    'avatarName': d.avatarName,
+                    'requestedAttachments': [for (final a in d.requestedAttachments) a.name],
+                    'actors': [
+                      for (final a in d.actors)
+                        {'avatarName': a.avatarName, 'sceneName': a.sceneName}
+                    ],
+                    'referenceFiles': [
+                      for (final f in d.referenceFiles)
+                        {'type': f.type.name, 'fileName': f.fileName, 'bytes': f.bytes}
+                    ],
+                    'negativePrompt': d.negativePrompt,
+                    'seed': d.seed,
+                    'soundEnabled': d.soundEnabled,
+                  }
+              ],
+              'musicPlans': [
+                for (final m in entry.value.musicPlans)
+                  {
+                    'projectId': m.projectId,
+                    'storyBrief': m.storyBrief,
+                    'visualStyle': m.visualStyle,
+                    'avatarName': m.avatarName,
+                    'createdAt': m.createdAt.toIso8601String(),
+                    'shots': [
+                      for (final shot in m.shots)
+                        {'title': shot.title, 'description': shot.description,
+                          'estimatedSeconds': shot.estimatedSeconds}
+                    ]
+                  }
+              ]
+            }
+        }
+      };
+
+  /// Restore only authenticated archive content. This never restores an
+  /// authenticated server session or grants cloud access.
+  void restoreLocalSnapshot(Map<String, dynamic> data) {
+    if (data['schema'] != 1 || data['workspaces'] is! Map) {
+      throw const FormatException('Unsupported HOTICE local project snapshot.');
+    }
+    Iterable<Map<String, dynamic>> rows(Object? value) sync* {
+      if (value is! List) return;
+      for (final row in value) {
+        if (row is Map<String, dynamic>) yield row;
+      }
+    }
+    DateTime stamp(Object? value) =>
+        DateTime.tryParse(value is String ? value : '') ?? DateTime.now();
+    List<VideoAttachment> attachmentTypes(Object? value) {
+      if (value is! List) return const [];
+      return VideoAttachment.values
+          .where((type) => value.contains(type.name)).toList(growable: false);
+    }
+
+    final replacement = <String, _DemoWorkspace>{};
+    final sources = data['workspaces'] as Map;
+    if (sources.length > 30) throw const FormatException('Too many local workspaces.');
+    for (final entry in sources.entries) {
+      if (entry.key is! String || !isValidDemoEmail(entry.key as String) ||
+          entry.value is! Map<String, dynamic>) continue;
+      final email = (entry.key as String).toLowerCase();
+      final source = entry.value as Map<String, dynamic>;
+      final target = _DemoWorkspace();
+      for (final row in rows(source['projects']).take(500)) {
+        final id = row['id'];
+        final title = row['title'];
+        if (id is String && id.isNotEmpty && title is String && title.trim().isNotEmpty &&
+            !target.projects.any((item) => item.id == id)) {
+          target.projects.add(HotProject(id, title, stamp(row['createdAt'])));
+        }
+      }
+      for (final row in rows(source['avatars']).take(100)) {
+        final name = row['name'];
+        final style = row['style'];
+        if (name is String && name.trim().isNotEmpty && style is String &&
+            !target.avatars.any((item) => item.name.toLowerCase() == name.toLowerCase())) {
+          target.avatars.add(StudioAvatar(name, style,
+              identityNotes: row['identityNotes'] is String ? row['identityNotes'] as String : ''));
+        }
+      }
+      for (final row in rows(source['drafts']).take(1000)) {
+        final projectId = row['projectId'];
+        if (projectId is! String || !target.projects.any((p) => p.id == projectId)) continue;
+        final actors = <SceneActor>[];
+        for (final actor in rows(row['actors']).take(100)) {
+          if (actor['avatarName'] is String && actor['sceneName'] is String &&
+              target.avatars.any((a) => a.name == actor['avatarName'])) {
+            actors.add(SceneActor(avatarName: actor['avatarName'] as String,
+                sceneName: actor['sceneName'] as String));
+          }
+        }
+        final refs = <SceneReference>[];
+        for (final ref in rows(row['referenceFiles']).take(100)) {
+          final type = VideoAttachment.values.where((v) => v.name == ref['type']);
+          if (type.isNotEmpty && ref['fileName'] is String && ref['bytes'] is int &&
+              (ref['bytes'] as int) >= 0) {
+            refs.add(SceneReference(type: type.first, fileName: ref['fileName'] as String,
+                bytes: ref['bytes'] as int));
+          }
+        }
+        final title = target.projects.firstWhere((p) => p.id == projectId).title;
+        target.drafts.add(GenerationDraft(
+          projectId: projectId, project: title,
+          prompt: row['prompt'] is String ? row['prompt'] as String : '',
+          model: row['model'] is String ? row['model'] as String : '',
+          modelId: row['modelId'] is String ? row['modelId'] as String : '',
+          aspectRatio: row['aspectRatio'] is String ? row['aspectRatio'] as String : '16:9',
+          durationSeconds: row['durationSeconds'] is int ? row['durationSeconds'] as int : 8,
+          createdAt: stamp(row['createdAt']),
+          avatarName: row['avatarName'] is String ? row['avatarName'] as String : 'None',
+          requestedAttachments: attachmentTypes(row['requestedAttachments']),
+          actors: actors,
+          referenceFiles: refs,
+          negativePrompt: row['negativePrompt'] is String ? row['negativePrompt'] as String : '',
+          seed: row['seed'] is int ? row['seed'] as int : null,
+          soundEnabled: row['soundEnabled'] == true,
+        ));
+      }
+      for (final row in rows(source['musicPlans']).take(500)) {
+        final projectId = row['projectId'];
+        if (projectId is! String || !target.projects.any((p) => p.id == projectId)) continue;
+        final shots = <StoryboardShot>[];
+        for (final shot in rows(row['shots']).take(250)) {
+          final duration = shot['estimatedSeconds'];
+          final description = shot['description'];
+          if (duration is int && duration > 0 && duration <= 600 &&
+              description is String && description.trim().isNotEmpty) {
+            shots.add(StoryboardShot(shot['title'] is String ? shot['title'] as String : 'Shot',
+                description, duration));
+          }
+        }
+        if (shots.isNotEmpty) {
+          target.musicPlans.add(MusicVideoPlan(projectId: projectId,
+              storyBrief: row['storyBrief'] is String ? row['storyBrief'] as String : '',
+              visualStyle: row['visualStyle'] is String ? row['visualStyle'] as String : 'Cinematic realism',
+              avatarName: row['avatarName'] is String ? row['avatarName'] as String : 'None',
+              shots: shots, createdAt: stamp(row['createdAt'])));
+        }
+      }
+      replacement[email] = target;
+    }
+    if (replacement.isEmpty) throw const FormatException('Encrypted archive has no valid workspaces.');
+    _workspaces..clear()..addAll(replacement);
+    accounts..clear()..addAll(replacement.keys);
+    final selected = data['selectedAccount'];
+    selectedAccount = selected is String && replacement.containsKey(selected.toLowerCase())
+        ? selected.toLowerCase() : accounts.first;
+    themeMode = ThemeMode.values.firstWhere((v) => v.name == data['theme'], orElse: () => ThemeMode.dark);
+    accent = StudioAccent.values.firstWhere((v) => v.name == data['accent'], orElse: () => StudioAccent.electric);
+    font = StudioFont.values.firstWhere((v) => v.name == data['font'], orElse: () => StudioFont.modern);
+    signedIn = false;
+    notifyListeners();
+  }
+
   void updateTheme(ThemeMode value) {
     themeMode = value;
     notifyListeners();
