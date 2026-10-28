@@ -33,7 +33,7 @@ key='mock-job-success-00000001'
 first=$(curl -sS -X POST -H "$AUTH" -H 'Content-Type: application/json' -H "Idempotency-Key: $key" -d "$body" "$BASE/v1/jobs")
 job=$(echo "$first" | jq -er '.job.id')
 test "$(echo "$first" | jq -er '.job.status')" = 'queued'
-php -r 'require "backend/src/App.php"; $c=require "backend/config.php"; $db=(new Hotice\App($c))->database(); $q=$db->prepare("SELECT request_json FROM generation_jobs WHERE id=?"); $q->execute([$argv[1]]); $stored=json_decode((string)$q->fetchColumn(),true); if (!is_array($stored) || isset($stored["prompt"]) || array_keys($stored)!==["modelId","simulate"]) exit(1);' "$job"
+php -r 'require "backend/src/App.php"; $c=require "backend/config.php"; $db=(new Hotice\App($c))->database(); $q=$db->prepare("SELECT user_id,request_json,request_sha256 FROM generation_jobs WHERE id=?"); $q->execute([$argv[1]]); $row=$q->fetch(); $stored=json_decode((string)$row["request_json"],true); $request=["modelId"=>"hotice.mock.video.v1","prompt"=>"A blue sailboat at sunrise","simulate"=>"success"]; $canonical=json_encode($request,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR); $expected=hash_hmac("sha256","hotice:mock-request:v1\0".$row["user_id"]."\0".$canonical,$c["app_key"]); if (!is_array($stored) || isset($stored["prompt"]) || array_keys($stored)!==["modelId","simulate"] || !hash_equals($expected,$row["request_sha256"])) exit(1);' "$job"
 replay=$(curl -sS -X POST -H "$AUTH" -H 'Content-Type: application/json' -H "Idempotency-Key: $key" -d "$body" "$BASE/v1/jobs")
 test "$(echo "$replay" | jq -er '.idempotentReplay')" = 'true'
 changed=$(jq -cn --arg q "$quote" '{quoteToken:$q,request:{modelId:"hotice.mock.video.v1",prompt:"Different prompt",simulate:"success"}}')
@@ -44,6 +44,7 @@ job_state=$(curl -fsS -H "$AUTH" "$BASE/v1/jobs/$job")
 test "$(echo "$job_state" | jq -er '.job.status')" = 'succeeded'
 test "$(echo "$job_state" | jq -er '.job.chargedCredits')" = '5'
 [[ "$(echo "$job_state" | jq -er '.job.result.message')" == *'No video or provider output'* ]]
+test "$(echo "$job_state" | jq -r '.job.result | has("requestSha256")')" = 'false'
 test "$(curl -sS -o /dev/null -w '%{http_code}' -H "$OTHER_AUTH" "$BASE/v1/jobs/$job")" = '404'
 
 request=$(jq -cn --arg p 'Permanent provider rejection simulation' '{modelId:"hotice.mock.video.v1",prompt:$p,simulate:"permanent_failure"}')
@@ -92,4 +93,5 @@ php backend/bin/jobs-worker.php --once | jq -e '.status == "idle"' >/dev/null
 test "$(curl -fsS -H "$AUTH" "$BASE/v1/me" | jq -er '.mockGeneration.credits')" = '80'
 
 echo 'Mock job quote, idempotency, ownership, retries, cancellation, simulated credits and refund checks passed. No provider call or video output was created.'
+
 
