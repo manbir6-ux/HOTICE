@@ -385,6 +385,10 @@ class _AccountsPageState extends State<AccountsPage> {
                   await widget.onDeleteAccount!(password.text, confirmation.text);
                   if (dialogContext.mounted) Navigator.pop(dialogContext, true);
                 } catch (failure) {
+                  if (failure is BackendAuthException &&
+                      failure.statusCode == 401) {
+                    widget.store.signOut();
+                  }
                   if (dialogContext.mounted) {
                     setDialogState(() {
                       error = failure is BackendAuthException

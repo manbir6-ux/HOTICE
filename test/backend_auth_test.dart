@@ -241,6 +241,21 @@ void main() {
     client.close();
   });
 
+  test('expired session is cleared when account deletion is rejected', () async {
+    final vault = MemoryTokenStore()..value = token;
+    final client = BackendAuthClient(
+      baseUri: Uri.parse('https://api.example.test'),
+      tokenStore: vault,
+      client: MockClient((_) async => jsonResponse(401, {'error': 'expired'})),
+    );
+    await expectLater(
+      client.deleteAccount(password: 'correct horse battery staple', confirmation: 'DELETE'),
+      throwsA(isA<BackendAuthException>()),
+    );
+    expect(vault.value, isNull);
+    client.close();
+  });
+
   test('store marks only server-verified account as authenticated', () {
     final store = HotIceStore();
     store.signInDemo('guest@example.com');

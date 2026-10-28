@@ -222,7 +222,26 @@ class BackendAuthClient {
       token: token,
       jsonBody: {'confirmation': confirmation, 'password': password},
     );
-    _checkSuccess(response, 'The current password or deletion confirmation was not accepted.');
+    if (response.statusCode == 401) {
+      await _tokenStore.delete();
+      throw const BackendAuthException(
+        'Your HOTICE session expired. Sign in again before deleting your account.',
+        statusCode: 401,
+      );
+    }
+    if (response.statusCode == 403) {
+      throw const BackendAuthException(
+        'The current password was not accepted. Your account is unchanged.',
+        statusCode: 403,
+      );
+    }
+    if (response.statusCode == 422) {
+      throw const BackendAuthException(
+        'Type DELETE exactly and enter your current password.',
+        statusCode: 422,
+      );
+    }
+    _checkSuccess(response, 'Could not securely confirm account deletion.');
     final data = _decodeObject(response);
     if (data['deleted'] != true || data['accountDataRemoved'] != true ||
         data['queuedMediaFiles'] is! int) {
