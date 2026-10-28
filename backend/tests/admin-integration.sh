@@ -44,6 +44,7 @@ session=$(sed -n 's/^[Ss]et-[Cc]ookie: HOTICE_OWNER=\([^;]*\).*/\1/p' "$headers"
 test -n "$session"
 page=$(curl -fsS -H "Cookie: HOTICE_OWNER=$session" "$BASE/admin.php")
 [[ "$page" == *'Operations overview'* ]]
+[[ "$page" == *'Recent provider attempts'* && "$page" == *'unknown outcome keeps its credit reservation'* ]]
 csrf=$(printf '%s' "$page" | sed -n 's/.*name="csrf" value="\([^"]*\)".*/\1/p' | head -1)
 test -n "$csrf"
 
@@ -54,6 +55,17 @@ user_id=$(php -r 'require "backend/src/App.php"; $c=require "backend/config.php"
 test -n "$user_id"
 user_login=$(curl -fsS -H 'Content-Type: application/json' -d "{\"email\":\"$managed_email\",\"password\":\"$managed_password\"}" "$BASE/v1/auth/login")
 user_token=$(echo "$user_login" | jq -er '.accessToken')
+php backend/bin/grant-mock-credits.php "$managed_email" 5 'owner-attempt-view-credit-001' >/dev/null
+attempt_request=$(jq -cn '{modelId:"hotice.mock.video.v1",prompt:"Owner console attempt view smoke",simulate:"success"}')
+attempt_quote=$(curl -fsS -H "Authorization: Bearer $user_token" -H 'Content-Type: application/json' \\
+  -d "$(jq -cn --argjson r "$attempt_request" '{request:$r}')" "$BASE/v1/jobs/quote" | jq -er '.quoteToken')
+attempt_body=$(jq -cn --arg q "$attempt_quote" --argjson r "$attempt_request" '{quoteToken:$q,request:$r}')
+attempt_job=$(curl -fsS -X POST -H "Authorization: Bearer $user_token" -H 'Content-Type: application/json' \\
+  -H 'Idempotency-Key: owner-view-attempt-00000001' -d "$attempt_body" "$BASE/v1/jobs" | jq -er '.job.id')
+php backend/bin/jobs-worker.php --once | jq -e '.status == "succeeded"' >/dev/null
+attempt_operation=$(php -r 'require "backend/src/App.php"; $c=require "backend/config.php"; $db=(new \\Hotice\\App($c))->database(); $q=$db->prepare("SELECT remote_operation_id FROM provider_attempts WHERE job_id=?"); $q->execute([$argv[1]]); echo $q->fetchColumn();' "$attempt_job")
+page=$(curl -fsS -H "Cookie: HOTICE_OWNER=$session" "$BASE/admin.php")
+[[ "$page" == *"$attempt_job"* && "$page" == *"$attempt_operation"* && "$page" == *"$managed_email"* ]]
 csrf=$(printf '%s' "$page" | sed -n 's/.*name="csrf" value="\([^\"]*\)".*/\1/p' | head -1)
 status=$(curl -sS -D "$headers" -o /dev/null -w '%{http_code}' -H "Cookie: HOTICE_OWNER=$session" \
   -H 'Content-Type: application/x-www-form-urlencoded' --data-urlencode "csrf=$csrf" \
