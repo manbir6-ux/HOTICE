@@ -97,6 +97,24 @@ void main() {
     }
   });
 
+  test('transcription requires exactly one audio asset and no fake text prompt', () {
+    final openai = HoticeAiCatalog.find('openai/gpt-transcribe:audio')!;
+    const upload = AiAsset('song', AiMediaRole.audioReference, 125000, 'audio/mpeg');
+    expect(openai.validate(AiRequest(
+      task: AiTask.transcription, prompt: '', assets: [upload],
+    )), isEmpty);
+    expect(openai.validate(AiRequest(
+      task: AiTask.transcription, prompt: '',
+    )), isNotEmpty);
+    expect(openai.validate(AiRequest(
+      task: AiTask.transcription, prompt: '', assets: [upload, upload],
+    )), isNotEmpty);
+    final google = HoticeAiCatalog.find('google/gemini-3.5-transcribe:audio')!;
+    expect(google.validate(AiRequest(
+      task: AiTask.transcription, prompt: '', assets: [upload],
+    )), isEmpty);
+  });
+
   test('duplicate reference IDs and bad file metadata are rejected', () {
     final model = HoticeAiCatalog.find('runway/gen4.5:image-video')!;
     expect(model.validate(video(model, assets: [first, first])), isNotEmpty);
