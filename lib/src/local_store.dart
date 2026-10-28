@@ -148,4 +148,3 @@ class HotIceLocalArchive {
     await _pending.rename(_primary.path);
   }
 }
-
