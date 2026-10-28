@@ -49,10 +49,11 @@ class _BackendDryRunPageState extends State<BackendDryRunPage> {
       else if (!widget.isAuthenticated) const _Notice('Sign in with a server account to submit a dry run. Guest demo mode cannot access server jobs.')
       else ...[
         TextField(controller: _prompt, minLines: 3, maxLines: 6, maxLength: 2000,
+          enabled: !_busy && (job == null || (job.status != 'queued' && job.status != 'processing')),
           decoration: const InputDecoration(labelText: 'Dry-run prompt', hintText: 'A quiet coastal film at blue hour...', border: OutlineInputBorder()),
           onChanged: (_) => setState(() { _job = null; _key = null; })),
         const SizedBox(height: 12),
-        FilledButton.icon(onPressed: _busy || _prompt.text.trim().isEmpty ? null : _submit,
+        FilledButton.icon(onPressed: _busy || job != null || _prompt.text.trim().isEmpty ? null : _submit,
           icon: const Icon(Icons.cloud_upload_outlined), label: Text(_busy ? 'Working…' : 'Queue server dry run')),
         if (job != null) ...[
           const SizedBox(height: 16),
