@@ -22,7 +22,7 @@ This is a **working PHP 8.2+ and MySQL/MariaDB service implementation**, intende
 7. For a first testing account, from Terminal run `php backend/bin/create-user.php you@example.com`; the password is prompted via stdin, **never entered in a shell argument**. Use `php backend/bin/grant-trial.php you@example.com 100 7` to grant a **100 MiB, seven-day ADMIN TEST TRIAL**, not purchased storage. Real paid entitlements must later be granted only from verified billing webhooks.
 8. Check `https://api.your-hotice-domain.example/health`; it should return JSON service/status without secret values. Test login with `POST /v1/auth/login` only over HTTPS. Check wrong/expired tokens and inactive cloud entitlement respond with 401/403. Check that direct requests for `config.php`, `schema.sql`, private media and secret keys are **not publicly accessible**, including via URL encoding and alternate hostnames.
 9. Optionally run `php backend/bin/cleanup.php` via cPanel Cron no more often than **once per 5 minutes** (daily is sufficient for expired session cleanup). Background AI job rendering **must not run long GPU workloads on shared hosting**; use external async provider jobs and periodic polling with budget limits in later phases.
-10. Set cPanel/database backups and recovery plan before allowing real user uploads, plus TLS renewal, monitoring, user deletion/export policies, email verification, privacy notices and quota/cost controls. This is an MVP, not a certified GDPR or payment deployment.
+10. Set cPanel/database backups and recovery plan before allowing real user uploads, plus TLS renewal, monitoring, retention/deletion review, privacy notices and quota/cost controls. This is an MVP, not a certified GDPR or payment deployment.
 
 Before any staging sign-off, run the read-only HTTPS isolation/header smoke check in [CPANEL_RELEASE_CHECK.md](CPANEL_RELEASE_CHECK.md). A pass supplements the hosting-account review; it does not replace checking aliases, symlinks, backups, or restore procedures.
 
@@ -49,6 +49,8 @@ Run the browser contract dry run using `npm ci --prefix web`, `npx --prefix web 
 | `POST /v1/auth/login` | Password -> random short-lived bearer token, SHA-256 stored server-side |
 | `POST /v1/auth/logout` | Revoke active session |
 | `GET /v1/me` | User identity, **server-calculated** cloud status/quota and mock-generation availability/credit balance |
+| `GET /v1/me/export` | Authenticated bounded JSON export of server-held account, cloud project, media metadata, mock job and simulated-credit data |
+| `DELETE /v1/me` | Permanently remove the authenticated account after exact `DELETE` confirmation and current-password verification; revoke sessions and queue private files that cannot be immediately removed |
 | `GET /v1/projects` | Cloud project metadata list (active or 30-day read-only grace) |
 | `GET /v1/projects/{uuid}` | Snapshot and file metadata |
 | `PUT /v1/projects/{uuid}` | JSON `{ "title": "Film", "expectedRevision": 0, "document": { ... } }` -> revision 1, returns 409 if stale |
@@ -63,6 +65,13 @@ Run the browser contract dry run using `npm ci --prefix web`, `npx --prefix web 
 
 **Security rules:** HTTPS required by default, JSON body size limits, versioned full-length password hashing for cPanel compatibility, per-email+IP login attempt throttle, sessions store token hashes only, verification/reset tokens store SHA-256 digests only, encrypted expiring email outbox, constant-type errors avoid sensitive SQL leakage, PDO prepared statements, real owner ID in every query, UUIDv4 IDs, revision conflict checks, per-user transactional cloud quotas, media type inspection using `finfo`, random file names, files outside web root, exact-origin allowlisted CORS without cookies or wildcards, and no hardcoded provider keys. Native bearer tokens use `flutter_secure_storage`; browser tokens remain in memory.
 
+### Account export and deletion
+
+- Export uses JSON format `hotice-account-export-v1`. It contains account profile fields, cloud entitlement/quota, cloud snapshots, uploaded-media metadata, mock generation history, and simulated-credit balance/ledger. It excludes password hashes, session/token hashes, provider credentials, and media bytes. Device-local projects and files never uploaded to HOTICE are not available to the server export.
+- Export never silently truncates. It returns HTTP 413 if any cap is exceeded: 200 cloud projects, 5,000 cloud-media metadata rows, 500 mock jobs, 2,000 simulated-credit ledger entries, or the configured total byte limit. `max_account_export_bytes` defaults to 8 MiB and is clamped to 1–25 MiB.
+- Deletion requires the active bearer session and body `{ "confirmation": "DELETE", "password": "..." }`. It removes email outbox data and email-keyed failed-login fingerprints, deletes jobs before restrictive quote references, deletes quotes, then removes the account and all foreign-key-linked rows. Account sessions are revoked by cascade; replaying the old token returns unauthorized.
+- Uploaded media filenames are queued in `private_media_deletion_queue` in the same transaction as data removal, without retaining account IDs or email addresses. The API attempts immediate deletion; failed/unavailable paths remain retryable. Project and file deletion use the same queue. Schedule `php backend/bin/purge-private-media.php 100` via cPanel Cron (hourly is a reasonable starting point); its output contains counts only. This does not erase device-local data, downloaded exports, external backups, or records a payment provider may retain.
+
 ### Test locally / in CI
 
 ```sh
@@ -76,6 +85,7 @@ GitHub Actions `HOTICE PHP Backend Security & API` also spins up an ephemeral My
 
 - Email deliverability and staging verification for the configured cPanel mailbox; abuse protection/CAPTCHA; token refresh/rotation and multi-device session management.
 - Flutter optional cloud project synchronization, user consent and explicit backup selection.
+- Browser and native settings UX for downloading the export and confirming deletion; the endpoints are API-only.
 - Payment provider webhook signature verification, idempotent credit ledger, subscription renewal/cancel/refund and server-controlled plan catalog.
 - AI model proxy/provider adapters, secure file signing, async job queue/callback verification, token/cost reservation and reconciliation.
 - Large media uploads with chunking/object storage; cloud-client encryption if required; retention, antivirus/file scanning, abuse review, legal/compliance, disaster recovery, capacity scaling, physical-device testing.

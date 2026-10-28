@@ -106,6 +106,8 @@ jobs:
         run: bash backend/tests/admin-integration.sh
       - name: Mock generation quotes, idempotency, retries and refunds
         run: bash backend/tests/jobs-integration.sh
+      - name: Account export, deletion and durable private-media cleanup
+        run: bash backend/tests/account-data-lifecycle-integration.sh
       - name: Real browser to PHP/MySQL authenticated mock-job dry run
         env:
           HOTICE_E2E_EMAIL: browser-api-dry-run@example.test
