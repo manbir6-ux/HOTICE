@@ -49,6 +49,8 @@ Run the browser contract dry run using `npm ci --prefix web`, `npx --prefix web 
 | `POST /v1/auth/login` | Password -> random short-lived bearer token, SHA-256 stored server-side |
 | `POST /v1/auth/logout` | Revoke active session |
 | `GET /v1/me` | User identity, **server-calculated** cloud status/quota and mock-generation availability/credit balance |
+| `GET /v1/me/preferences` | Authenticated account-scoped presentation preferences shared across clients |
+| `PUT /v1/me/preferences` | Replace supported presentation settings: `themeMode` (`system`, `light`, `dark`), `accent` (`electric`, `ocean`, `ember`, `glacier`, `moss`), and `font` (`modern`, `editorial`, `technical`) |
 | `GET /v1/me/export` | Authenticated bounded JSON export of server-held account, cloud project, media metadata, mock job and simulated-credit data |
 | `DELETE /v1/me` | Permanently remove the authenticated account after exact `DELETE` confirmation and current-password verification; revoke sessions and queue private files that cannot be immediately removed |
 | `GET /v1/projects` | Cloud project metadata list (active or 30-day read-only grace) |
@@ -67,7 +69,7 @@ Run the browser contract dry run using `npm ci --prefix web`, `npx --prefix web 
 
 ### Account export and deletion
 
-- Export uses JSON format `hotice-account-export-v1`. It contains account profile fields, cloud entitlement/quota, cloud snapshots, uploaded-media metadata, mock generation history, and simulated-credit balance/ledger. It excludes password hashes, session/token hashes, provider credentials, and media bytes. Device-local projects and files never uploaded to HOTICE are not available to the server export.
+- Export uses JSON format `hotice-account-export-v1`. It contains account profile fields, supported account presentation preferences, cloud entitlement/quota, cloud snapshots, uploaded-media metadata, mock generation history, and simulated-credit balance/ledger. It excludes password hashes, session/token hashes, provider credentials, and media bytes. Device-local projects and files never uploaded to HOTICE are not available to the server export.
 - Export never silently truncates. It returns HTTP 413 if any cap is exceeded: 200 cloud projects, 5,000 cloud-media metadata rows, 500 mock jobs, 2,000 simulated-credit ledger entries, or the configured total byte limit. `max_account_export_bytes` defaults to 8 MiB and is clamped to 1–25 MiB.
 - Deletion requires the active bearer session and body `{ "confirmation": "DELETE", "password": "..." }`. It removes email outbox data and email-keyed failed-login fingerprints, deletes jobs before restrictive quote references, deletes quotes, then removes the account and all foreign-key-linked rows. Account sessions are revoked by cascade; replaying the old token returns unauthorized.
 - Uploaded media filenames are queued in `private_media_deletion_queue` in the same transaction as data removal, without retaining account IDs or email addresses. The API attempts immediate deletion; failed/unavailable paths remain retryable. Project and file deletion use the same queue. The worker holds a failed row for 10 minutes before retrying to prevent a tight failure loop. Schedule `php backend/bin/purge-private-media.php 100` via cPanel Cron (hourly is a reasonable starting point); its output contains counts only. This does not erase device-local data, downloaded exports, external backups, or records a payment provider may retain.

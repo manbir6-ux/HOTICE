@@ -8,6 +8,18 @@ CREATE TABLE IF NOT EXISTS users (
   UNIQUE KEY uq_users_email (email)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- Account-scoped visual preferences shared by authenticated HOTICE clients.
+-- Preferences are intentionally limited to presentation settings; local
+-- project content remains device-local unless the user explicitly syncs it.
+CREATE TABLE IF NOT EXISTS user_preferences (
+  user_id CHAR(36) CHARACTER SET ascii COLLATE ascii_bin NOT NULL PRIMARY KEY,
+  theme_mode VARCHAR(16) NOT NULL DEFAULT 'dark',
+  accent VARCHAR(16) NOT NULL DEFAULT 'electric',
+  font VARCHAR(16) NOT NULL DEFAULT 'modern',
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  CONSTRAINT fk_user_preferences_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS email_verification_tokens (
   id CHAR(36) CHARACTER SET ascii COLLATE ascii_bin NOT NULL PRIMARY KEY,
   user_id CHAR(36) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,

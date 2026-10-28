@@ -153,6 +153,12 @@ final class App
             if ($route === '/v1/me/export' && $method === 'GET') {
                 $this->exportAccount($user['id']); return;
             }
+            if ($route === '/v1/me/preferences' && $method === 'GET') {
+                $this->getPreferences($user['id']); return;
+            }
+            if ($route === '/v1/me/preferences' && $method === 'PUT') {
+                $this->putPreferences($user['id']); return;
+            }
             if ($route === '/v1/me' && $method === 'DELETE') {
                 $this->deleteAccount($user); return;
             }
@@ -773,10 +779,11 @@ final class App
             $entitlementData['quota_bytes'] = (int)$entitlementData['quota_bytes'];
             $entitlementData['used_bytes'] = (int)$entitlementData['used_bytes'];
         }
+        $preferences = $this->accountPreferences($user);
         $balance = $this->db->prepare('SELECT balance FROM credit_accounts WHERE user_id=?');
         $balance->execute([$user]);
         $payload = ['format' => 'hotice-account-export-v1', 'exportedAt' => gmdate('Y-m-d\TH:i:s\Z'),
-            'account' => $account, 'cloudEntitlement' => $entitlementData,
+            'account' => $account, 'preferences' => $preferences, 'cloudEntitlement' => $entitlementData,
             'simulatedCreditBalance' => ($value = $balance->fetchColumn()) === false ? null : (int)$value,
             'cloudProjects' => $projectRows, 'cloudMediaMetadata' => $files,
             'generationJobs' => $jobRows, 'simulatedCreditLedger' => $ledgerRows,
@@ -788,6 +795,44 @@ final class App
         header('Content-Disposition: attachment; filename="hotice-account-export.json"');
         http_response_code(200);
         echo $json;
+    }
+
+    /** Return the current account's supported cross-client presentation settings. */
+    private function accountPreferences(string $user): array
+    {
+        $query = $this->db->prepare('SELECT theme_mode,accent,font,updated_at FROM user_preferences WHERE user_id=?');
+        $query->execute([$user]);
+        $row = $query->fetch();
+        if (!$row) return ['themeMode' => 'dark', 'accent' => 'electric', 'font' => 'modern'];
+        return ['themeMode' => $row['theme_mode'], 'accent' => $row['accent'],
+            'font' => $row['font'], 'updatedAt' => $row['updated_at']];
+    }
+
+    private function getPreferences(string $user): void
+    {
+        $this->send(200, ['preferences' => $this->accountPreferences($user)]);
+    }
+
+    private function putPreferences(string $user): void
+    {
+        $body = Support::jsonInput(4096);
+        $allowed = ['themeMode', 'accent', 'font'];
+        if (array_diff(array_keys($body), $allowed) !== [] || array_diff($allowed, array_keys($body)) !== []) {
+            throw new ApiError(422, 'Provide exactly themeMode, accent and font preferences.');
+        }
+        $allowedValues = [
+            'themeMode' => ['system', 'light', 'dark'],
+            'accent' => ['electric', 'ocean', 'ember', 'glacier', 'moss'],
+            'font' => ['modern', 'editorial', 'technical'],
+        ];
+        foreach ($allowedValues as $field => $values) {
+            if (!is_string($body[$field]) || !in_array($body[$field], $values, true)) {
+                throw new ApiError(422, 'One or more account preferences are unsupported.');
+            }
+        }
+        $this->db->prepare('INSERT INTO user_preferences(user_id,theme_mode,accent,font) VALUES(?,?,?,?) ON DUPLICATE KEY UPDATE theme_mode=VALUES(theme_mode),accent=VALUES(accent),font=VALUES(font)')
+            ->execute([$user, $body['themeMode'], $body['accent'], $body['font']]);
+        $this->send(200, ['preferences' => $this->accountPreferences($user)]);
     }
 
     /** Permanently remove a user's account and queue private bytes for retryable purge. */

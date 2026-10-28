@@ -20,6 +20,14 @@ token=$(curl -fsS -H 'Content-Type: application/json' -d "{\"email\":\"$EMAIL\",
 other_token=$(curl -fsS -H 'Content-Type: application/json' -d "{\"email\":\"$OTHER\",\"password\":\"$OTHER_PASS\"}" "$BASE/v1/auth/login" | jq -er '.accessToken')
 echo '[account-lifecycle-test] isolated sign-ins passed'
 AUTH="Authorization: Bearer $token"
+curl -fsS -H "$AUTH" "$BASE/v1/me/preferences" | jq -e '.preferences.themeMode == "dark" and .preferences.accent == "electric" and .preferences.font == "modern"' >/dev/null
+curl -fsS -X PUT -H "$AUTH" -H 'Content-Type: application/json' \
+  -d '{"themeMode":"system","accent":"ocean","font":"editorial"}' \
+  "$BASE/v1/me/preferences" | jq -e '.preferences.themeMode == "system" and .preferences.accent == "ocean" and .preferences.font == "editorial"' >/dev/null
+test "$(curl -sS -o /dev/null -w '%{http_code}' -X PUT -H "$AUTH" -H 'Content-Type: application/json' \
+  -d '{"themeMode":"system","accent":"provider-secret","font":"editorial"}' "$BASE/v1/me/preferences")" = '422'
+curl -fsS -H "Authorization: Bearer $other_token" "$BASE/v1/me/preferences" | jq -e '.preferences.themeMode == "dark" and .preferences.accent == "electric" and .preferences.font == "modern"' >/dev/null
+echo '[account-lifecycle-test] preference defaults, account isolation and validation passed'
 project=$(php -r 'require "backend/src/Support.php"; echo Hotice\Support::uuid();')
 file=$(php -r 'require "backend/src/Support.php"; echo Hotice\Support::uuid();')
 curl -fsS -X PUT -H "$AUTH" -H 'Content-Type: application/json' \
@@ -44,7 +52,7 @@ $db->prepare("INSERT INTO email_outbox(id,recipient,subject,available_at,expires
 storage_name=$(php -r 'require_once "backend/src/App.php"; $c=require "backend/config.php"; $db=(new Hotice\App($c))->database(); $q=$db->prepare("SELECT storage_name FROM cloud_files WHERE id=?"); $q->execute([$argv[1]]); echo $q->fetchColumn();' "$file")
 test -n "$storage_name"
 export_json=$(curl -fsS -H "$AUTH" "$BASE/v1/me/export")
-echo "$export_json" | jq -e '.format == "hotice-account-export-v1" and .account.email == "account-delete@example.test" and .cloudProjects[0].title == "Private deletion fixture" and .generationJobs[0].request.simulate == "success" and .simulatedCreditLedger[0].delta == 10 and .includedMediaBytes == false' >/dev/null
+echo "$export_json" | jq -e '.format == "hotice-account-export-v1" and .account.email == "account-delete@example.test" and .preferences.themeMode == "system" and .preferences.accent == "ocean" and .preferences.font == "editorial" and .cloudProjects[0].title == "Private deletion fixture" and .generationJobs[0].request.simulate == "success" and .simulatedCreditLedger[0].delta == 10 and .includedMediaBytes == false' >/dev/null
 ! echo "$export_json" | jq -e 'has("password_hash") or has("passwordHash") or (.cloudMediaMetadata[]? | has("storage_name"))' >/dev/null
 outsider_export=$(curl -fsS -H "Authorization: Bearer $other_token" "$BASE/v1/me/export")
 echo "$outsider_export" | jq -e '(.cloudProjects | length) == 0 and (.generationJobs | length) == 0' >/dev/null
