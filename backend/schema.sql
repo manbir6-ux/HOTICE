@@ -111,6 +111,30 @@ CREATE TABLE IF NOT EXISTS generation_jobs (
   CONSTRAINT fk_job_quote FOREIGN KEY (quote_id) REFERENCES job_quotes(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- Durable attempt ledger for provider lifecycle work. The current worker only
+-- writes mock attempts; this table alone does not enable live provider calls.
+CREATE TABLE IF NOT EXISTS provider_attempts (
+  id CHAR(36) CHARACTER SET ascii COLLATE ascii_bin NOT NULL PRIMARY KEY,
+  job_id CHAR(36) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  attempt_number TINYINT UNSIGNED NOT NULL,
+  provider_id VARCHAR(32) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  model_id VARCHAR(80) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  operation_key CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  request_sha256 CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  status ENUM('prepared','dispatching','accepted','unknown','succeeded','retryable_rejected','failed','cancelled') NOT NULL,
+  remote_operation_id VARCHAR(160) CHARACTER SET ascii COLLATE ascii_bin NULL,
+  error_code VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NULL,
+  lease_token CHAR(32) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  finished_at DATETIME NULL,
+  UNIQUE KEY uq_provider_attempt_number (job_id, attempt_number),
+  UNIQUE KEY uq_provider_operation_key (operation_key),
+  KEY ix_provider_attempt_state (status, updated_at),
+  KEY ix_provider_remote_operation (provider_id, remote_operation_id),
+  CONSTRAINT fk_provider_attempt_job FOREIGN KEY (job_id) REFERENCES generation_jobs(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS credit_ledger (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
   user_id CHAR(36) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
