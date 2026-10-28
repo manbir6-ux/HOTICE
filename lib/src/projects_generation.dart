@@ -5,6 +5,7 @@ import 'state.dart';
 import 'video_models.dart';
 import 'model_compatibility_page.dart';
 import 'model_registry.dart';
+import 'api_model_preview_panel.dart';
 import 'avatar_identity.dart';
 import 'design.dart';
 import 'dialogs.dart';
@@ -516,6 +517,7 @@ class _GenerationPageState extends State<GenerationPage> {
               .where((entry) => entry.status != AiStatus.retired)
               .length.toString() + ' real API model research profiles'),
           ),
+          ApiVideoPreviewPanel(prompt: prompt.text),
           const SizedBox(height: 6),
           const Text(
             'Production model controls are separate from this offline demo. '
