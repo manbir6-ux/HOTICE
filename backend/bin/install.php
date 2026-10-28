@@ -21,11 +21,33 @@ try {
     chmod($folder, 0700);
     $schema = file_get_contents(dirname(__DIR__) . '/schema.sql');
     if ($schema === false) throw new \RuntimeException('Schema file missing.');
+    $statementNumber = 0;
     foreach (explode(';', $schema) as $sql) {
-        if (trim($sql) !== '') $app->database()->exec($sql);
+        if (trim($sql) === '') continue;
+        $statementNumber++;
+        try {
+            $app->database()->exec($sql);
+        } catch (\PDOException $e) {
+            throw new \RuntimeException('Schema statement #' . $statementNumber . ' failed.', 0, $e);
+        }
     }
     echo "HOTICE tables installed; private media directory verified.\n";
 } catch (\Throwable $e) {
-    fwrite(STDERR, 'Installation failed; check PHP extensions, database permissions and file paths. ' . get_class($e) . "\n");
+    $detail = '';
+    $cause = $e;
+    while ($cause->getPrevious() !== null) $cause = $cause->getPrevious();
+    if ($cause instanceof \PDOException) {
+        $info = is_array($cause->errorInfo ?? null) ? $cause->errorInfo : [];
+        $state = (string) ($info[0] ?? $cause->getCode());
+        $driverCode = $info[1] ?? null;
+        if (preg_match('/^[A-Z0-9]{5}$/iD', $state)) $detail .= ' SQLSTATE ' . $state;
+        if (is_int($driverCode) || (is_string($driverCode) && ctype_digit($driverCode))) {
+            $detail .= ' driver code ' . $driverCode;
+        }
+    }
+    $statement = $e->getPrevious() instanceof \PDOException && preg_match('/^Schema statement #[0-9]+ failed\.$/D', $e->getMessage())
+        ? ' ' . $e->getMessage()
+        : '';
+    fwrite(STDERR, 'Installation failed; check PHP extensions, database permissions and file paths. ' . get_class($cause) . $statement . $detail . "\n");
     exit(1);
 }
