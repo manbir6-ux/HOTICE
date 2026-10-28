@@ -16,9 +16,9 @@ class BackendAuthException implements Exception {
 }
 
 class BackendGenerationJob {
-  const BackendGenerationJob({required this.id, required this.status, required this.attempts,
-    required this.maxAttempts, required this.reservedCredits, required this.chargedCredits,
-    this.errorCode, this.message});
+  const BackendGenerationJob({required this.id, required this.status,
+    required this.attempts, required this.maxAttempts, required this.reservedCredits,
+    required this.chargedCredits, this.errorCode, this.message});
   final String id;
   final String status;
   final int attempts;
@@ -29,18 +29,21 @@ class BackendGenerationJob {
   final String? message;
 
   factory BackendGenerationJob.fromJson(Object? value) {
-    if (value is! Map<String, dynamic> || value['id'] is! String || value['status'] is! String) {
+    if (value is! Map<String, dynamic> ||
+        value['id'] is! String || value['status'] is! String) {
       throw const BackendAuthException('The HOTICE server returned an invalid job.');
     }
     final result = value['result'];
     return BackendGenerationJob(
-      id: value['id'] as String, status: value['status'] as String,
+      id: value['id'] as String,
+      status: value['status'] as String,
       attempts: value['attempts'] is int ? value['attempts'] as int : 0,
       maxAttempts: value['maxAttempts'] is int ? value['maxAttempts'] as int : 0,
       reservedCredits: value['reservedCredits'] is int ? value['reservedCredits'] as int : 0,
       chargedCredits: value['chargedCredits'] is int ? value['chargedCredits'] as int : 0,
       errorCode: value['errorCode'] is String ? value['errorCode'] as String : null,
-      message: result is Map<String, dynamic> && result['message'] is String ? result['message'] as String : null,
+      message: result is Map<String, dynamic> && result['message'] is String
+          ? result['message'] as String : null,
     );
   }
 }
@@ -194,7 +197,59 @@ class BackendAuthClient {
   ) async {
     final normalized = prompt.trim();
     if (normalized.isEmpty || normalized.length > 2000 ||
-        !RegExp(r'^[A-Za-z0-9._~:-]{16,128}
+        !RegExp(r'^[A-Za-z0-9._~:-]{16,128}$').hasMatch(idempotencyKey)) {
+      throw const BackendAuthException('Enter a prompt and retry the server dry run.');
+    }
+    final token = await _tokenStore.read();
+    if (token == null) {
+      throw const BackendAuthException('Sign in to the HOTICE server first.');
+    }
+    final requestBody = <String, Object?>{
+      'modelId': 'hotice.mock.video.v1',
+      'prompt': normalized,
+      'simulate': 'success',
+    };
+    final quoteResponse = await _send('POST', 'v1/jobs/quote', token: token,
+        jsonBody: {'request': requestBody});
+    _checkSuccess(quoteResponse, 'The server could not prepare a dry-run quote.');
+    final quote = _decodeObject(quoteResponse)['quoteToken'];
+    if (quote is! String || quote.isEmpty || quote.length > 4096) {
+      throw const BackendAuthException('The HOTICE server returned an invalid quote.');
+    }
+    final response = await _send('POST', 'v1/jobs', token: token,
+        jsonBody: {'quoteToken': quote, 'request': requestBody},
+        extraHeaders: {'Idempotency-Key': idempotencyKey});
+    _checkSuccess(response, 'The HOTICE server could not queue this dry run.');
+    return BackendGenerationJob.fromJson(_decodeObject(response)['job']);
+  }
+
+  Future<BackendGenerationJob> getMockVideoJob(String jobId) async {
+    if (!RegExp(r'^[a-f0-9-]{36}$').hasMatch(jobId)) {
+      throw const BackendAuthException('The job reference is invalid.');
+    }
+    final token = await _tokenStore.read();
+    if (token == null) {
+      throw const BackendAuthException('Sign in to the HOTICE server first.');
+    }
+    final response = await _send('GET', 'v1/jobs/$jobId', token: token);
+    _checkSuccess(response, 'The HOTICE server could not load this job.');
+    return BackendGenerationJob.fromJson(_decodeObject(response)['job']);
+  }
+
+  Future<BackendGenerationJob> cancelMockVideoJob(String jobId) async {
+    if (!RegExp(r'^[a-f0-9-]{36}$').hasMatch(jobId)) {
+      throw const BackendAuthException('The job reference is invalid.');
+    }
+    final token = await _tokenStore.read();
+    if (token == null) {
+      throw const BackendAuthException('Sign in to the HOTICE server first.');
+    }
+    final response = await _send('POST', 'v1/jobs/$jobId/cancel', token: token);
+    _checkSuccess(response, 'The HOTICE server could not cancel this job.');
+    return BackendGenerationJob.fromJson(_decodeObject(response)['job']);
+  }
+
+  Future<void> signOut() async {
     final token = await _tokenStore.read();
     if (token == null) return;
     try {
@@ -247,296 +302,6 @@ class BackendAuthClient {
     }
     if (token != null) request.headers['Authorization'] = 'Bearer $token';
     if (extraHeaders != null) request.headers.addAll(extraHeaders);
-    try {
-      final streamed = await _client.send(request).timeout(const Duration(seconds: 20));
-      return await http.Response.fromStream(streamed).timeout(const Duration(seconds: 20));
-    } on Exception {
-      throw const BackendAuthException('Could not reach the HOTICE server.');
-    }
-  }
-
-  void _checkSuccess(http.Response response, String failureMessage) {
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw BackendAuthException(
-        response.statusCode == 401 || response.statusCode == 403
-            ? failureMessage
-            : 'The HOTICE server is unavailable. Try again later.',
-        statusCode: response.statusCode,
-      );
-    }
-  }
-
-  Map<String, dynamic> _decodeObject(http.Response response) {
-    try {
-      final value = jsonDecode(response.body);
-      if (value is Map<String, dynamic>) return value;
-    } on FormatException {
-      // Use one safe error below; never surface raw server response text.
-    }
-    throw const BackendAuthException('The HOTICE server returned an invalid response.');
-  }
-
-  void close() => _client.close();
-}
-).hasMatch(idempotencyKey)) {
-      throw const BackendAuthException('Enter a prompt and retry the server dry run.');
-    }
-    final token = await _tokenStore.read();
-    if (token == null) throw const BackendAuthException('Sign in to the HOTICE server first.');
-    final requestBody = <String, Object?>{
-      'modelId': 'hotice.mock.video.v1', 'prompt': normalized, 'simulate': 'success',
-    };
-    final quoteResponse = await _send('POST', 'v1/jobs/quote', token: token,
-      jsonBody: {'request': requestBody});
-    _checkSuccess(quoteResponse, 'The server could not prepare a dry-run quote.');
-    final quote = _decodeObject(quoteResponse)['quoteToken'];
-    if (quote is! String || quote.isEmpty || quote.length > 4096) {
-      throw const BackendAuthException('The HOTICE server returned an invalid quote.');
-    }
-    final response = await _send('POST', 'v1/jobs', token: token,
-      jsonBody: {'quoteToken': quote, 'request': requestBody},
-      extraHeaders: {'Idempotency-Key': idempotencyKey});
-    _checkSuccess(response, 'The HOTICE server could not queue this dry run.');
-    return BackendGenerationJob.fromJson(_decodeObject(response)['job']);
-  }
-
-  Future<BackendGenerationJob> getMockVideoJob(String jobId) async {
-    if (!RegExp(r'^[a-f0-9-]{36}
-    final token = await _tokenStore.read();
-    if (token == null) return;
-    try {
-      final response = await _send('POST', 'v1/auth/logout', token: token);
-      _checkSuccess(response, 'The server could not revoke this session.');
-    } finally {
-      // Remove the local bearer token even when offline. The server-side
-      // session then expires under its configured short TTL.
-      await _tokenStore.delete();
-    }
-  }
-
-  Future<BackendUser> _loadUser(String token) async {
-    final response = await _send('GET', 'v1/me', token: token);
-    _checkSuccess(response, 'Your HOTICE session is no longer valid.');
-    final body = _decodeObject(response);
-    final user = body['user'];
-    if (user is! Map<String, dynamic> ||
-        user['id'] is! String ||
-        user['email'] is! String) {
-      throw const BackendAuthException('The HOTICE server returned an invalid account.');
-    }
-    return BackendUser(
-      id: user['id'] as String,
-      email: (user['email'] as String).trim().toLowerCase(),
-    );
-  }
-
-  Future<void> _revokeBestEffort(String token) async {
-    try {
-      await _send('POST', 'v1/auth/logout', token: token);
-    } catch (_) {
-      // Never replace the original verification/storage error.
-    }
-  }
-
-  Future<http.Response> _send(
-    String method,
-    String path, {
-    String? token,
-    Map<String, Object?>? jsonBody,
-  }) async {
-    final request = http.Request(method, _endpoint(path))
-      ..followRedirects = false
-      ..headers['Accept'] = 'application/json';
-    if (jsonBody != null) {
-      request.headers['Content-Type'] = 'application/json';
-      request.body = jsonEncode(jsonBody);
-    }
-    if (token != null) request.headers['Authorization'] = 'Bearer $token';
-    try {
-      final streamed = await _client.send(request).timeout(const Duration(seconds: 20));
-      return await http.Response.fromStream(streamed).timeout(const Duration(seconds: 20));
-    } on Exception {
-      throw const BackendAuthException('Could not reach the HOTICE server.');
-    }
-  }
-
-  void _checkSuccess(http.Response response, String failureMessage) {
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw BackendAuthException(
-        response.statusCode == 401 || response.statusCode == 403
-            ? failureMessage
-            : 'The HOTICE server is unavailable. Try again later.',
-        statusCode: response.statusCode,
-      );
-    }
-  }
-
-  Map<String, dynamic> _decodeObject(http.Response response) {
-    try {
-      final value = jsonDecode(response.body);
-      if (value is Map<String, dynamic>) return value;
-    } on FormatException {
-      // Use one safe error below; never surface raw server response text.
-    }
-    throw const BackendAuthException('The HOTICE server returned an invalid response.');
-  }
-
-  void close() => _client.close();
-}
-).hasMatch(jobId)) {
-      throw const BackendAuthException('The job reference is invalid.');
-    }
-    final token = await _tokenStore.read();
-    if (token == null) throw const BackendAuthException('Sign in to the HOTICE server first.');
-    final response = await _send('GET', 'v1/jobs/$jobId', token: token);
-    _checkSuccess(response, 'The HOTICE server could not load this job.');
-    return BackendGenerationJob.fromJson(_decodeObject(response)['job']);
-  }
-
-  Future<BackendGenerationJob> cancelMockVideoJob(String jobId) async {
-    if (!RegExp(r'^[a-f0-9-]{36}
-    final token = await _tokenStore.read();
-    if (token == null) return;
-    try {
-      final response = await _send('POST', 'v1/auth/logout', token: token);
-      _checkSuccess(response, 'The server could not revoke this session.');
-    } finally {
-      // Remove the local bearer token even when offline. The server-side
-      // session then expires under its configured short TTL.
-      await _tokenStore.delete();
-    }
-  }
-
-  Future<BackendUser> _loadUser(String token) async {
-    final response = await _send('GET', 'v1/me', token: token);
-    _checkSuccess(response, 'Your HOTICE session is no longer valid.');
-    final body = _decodeObject(response);
-    final user = body['user'];
-    if (user is! Map<String, dynamic> ||
-        user['id'] is! String ||
-        user['email'] is! String) {
-      throw const BackendAuthException('The HOTICE server returned an invalid account.');
-    }
-    return BackendUser(
-      id: user['id'] as String,
-      email: (user['email'] as String).trim().toLowerCase(),
-    );
-  }
-
-  Future<void> _revokeBestEffort(String token) async {
-    try {
-      await _send('POST', 'v1/auth/logout', token: token);
-    } catch (_) {
-      // Never replace the original verification/storage error.
-    }
-  }
-
-  Future<http.Response> _send(
-    String method,
-    String path, {
-    String? token,
-    Map<String, Object?>? jsonBody,
-  }) async {
-    final request = http.Request(method, _endpoint(path))
-      ..followRedirects = false
-      ..headers['Accept'] = 'application/json';
-    if (jsonBody != null) {
-      request.headers['Content-Type'] = 'application/json';
-      request.body = jsonEncode(jsonBody);
-    }
-    if (token != null) request.headers['Authorization'] = 'Bearer $token';
-    try {
-      final streamed = await _client.send(request).timeout(const Duration(seconds: 20));
-      return await http.Response.fromStream(streamed).timeout(const Duration(seconds: 20));
-    } on Exception {
-      throw const BackendAuthException('Could not reach the HOTICE server.');
-    }
-  }
-
-  void _checkSuccess(http.Response response, String failureMessage) {
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw BackendAuthException(
-        response.statusCode == 401 || response.statusCode == 403
-            ? failureMessage
-            : 'The HOTICE server is unavailable. Try again later.',
-        statusCode: response.statusCode,
-      );
-    }
-  }
-
-  Map<String, dynamic> _decodeObject(http.Response response) {
-    try {
-      final value = jsonDecode(response.body);
-      if (value is Map<String, dynamic>) return value;
-    } on FormatException {
-      // Use one safe error below; never surface raw server response text.
-    }
-    throw const BackendAuthException('The HOTICE server returned an invalid response.');
-  }
-
-  void close() => _client.close();
-}
-).hasMatch(jobId)) {
-      throw const BackendAuthException('The job reference is invalid.');
-    }
-    final token = await _tokenStore.read();
-    if (token == null) throw const BackendAuthException('Sign in to the HOTICE server first.');
-    final response = await _send('POST', 'v1/jobs/$jobId/cancel', token: token);
-    _checkSuccess(response, 'The HOTICE server could not cancel this job.');
-    return BackendGenerationJob.fromJson(_decodeObject(response)['job']);
-  }
-
-  Future<void> signOut() async {
-    final token = await _tokenStore.read();
-    if (token == null) return;
-    try {
-      final response = await _send('POST', 'v1/auth/logout', token: token);
-      _checkSuccess(response, 'The server could not revoke this session.');
-    } finally {
-      // Remove the local bearer token even when offline. The server-side
-      // session then expires under its configured short TTL.
-      await _tokenStore.delete();
-    }
-  }
-
-  Future<BackendUser> _loadUser(String token) async {
-    final response = await _send('GET', 'v1/me', token: token);
-    _checkSuccess(response, 'Your HOTICE session is no longer valid.');
-    final body = _decodeObject(response);
-    final user = body['user'];
-    if (user is! Map<String, dynamic> ||
-        user['id'] is! String ||
-        user['email'] is! String) {
-      throw const BackendAuthException('The HOTICE server returned an invalid account.');
-    }
-    return BackendUser(
-      id: user['id'] as String,
-      email: (user['email'] as String).trim().toLowerCase(),
-    );
-  }
-
-  Future<void> _revokeBestEffort(String token) async {
-    try {
-      await _send('POST', 'v1/auth/logout', token: token);
-    } catch (_) {
-      // Never replace the original verification/storage error.
-    }
-  }
-
-  Future<http.Response> _send(
-    String method,
-    String path, {
-    String? token,
-    Map<String, Object?>? jsonBody,
-  }) async {
-    final request = http.Request(method, _endpoint(path))
-      ..followRedirects = false
-      ..headers['Accept'] = 'application/json';
-    if (jsonBody != null) {
-      request.headers['Content-Type'] = 'application/json';
-      request.body = jsonEncode(jsonBody);
-    }
-    if (token != null) request.headers['Authorization'] = 'Bearer $token';
     try {
       final streamed = await _client.send(request).timeout(const Duration(seconds: 20));
       return await http.Response.fromStream(streamed).timeout(const Duration(seconds: 20));
