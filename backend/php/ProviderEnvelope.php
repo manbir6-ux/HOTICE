@@ -42,18 +42,18 @@ final class ProviderEnvelope
         $ratio = $intent['ratio'] ?? null;
         $resolution = $intent['resolution'] ?? null;
         $seconds = $intent['seconds'] ?? null;
-        if (!is_string($ratio) || !is_string($resolution) || !is_int($seconds)) {
+        if (!is_string($ratio) || !is_string($resolution)) {
             throw new InvalidArgumentException('Missing validated video fields.');
         }
         if ($profile === 'google/omni-1.1:text-video') {
             if (!in_array($ratio, ['16:9', '9:16'], true) ||
                 !in_array($resolution, ['360p', '720p', '1080p', '4k'], true) ||
-                $seconds < 3 || $seconds > 10) {
+                $seconds !== null) {
                 throw new InvalidArgumentException('Invalid Gemini Omni settings.');
             }
-            // The current REST guide does NOT document an exact duration
-            // request field. We do not invent one. A back-end probe must
-            // confirm effective output length and corresponding pricing.
+            // Do not silently ignore a requested duration. Omni's REST
+            // guide gives an output range but no exact duration parameter.
+            // Only AUTO length is accepted until an exact input is verified.
             return [
                 'method' => 'POST',
                 'host' => 'https://generativelanguage.googleapis.com',
@@ -73,7 +73,8 @@ final class ProviderEnvelope
         }
         if ($profile === 'runway/gen4.5:text-video') {
             if (!in_array($ratio, ['1280:720', '720:1280'], true) ||
-                $resolution !== '720p' || $seconds < 2 || $seconds > 10) {
+                $resolution !== '720p' || !is_int($seconds) ||
+                $seconds < 2 || $seconds > 10) {
                 throw new InvalidArgumentException('Invalid Runway Gen-4.5 settings.');
             }
             return [
