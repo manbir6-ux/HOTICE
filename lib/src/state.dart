@@ -349,6 +349,204 @@ class HotIceStore extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Versioned on-device snapshot. Includes project/storyboard/Actor text but
+  /// never API keys, access tokens, cloud subscriptions, or raw camera scans.
+  /// The caller encrypts this whole value before it reaches disk.
+  Map<String, dynamic> exportLocalSnapshot() => {
+        'schema': 1,
+        'selectedAccount': selectedAccount,
+        'theme': themeMode.name,
+        'accent': accent.name,
+        'font': font.name,
+        'workspaces': {
+          for (final item in _workspaces.entries)
+            item.key: {
+              'projects': [
+                for (final p in item.value.projects)
+                  {
+                    'id': p.id,
+                    'title': p.title,
+                    'createdAt': p.createdAt.toIso8601String(),
+                  }
+              ],
+              'avatars': [
+                for (final a in item.value.avatars)
+                  {
+                    'name': a.name,
+                    'style': a.style,
+                    'identityNotes': a.identityNotes,
+                  }
+              ],
+              'drafts': [
+                for (final d in item.value.drafts)
+                  {
+                    'projectId': d.projectId,
+                    'project': d.project,
+                    'prompt': d.prompt,
+                    'model': d.model,
+                    'modelId': d.modelId,
+                    'aspectRatio': d.aspectRatio,
+                    'durationSeconds': d.durationSeconds,
+                    'avatarName': d.avatarName,
+                    'createdAt': d.createdAt.toIso8601String(),
+                    'requestedAttachments': [
+                      for (final a in d.requestedAttachments) a.name,
+                    ],
+                  }
+              ],
+              'musicPlans': [
+                for (final m in item.value.musicPlans)
+                  {
+                    'projectId': m.projectId,
+                    'storyBrief': m.storyBrief,
+                    'visualStyle': m.visualStyle,
+                    'avatarName': m.avatarName,
+                    'createdAt': m.createdAt.toIso8601String(),
+                    'shots': [
+                      for (final shot in m.shots)
+                        {
+                          'title': shot.title,
+                          'description': shot.description,
+                          'estimatedSeconds': shot.estimatedSeconds,
+                        },
+                    ],
+                  },
+              ],
+            }
+        }
+      };
+
+  /// Called only after AES-GCM authentication succeeds. Never restores a fake
+  /// signed-in session; real account authentication is server-side only.
+  void restoreLocalSnapshot(Map<String, dynamic> data) {
+    if (data['schema'] != 1 || data['workspaces'] is! Map) {
+      throw const FormatException('Unsupported HOTICE local project snapshot.');
+    }
+
+    Iterable<Map<String, dynamic>> rows(Object? value) sync* {
+      if (value is! List) return;
+      for (final row in value) {
+        if (row is Map<String, dynamic>) yield row;
+      }
+    }
+
+    DateTime stamp(Object? value) =>
+        DateTime.tryParse(value is String ? value : '') ?? DateTime.now();
+
+    final replacement = <String, _DemoWorkspace>{};
+    final sources = data['workspaces'] as Map;
+    if (sources.length > 30) {
+      throw const FormatException('Too many local demo workspaces.');
+    }
+    for (final entry in sources.entries) {
+      if (entry.key is! String || !isValidDemoEmail(entry.key as String) ||
+          entry.value is! Map<String, dynamic>) {
+        continue;
+      }
+      final email = (entry.key as String).toLowerCase();
+      final item = entry.value as Map<String, dynamic>;
+      final target = _DemoWorkspace();
+
+      for (final p in rows(item['projects']).take(500)) {
+        final id = p['id'];
+        final title = p['title'];
+        if (id is! String || id.isEmpty || title is! String ||
+            title.trim().isEmpty) continue;
+        if (target.projects.any((x) => x.id == id)) continue;
+        target.projects.add(HotProject(id, title, stamp(p['createdAt'])));
+      }
+      for (final a in rows(item['avatars']).take(100)) {
+        final name = a['name'];
+        final style = a['style'];
+        if (name is! String || name.trim().isEmpty || style is! String) continue;
+        if (target.avatars.any((x) => x.name.toLowerCase() == name.toLowerCase())) continue;
+        target.avatars.add(StudioAvatar(
+          name, style,
+          identityNotes: a['identityNotes'] is String
+              ? a['identityNotes'] as String : '',
+        ));
+      }
+      for (final d in rows(item['drafts']).take(1000)) {
+        final projectId = d['projectId'];
+        if (projectId is! String ||
+            !target.projects.any((p) => p.id == projectId)) continue;
+        final attachments = <VideoAttachment>[];
+        for (final a in (d['requestedAttachments'] is List
+            ? d['requestedAttachments'] as List : const [])) {
+          for (final v in VideoAttachment.values) {
+            if (v.name == a && !attachments.contains(v)) attachments.add(v);
+          }
+        }
+        final projectTitle = target.projects.firstWhere((p) => p.id == projectId).title;
+        target.drafts.add(GenerationDraft(
+          projectId: projectId,
+          project: projectTitle,
+          prompt: d['prompt'] is String ? d['prompt'] as String : '',
+          model: d['model'] is String ? d['model'] as String : '',
+          modelId: d['modelId'] is String ? d['modelId'] as String : '',
+          aspectRatio: d['aspectRatio'] is String ? d['aspectRatio'] as String : '16:9',
+          durationSeconds: d['durationSeconds'] is int
+              ? d['durationSeconds'] as int : 8,
+          avatarName: d['avatarName'] is String ? d['avatarName'] as String : 'None',
+          createdAt: stamp(d['createdAt']),
+          requestedAttachments: List<VideoAttachment>.unmodifiable(attachments),
+        ));
+      }
+      for (final m in rows(item['musicPlans']).take(500)) {
+        final projectId = m['projectId'];
+        if (projectId is! String ||
+            !target.projects.any((p) => p.id == projectId)) continue;
+        final shots = <StoryboardShot>[];
+        for (final sh in rows(m['shots']).take(250)) {
+          final duration = sh['estimatedSeconds'];
+          final description = sh['description'];
+          if (duration is! int || duration <= 0 || duration > 600 ||
+              description is! String || description.trim().isEmpty) continue;
+          shots.add(StoryboardShot(
+            sh['title'] is String ? sh['title'] as String : 'Shot',
+            description, duration,
+          ));
+        }
+        if (shots.isEmpty) continue;
+        target.musicPlans.add(MusicVideoPlan(
+          projectId: projectId,
+          storyBrief: m['storyBrief'] is String ? m['storyBrief'] as String : '',
+          visualStyle: m['visualStyle'] is String ? m['visualStyle'] as String
+              : 'Cinematic realism',
+          avatarName: m['avatarName'] is String ? m['avatarName'] as String : 'None',
+          createdAt: stamp(m['createdAt']),
+          shots: List<StoryboardShot>.unmodifiable(shots),
+        ));
+      }
+      replacement[email] = target;
+    }
+    if (replacement.isEmpty) {
+      throw const FormatException('Encrypted local archive has no valid workspaces.');
+    }
+    _workspaces
+      ..clear()
+      ..addAll(replacement);
+    accounts
+      ..clear()
+      ..addAll(replacement.keys);
+    final requested = data['selectedAccount'];
+    selectedAccount = requested is String &&
+            replacement.containsKey(requested.toLowerCase())
+        ? requested.toLowerCase()
+        : accounts.first;
+    themeMode = ThemeMode.values.firstWhere(
+      (m) => m.name == data['theme'], orElse: () => ThemeMode.dark,
+    );
+    accent = StudioAccent.values.firstWhere(
+      (a) => a.name == data['accent'], orElse: () => StudioAccent.electric,
+    );
+    font = StudioFont.values.firstWhere(
+      (f) => f.name == data['font'], orElse: () => StudioFont.modern,
+    );
+    signedIn = false;
+    notifyListeners();
+  }
+
   void updateTheme(ThemeMode value) {
     themeMode = value;
     notifyListeners();
