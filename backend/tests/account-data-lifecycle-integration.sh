@@ -63,13 +63,14 @@ echo "$delete_json" | jq -e '.deleted == true and .queuedMediaFiles == 1 and .ac
 echo '[account-lifecycle-test] account deletion and queued-media response passed'
 test "$(curl -sS -o /dev/null -w '%{http_code}' -H "$AUTH" "$BASE/v1/me")" = '401'
 test "$(curl -sS -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $other_token" "$BASE/v1/projects/$project")" = '404'
+echo '[account-lifecycle-test] token revocation and ownership isolation passed'
 php -r '
 require_once "backend/src/App.php"; $c=require "backend/config.php"; $db=(new Hotice\App($c))->database(); $user=$argv[1];
 foreach (["sessions","cloud_projects","cloud_files","generation_jobs","job_quotes","credit_ledger","credit_accounts","cloud_entitlements"] as $table) {
-  $q=$db->prepare("SELECT COUNT(*) FROM $table WHERE user_id=?"); $q->execute([$user]); if ((int)$q->fetchColumn()!==0) exit(1);
+  $q=$db->prepare("SELECT COUNT(*) FROM $table WHERE user_id=?"); $q->execute([$user]); $count=(int)$q->fetchColumn(); if ($count!==0) { fwrite(STDERR,"Residual rows in $table: $count\\n"); exit(1); }
 }
-$q=$db->prepare("SELECT COUNT(*) FROM users WHERE id=?"); $q->execute([$user]); if ((int)$q->fetchColumn()!==0) exit(1);
-$q=$db->prepare("SELECT COUNT(*) FROM email_outbox WHERE recipient=?"); $q->execute([$argv[2]]); if ((int)$q->fetchColumn()!==0) exit(1);
+$q=$db->prepare("SELECT COUNT(*) FROM users WHERE id=?"); $q->execute([$user]); if ((int)$q->fetchColumn()!==0) { fwrite(STDERR,"User row remains\\n"); exit(1); }
+$q=$db->prepare("SELECT COUNT(*) FROM email_outbox WHERE recipient=?"); $q->execute([$argv[2]]); if ((int)$q->fetchColumn()!==0) { fwrite(STDERR,"Email outbox row remains\\n"); exit(1); }
 ' "$user_id" "$EMAIL"
 echo '[account-lifecycle-test] relational and outbox rows removed'
 php backend/bin/purge-private-media.php 10 | jq -e '.retryableFailures == 1 and .purged == 0' >/dev/null
