@@ -25,11 +25,14 @@ EMAIL='mock-jobs@example.com'
 PASS='TemporaryMockPassword123!'
 OTHER='mock-outsider@example.com'
 OTHER_PASS='TemporaryOtherPassword123!'
-curl -fsS -H 'Content-Type: application/json' -d "{\"email\":\"$EMAIL\",\"password\":\"$PASS\"}" "$BASE/v1/auth/register" >/dev/null
-curl -fsS -H 'Content-Type: application/json' -d "{\"email\":\"$OTHER\",\"password\":\"$OTHER_PASS\"}" "$BASE/v1/auth/register" >/dev/null
+printf '%s\n' "$PASS" | php backend/bin/create-user.php "$EMAIL" >/dev/null 2>&1
+printf '%s\n' "$OTHER_PASS" | php backend/bin/create-user.php "$OTHER" >/dev/null 2>&1
+echo '[jobs-test] verified users provisioned'
 login=$(curl -fsS -H 'Content-Type: application/json' -d "{\"email\":\"$EMAIL\",\"password\":\"$PASS\"}" "$BASE/v1/auth/login")
+echo '[jobs-test] primary login succeeded'
 token=$(echo "$login" | jq -er '.accessToken')
 other_login=$(curl -fsS -H 'Content-Type: application/json' -d "{\"email\":\"$OTHER\",\"password\":\"$OTHER_PASS\"}" "$BASE/v1/auth/login")
+echo '[jobs-test] second login succeeded'
 other_token=$(echo "$other_login" | jq -er '.accessToken')
 AUTH="Authorization: Bearer $token"
 OTHER_AUTH="Authorization: Bearer $other_token"
@@ -39,11 +42,13 @@ php backend/bin/grant-mock-credits.php "$EMAIL" 100 'initial-test-credit-grant-0
 profile_headers=$(curl -sS -D - -o /dev/null -H "$AUTH" -H "Origin: $WEB_ORIGIN" "$BASE/v1/me")
 grep -Fqi "Access-Control-Allow-Origin: $WEB_ORIGIN" <<<"$profile_headers"
 test "$(curl -fsS -H "$AUTH" "$BASE/v1/me" | jq -er '.mockGeneration.credits')" = '100'
+echo '[jobs-test] simulated credits visible to account'
 
 request=$(jq -cn --arg p 'A blue sailboat at sunrise' '{modelId:"hotice.mock.video.v1",prompt:$p,simulate:"success"}')
 quote_body=$(jq -cn --argjson r "$request" '{request:$r}')
 quote_response=$(curl -sS -H "$AUTH" -H 'Content-Type: application/json' -d "$quote_body" "$BASE/v1/jobs/quote")
 quote=$(echo "$quote_response" | jq -er '.quoteToken') || { echo "Quote response: $quote_response"; cat /tmp/hotice-job-test.log; exit 1; }
+echo '[jobs-test] mock quote succeeded'
 body=$(jq -cn --arg q "$quote" --argjson r "$request" '{quoteToken:$q,request:$r}')
 key='mock-job-success-00000001'
 first=$(curl -sS -X POST -H "$AUTH" -H 'Content-Type: application/json' -H "Idempotency-Key: $key" -d "$body" "$BASE/v1/jobs")
