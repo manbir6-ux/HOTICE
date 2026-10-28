@@ -25,7 +25,9 @@ class _HotIceAppState extends State<HotIceApp> {
   final HotIceStore store = HotIceStore();
   late final AccountApi accountApi;
   AccountUser? accountUser;
-  bool accountSessionChecked = false;
+  // Show the public welcome screen immediately while checking secure storage.
+  // A verified saved session replaces it once `/v1/me` confirms the token.
+  bool accountSessionChecked = true;
   bool showLogin = false;
 
   late ThemeMode _lastThemeMode;
