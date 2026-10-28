@@ -199,6 +199,111 @@ class BackendAuthClient {
     return data;
   }
 
+  /// Read the allowlisted presentation preferences shared by HOTICE clients.
+  Future<Map<String, dynamic>> loadAccountPreferences() async {
+    final token = await _tokenStore.read();
+    if (token == null) {
+      throw const BackendAuthException(
+        'Sign in again to sync your account preferences.',
+        statusCode: 401,
+      );
+    }
+    final response = await _send('GET', 'v1/me/preferences', token: token);
+    if (response.statusCode == 401) {
+      await _tokenStore.delete();
+      throw const BackendAuthException(
+        'Your HOTICE session expired. Sign in again to sync preferences.',
+        statusCode: 401,
+      );
+    }
+    _checkSuccess(response, 'Sign in again to sync your account preferences.');
+    final body = _decodeObject(response);
+    return _validatedPreferences(body['preferences']);
+  }
+
+  /// Replace the complete supported preference set for the signed-in account.
+  Future<Map<String, dynamic>> saveAccountPreferences({
+    required String themeMode,
+    required String accent,
+    required String font,
+  }) async {
+    final request = <String, String>{
+      'themeMode': themeMode,
+      'accent': accent,
+      'font': font,
+    };
+    _validatePreferenceValues(request);
+    final token = await _tokenStore.read();
+    if (token == null) {
+      throw const BackendAuthException(
+        'Sign in again to sync your account preferences.',
+        statusCode: 401,
+      );
+    }
+    final response = await _send(
+      'PUT',
+      'v1/me/preferences',
+      token: token,
+      jsonBody: request,
+    );
+    if (response.statusCode == 401) {
+      await _tokenStore.delete();
+      throw const BackendAuthException(
+        'Your HOTICE session expired. Sign in again to sync preferences.',
+        statusCode: 401,
+      );
+    }
+    _checkSuccess(response, 'Could not sync your account preferences.');
+    final body = _decodeObject(response);
+    final preferences = _validatedPreferences(body['preferences']);
+    if (preferences['themeMode'] != themeMode ||
+        preferences['accent'] != accent || preferences['font'] != font) {
+      throw const BackendAuthException(
+        'The HOTICE server did not confirm your latest preferences.',
+      );
+    }
+    return preferences;
+  }
+
+  Map<String, dynamic> _validatedPreferences(Object? value) {
+    if (value is! Map<String, dynamic>) {
+      throw const BackendAuthException(
+        'The HOTICE server returned invalid account preferences.',
+      );
+    }
+    final preferences = <String, String>{
+      'themeMode': value['themeMode'] is String ? value['themeMode'] as String : '',
+      'accent': value['accent'] is String ? value['accent'] as String : '',
+      'font': value['font'] is String ? value['font'] as String : '',
+    };
+    _validatePreferenceValues(preferences);
+    final result = <String, dynamic>{...preferences};
+    if (value.containsKey('updatedAt')) {
+      if (value['updatedAt'] is! String) {
+        throw const BackendAuthException(
+          'The HOTICE server returned invalid account preferences.',
+        );
+      }
+      result['updatedAt'] = value['updatedAt'];
+    }
+    return result;
+  }
+
+  void _validatePreferenceValues(Map<String, String> values) {
+    const allowed = {
+      'themeMode': {'system', 'light', 'dark'},
+      'accent': {'electric', 'ocean', 'ember', 'glacier', 'moss'},
+      'font': {'modern', 'editorial', 'technical'},
+    };
+    for (final field in allowed.keys) {
+      if (!allowed[field]!.contains(values[field])) {
+        throw const BackendAuthException(
+          'One or more HOTICE account preferences are unsupported.',
+        );
+      }
+    }
+  }
+
   /// Delete the current server account, then erase the revoked local token.
   /// Transport errors keep the token so the next authenticated check can
   /// determine whether the server committed a request whose reply was lost.

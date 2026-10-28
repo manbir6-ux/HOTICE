@@ -22,6 +22,7 @@ Create a staging-only account on the server with `php backend/bin/create-user.ph
 - Startup validates a stored token with `/v1/me`. A revoked token is deleted; a network failure preserves it for a later sign-in attempt.
 - Sign-out calls `/v1/auth/logout`, removes the local token even when offline, and warns that server revocation could not be confirmed. The session then remains valid until its configured server expiry.
 - Authenticated users still work in a device-local workspace. This client does not upload projects, files, avatar references, or prompts to cloud storage; cloud sync remains a separate consent-based integration.
+- Signed-in appearance settings load from and save to the authenticated `/v1/me/preferences` API, so theme, accent, and typography follow the account across compatible clients. Network/server errors leave the current choices active and show that account sync did not complete; local project data is never uploaded by this feature.
 
 ## Account export and deletion
 

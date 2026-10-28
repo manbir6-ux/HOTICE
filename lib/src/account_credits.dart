@@ -151,9 +151,86 @@ class _CreditsPageState extends State<CreditsPage> {
   }
 }
 
-class SettingsPage extends StatelessWidget {
+class SettingsPage extends StatefulWidget {
   final HotIceStore store;
-  const SettingsPage({super.key, required this.store});
+  final Future<Map<String, dynamic>> Function()? onLoadAccountPreferences;
+  final Future<Map<String, dynamic>> Function({
+    required String themeMode,
+    required String accent,
+    required String font,
+  })? onSaveAccountPreferences;
+  const SettingsPage({
+    super.key,
+    required this.store,
+    this.onLoadAccountPreferences,
+    this.onSaveAccountPreferences,
+  });
+
+  @override
+  State<SettingsPage> createState() => _SettingsPageState();
+}
+
+class _SettingsPageState extends State<SettingsPage> {
+  bool _userChangedPreferences = false;
+  String? _syncStatus;
+  Future<void> _saveQueue = Future<void>.value();
+
+  @override
+  void initState() {
+    super.initState();
+    _loadAccountPreferences();
+  }
+
+  Future<void> _loadAccountPreferences() async {
+    final loader = widget.onLoadAccountPreferences;
+    if (!widget.store.backendAuthenticated || loader == null) return;
+    setState(() => _syncStatus = 'Loading account preferences…');
+    try {
+      final preferences = await loader();
+      if (!mounted || _userChangedPreferences) return;
+      widget.store
+        ..updateTheme(ThemeMode.values.byName(preferences['themeMode'] as String))
+        ..updateAccent(StudioAccent.values.byName(preferences['accent'] as String))
+        ..updateFont(StudioFont.values.byName(preferences['font'] as String));
+      setState(() => _syncStatus = 'Synced with your HOTICE account.');
+    } catch (failure) {
+      if (mounted) {
+        if (failure is BackendAuthException && failure.statusCode == 401) {
+          widget.store.signOut();
+        }
+        setState(() => _syncStatus =
+            'Account preference sync is unavailable. Your current choices remain active.');
+      }
+    }
+  }
+
+  void _preferenceChanged() {
+    _userChangedPreferences = true;
+    final saver = widget.onSaveAccountPreferences;
+    if (!widget.store.backendAuthenticated || saver == null) return;
+    setState(() => _syncStatus = 'Saving account preferences…');
+    _saveQueue = _saveQueue.then((_) async {
+      if (!mounted) return;
+      try {
+        await saver(
+          themeMode: widget.store.themeMode.name,
+          accent: widget.store.accent.name,
+          font: widget.store.font.name,
+        );
+        if (mounted) {
+          setState(() => _syncStatus = 'Synced with your HOTICE account.');
+        }
+      } catch (failure) {
+        if (mounted) {
+          if (failure is BackendAuthException && failure.statusCode == 401) {
+            widget.store.signOut();
+          }
+          setState(() => _syncStatus =
+              'Could not sync preferences. Your current choices remain active.');
+        }
+      }
+    });
+  }
 
   @override
   Widget build(BuildContext context) => PageFrame(
@@ -178,8 +255,11 @@ class SettingsPage extends StatelessWidget {
                   for (final mode in ThemeMode.values)
                     ChoiceChip(
                       label: Text(mode.name.toUpperCase()),
-                      selected: store.themeMode == mode,
-                      onSelected: (_) => store.updateTheme(mode),
+                      selected: widget.store.themeMode == mode,
+                      onSelected: (_) {
+                        widget.store.updateTheme(mode);
+                        _preferenceChanged();
+                      },
                     ),
                 ],
               ),
@@ -198,8 +278,11 @@ class SettingsPage extends StatelessWidget {
                         backgroundColor: option.color,
                       ),
                       label: Text(option.label),
-                      selected: store.accent == option,
-                      onSelected: (_) => store.updateAccent(option),
+                      selected: widget.store.accent == option,
+                      onSelected: (_) {
+                        widget.store.updateAccent(option);
+                        _preferenceChanged();
+                      },
                     ),
                 ],
               ),
@@ -213,15 +296,24 @@ class SettingsPage extends StatelessWidget {
                   for (final option in StudioFont.values)
                     ChoiceChip(
                       label: Text(option.label),
-                      selected: store.font == option,
-                      onSelected: (_) => store.updateFont(option),
+                      selected: widget.store.font == option,
+                      onSelected: (_) {
+                        widget.store.updateFont(option);
+                        _preferenceChanged();
+                      },
                     ),
                 ],
               ),
               const SizedBox(height: 21),
-              const DemoNotice(
-                'Theme preferences are held in memory. Persistence and cloud synchronisation come later.',
-              ),
+              if (_syncStatus != null)
+                Semantics(
+                  liveRegion: true,
+                  child: Text(_syncStatus!),
+                )
+              else if (!widget.store.backendAuthenticated)
+                const DemoNotice(
+                  'Guest appearance choices apply to this in-memory workspace. Sign in to sync appearance settings across your HOTICE clients.',
+                ),
             ],
           ),
         ),

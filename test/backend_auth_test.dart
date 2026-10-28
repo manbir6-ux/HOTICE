@@ -270,6 +270,118 @@ void main() {
     store.dispose();
   });
 
+  test('account preferences are loaded and replaced through authenticated APIs',
+      () async {
+    final vault = MemoryTokenStore()..value = token;
+    var putCalls = 0;
+    final client = BackendAuthClient(
+      baseUri: Uri.parse('https://api.example.test'),
+      tokenStore: vault,
+      client: MockClient((request) async {
+        expect(request.headers['authorization'], 'Bearer $token');
+        if (request.method == 'GET') {
+          expect(request.url.path, '/v1/me/preferences');
+          return jsonResponse(200, {
+            'preferences': {
+              'themeMode': 'system',
+              'accent': 'ocean',
+              'font': 'editorial',
+              'updatedAt': '2026-10-29 00:00:00',
+            },
+          });
+        }
+        putCalls++;
+        expect(request.method, 'PUT');
+        expect(request.url.path, '/v1/me/preferences');
+        expect(jsonDecode(request.body), {
+          'themeMode': 'dark',
+          'accent': 'ember',
+          'font': 'technical',
+        });
+        return jsonResponse(200, {
+          'preferences': {
+            'themeMode': 'dark',
+            'accent': 'ember',
+            'font': 'technical',
+          },
+        });
+      }),
+    );
+
+    expect(await client.loadAccountPreferences(), {
+      'themeMode': 'system',
+      'accent': 'ocean',
+      'font': 'editorial',
+      'updatedAt': '2026-10-29 00:00:00',
+    });
+    expect(await client.saveAccountPreferences(
+      themeMode: 'dark', accent: 'ember', font: 'technical',
+    ), {
+      'themeMode': 'dark',
+      'accent': 'ember',
+      'font': 'technical',
+    });
+    await expectLater(
+      client.saveAccountPreferences(
+        themeMode: 'dark', accent: 'not-supported', font: 'technical',
+      ),
+      throwsA(isA<BackendAuthException>()),
+    );
+    expect(putCalls, 1, reason: 'Invalid local preference values never reach the API.');
+    expect(vault.value, token);
+    client.close();
+  });
+
+  testWidgets('signed-in appearance settings load and save account preferences',
+      (tester) async {
+    final store = HotIceStore()..signInBackend('maker@example.com');
+    final saved = <Map<String, String>>[];
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: SettingsPage(
+          store: store,
+          onLoadAccountPreferences: () async => {
+            'themeMode': 'system',
+            'accent': 'ocean',
+            'font': 'editorial',
+          },
+          onSaveAccountPreferences: ({
+            required themeMode,
+            required accent,
+            required font,
+          }) async {
+            saved.add({
+              'themeMode': themeMode,
+              'accent': accent,
+              'font': font,
+            });
+            return {
+              'themeMode': themeMode,
+              'accent': accent,
+              'font': font,
+            };
+          },
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    expect(store.themeMode, ThemeMode.system);
+    expect(store.accent, StudioAccent.ocean);
+    expect(store.font, StudioFont.editorial);
+    expect(find.text('Synced with your HOTICE account.'), findsOneWidget);
+
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Ember'));
+    await tester.pumpAndSettle();
+    expect(store.accent, StudioAccent.ember);
+    expect(saved, contains({
+      'themeMode': 'system',
+      'accent': 'ember',
+      'font': 'editorial',
+    }));
+    expect(tester.takeException(), isNull);
+    store.dispose();
+  });
+
   testWidgets('server login form submits credentials to the auth callback',
       (tester) async {
     tester.view.physicalSize = const Size(393, 852);
@@ -278,6 +390,7 @@ void main() {
       tester.view.resetPhysicalSize();
       tester.view.resetDevicePixelRatio();
     });
+
     String? submittedEmail;
     String? submittedPassword;
     await tester.pumpWidget(MaterialApp(
