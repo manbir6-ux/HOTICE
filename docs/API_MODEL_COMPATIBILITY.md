@@ -21,6 +21,9 @@ Providers do NOT share a standard schema. The term "4 image references" may mean
 | OpenAI GPT-6.1 Sol | Script | Responses API, text/image understanding; not a video renderer | Research profile, no live adapter |
 | Anthropic Claude Sonnet 5 | Script | Messages API, provider model entitlement/version must be checked | Research only |
 | ElevenLabs eleven_multilingual_v2 | Speech | /v1/text-to-speech/{voice_id}, separate voice/model discovery, output format & voice controls | Research profile, no live adapter |
+| OpenAI GPT Transcribe | Transcription | /v1/audio/transcriptions, max 25 MB file, original-language text; do not assume diarization/word-level alignment | Research profile, no live adapter |
+| Google Gemini 3.5 Transcribe | Transcription | Interactions API; file up to 1h, only up to 30m with word timestamps or diarization; custom vocabulary incompatible with word timing/diarization | Research profile, no live adapter |
+| OpenAI GPT-4o Transcribe Diarize | Transcription | Deprecated, scheduled shutdown 26 Feb 2027 | Research only; avoid new integration |
 | Replicate | Aggregator | Versioned model schema per model/version; do not invent common image/video settings | Future schema adapter; no arbitrary model automatically eligible |
 | OpenAI Sora 2 Videos API | Video | Deprecated/shut down **24 Sep 2026** | **RETIRED — block** |
 | Google Gemini Veo 3.1 Preview endpoints | Video | Shut down **22 Oct 2026** in Gemini API (enterprise or third-party hosted variants are separate) | **RETIRED — block** |
@@ -37,6 +40,8 @@ Primary official documentation:
 - https://docs.anthropic.com/en/docs/about-claude/model-deprecations
 - https://elevenlabs.io/docs/api-reference/text-to-speech/convert
 - https://replicate.com/docs/topics/models/versions
+- https://developers.openai.com/api/docs/guides/speech-to-text
+- https://ai.google.dev/gemini-api/docs/models/gemini-3.5-transcribe
 
 This list represents known candidate model families, NOT all existing AI models, all account-specific entitlements or an assurance of availability after credentials are provided.
 
@@ -68,9 +73,13 @@ A real server-delivered catalog record must include:
 ## Implementation in this branch
 - lib/src/model_registry.dart: researched, provider-scoped model entries, task/role/duration/ratio/resolution checks, retired model guards, error categories and server-readiness gate contract.
 - lib/src/model_compatibility_page.dart: searchable source-backed API model inspector accessible from HOTICE Settings / Normal Video.
+- lib/src/server_model_manifest.dart: strict versioned expiring trusted-server JSON catalog parser with exact duration/aspect/resolution tuple validation and reference count gates.
+- backend/php/ProviderEnvelope.php: server-only, text-only Google Omni/Runway envelope builders; secret headers from env and fixed allowlisted hosts; **not an HTTP worker** and never runs without trusted server approval gates.
+- backend/tests/provider_envelope_test.php: mandatory quote/auth/entitlement gates, payload schemas, secret isolation, rejection cases.
+- integration_test/android_smoke_test.dart: real Android emulator navigation check to the model browser.
 - test/model_registry_test.dart: documented exclusions, retirement, input roles, duration/ratio and server gates.
 - The currently saved Normal Video scene drafts still use **demo model profiles**. Do not advertise a live model selector or submit feature as connected.
-- Backend/provider credentials, dynamic manifest, signed quotes, real HTTP adapters and paid E2E integration tests are **NOT implemented**. Credentials alone do not solve entitlements, licensing or provider changes.
+- Backend credentials, live catalog endpoint, actual HTTP dispatch, signed billing quotes, image/video provider adapters, persisted jobs and paid E2E integration tests are **NOT implemented**. Server-manifest parser and dry-run request envelopes are in source only. Credentials alone do not solve entitlements, licensing or provider changes.
 
 ## Rollout gates
 Phase A: read-only in-app catalog, source-backed typed validation, CI (current implementation).
