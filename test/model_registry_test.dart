@@ -123,6 +123,22 @@ void main() {
     ])), isNotEmpty);
   });
 
+  test('file MIME and documented audio size limits fail before API calls', () {
+    final model = HoticeAiCatalog.find('openai/gpt-transcribe:audio')!;
+    expect(model.validate(AiRequest(
+      task: AiTask.transcription,
+      prompt: '',
+      assets: [const AiAsset('song', AiMediaRole.audioReference,
+          25000001, 'audio/mpeg')],
+    )), isNotEmpty);
+    expect(model.validate(AiRequest(
+      task: AiTask.transcription,
+      prompt: '',
+      assets: [const AiAsset('song', AiMediaRole.audioReference,
+          10000, 'application/octet-stream')],
+    )), isNotEmpty);
+  });
+
   test('no runtime calls without all authenticated server gates', () {
     const all = AiApiReadiness(
       backendAuthenticated: true, keyTested: true,
