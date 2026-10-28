@@ -14,6 +14,7 @@ printf '%s\n' "$PASS" | php backend/bin/create-user.php "$EMAIL" >/dev/null
 printf '%s\n' "$OTHER_PASS" | php backend/bin/create-user.php "$OTHER" >/dev/null
 echo '[account-lifecycle-test] accounts created'
 php backend/bin/grant-trial.php "$EMAIL" 100 7 >/dev/null
+php backend/bin/grant-trial.php "$OTHER" 100 7 >/dev/null
 echo '[account-lifecycle-test] isolated cloud trial granted'
 token=$(curl -fsS -H 'Content-Type: application/json' -d "{\"email\":\"$EMAIL\",\"password\":\"$PASS\"}" "$BASE/v1/auth/login" | jq -er '.accessToken')
 other_token=$(curl -fsS -H 'Content-Type: application/json' -d "{\"email\":\"$OTHER\",\"password\":\"$OTHER_PASS\"}" "$BASE/v1/auth/login" | jq -er '.accessToken')
@@ -61,8 +62,11 @@ delete_json=$(curl -fsS -X DELETE -H "$AUTH" -H 'Content-Type: application/json'
   -d '{"confirmation":"DELETE","password":"AccountDeletePass123!"}' "$BASE/v1/me")
 echo "$delete_json" | jq -e '.deleted == true and .queuedMediaFiles == 1 and .accountDataRemoved == true' >/dev/null
 echo '[account-lifecycle-test] account deletion and queued-media response passed'
-test "$(curl -sS -o /dev/null -w '%{http_code}' -H "$AUTH" "$BASE/v1/me")" = '401'
-test "$(curl -sS -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $other_token" "$BASE/v1/projects/$project")" = '404'
+revoked_status=$(curl -sS -o /tmp/hotice-revoked-session-response.json -w '%{http_code}' -H "$AUTH" "$BASE/v1/me")
+foreign_status=$(curl -sS -o /tmp/hotice-foreign-project-response.json -w '%{http_code}' -H "Authorization: Bearer $other_token" "$BASE/v1/projects/$project")
+echo "[account-lifecycle-test] revoked session HTTP $revoked_status; foreign project HTTP $foreign_status"
+test "$revoked_status" = '401'
+test "$foreign_status" = '404'
 echo '[account-lifecycle-test] token revocation and ownership isolation passed'
 php -r '
 require_once "backend/src/App.php"; $c=require "backend/config.php"; $db=(new Hotice\App($c))->database(); $user=$argv[1];
