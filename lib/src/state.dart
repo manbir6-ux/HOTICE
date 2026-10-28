@@ -562,4 +562,3 @@ class HotIceStore extends ChangeNotifier {
     notifyListeners();
   }
 }
-
