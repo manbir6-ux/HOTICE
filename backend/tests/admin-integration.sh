@@ -47,6 +47,31 @@ page=$(curl -fsS -H "Cookie: HOTICE_OWNER=$session" "$BASE/admin.php")
 csrf=$(printf '%s' "$page" | sed -n 's/.*name="csrf" value="\([^"]*\)".*/\1/p' | head -1)
 test -n "$csrf"
 
+managed_email='managed-user@example.com'
+managed_password='TemporaryManagedPassword123!'
+curl -fsS -H 'Content-Type: application/json' -d "{\"email\":\"$managed_email\",\"password\":\"$managed_password\"}" "$BASE/v1/auth/register" >/dev/null
+user_id=$(php -r 'require "backend/src/App.php"; $c=require "backend/config.php"; $db=(new \Hotice\App($c))->database(); $q=$db->prepare("SELECT id FROM users WHERE email=?"); $q->execute([$argv[1]]); echo $q->fetchColumn();' "$managed_email")
+test -n "$user_id"
+user_login=$(curl -fsS -H 'Content-Type: application/json' -d "{\"email\":\"$managed_email\",\"password\":\"$managed_password\"}" "$BASE/v1/auth/login")
+user_token=$(echo "$user_login" | jq -er '.accessToken')
+csrf=$(printf '%s' "$page" | sed -n 's/.*name="csrf" value="\([^\"]*\)".*/\1/p' | head -1)
+status=$(curl -sS -D "$headers" -o /dev/null -w '%{http_code}' -H "Cookie: HOTICE_OWNER=$session" \
+  -H 'Content-Type: application/x-www-form-urlencoded' --data-urlencode "csrf=$csrf" \
+  --data-urlencode 'action=disable_user' --data-urlencode "user_id=$user_id" "$BASE/admin.php")
+test "$status" = '303'
+test "$(curl -sS -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $user_token" "$BASE/v1/me")" = '401'
+test "$(curl -sS -o /dev/null -w '%{http_code}' -H 'Content-Type: application/json' -d "{\"email\":\"$managed_email\",\"password\":\"$managed_password\"}" "$BASE/v1/auth/login")" = '401'
+page=$(curl -fsS -H "Cookie: HOTICE_OWNER=$session" "$BASE/admin.php")
+[[ "$page" == *'Disabled'* ]]
+csrf=$(printf '%s' "$page" | sed -n 's/.*name="csrf" value="\([^\"]*\)".*/\1/p' | head -1)
+status=$(curl -sS -D "$headers" -o /dev/null -w '%{http_code}' -H "Cookie: HOTICE_OWNER=$session" \
+  -H 'Content-Type: application/x-www-form-urlencoded' --data-urlencode "csrf=$csrf" \
+  --data-urlencode 'action=enable_user' --data-urlencode "user_id=$user_id" "$BASE/admin.php")
+test "$status" = '303'
+test "$(curl -sS -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $user_token" "$BASE/v1/me")" = '401'
+fresh_login=$(curl -fsS -H 'Content-Type: application/json' -d "{\"email\":\"$managed_email\",\"password\":\"$managed_password\"}" "$BASE/v1/auth/login")
+test -n "$(echo "$fresh_login" | jq -er '.accessToken')"
+
 test_key='ci-only-provider-secret-never-a-real-key'
 status=$(curl -sS -D "$headers" -o /dev/null -w '%{http_code}' \
   -H "Cookie: HOTICE_OWNER=$session" -H 'Content-Type: application/x-www-form-urlencoded' \
@@ -81,5 +106,5 @@ status=$(curl -sS -o /dev/null -w '%{http_code}' -H "Cookie: HOTICE_OWNER=$sessi
   --data-urlencode 'action=save_provider' --data-urlencode 'provider=google' \
   --data-urlencode 'secret=blocked' "$BASE/admin.php")
 test "$status" = '400'
-echo 'Owner panel MFA, session cookie, encrypted key storage, no-echo, deletion and CSRF checks passed.'
+echo 'Owner MFA/session, user disable/revoke/reactivate, encrypted key storage, no-echo, deletion and CSRF checks passed.'
 

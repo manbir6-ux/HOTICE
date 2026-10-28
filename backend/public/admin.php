@@ -144,6 +144,27 @@ try {
                 adminAudit($db, $adminId, 'provider_secret_saved', 'provider', $provider);
                 $message = $providers[$provider] . ' key saved encrypted.';
             }
+        } elseif ($action === 'disable_user' || $action === 'enable_user') {
+            $target = (string) ($_POST['user_id'] ?? '');
+            if (!\Hotice\Support::isUuid($target)) throw new OwnerPanelError('User selection is invalid.');
+            $db->beginTransaction();
+            $lock = $db->prepare('SELECT id FROM users WHERE id=? FOR UPDATE');
+            $lock->execute([$target]);
+            if (!$lock->fetch()) { $db->rollBack(); throw new OwnerPanelError('User was not found.'); }
+            if ($action === 'disable_user') {
+                $db->prepare('INSERT INTO user_admin_state(user_id,disabled_at,updated_by) VALUES(?,UTC_TIMESTAMP(),?) ON DUPLICATE KEY UPDATE disabled_at=UTC_TIMESTAMP(),updated_by=VALUES(updated_by)')
+                    ->execute([$target, $adminId]);
+                $db->prepare('UPDATE sessions SET revoked_at=UTC_TIMESTAMP() WHERE user_id=? AND revoked_at IS NULL')
+                    ->execute([$target]);
+                adminAudit($db, $adminId, 'user_access_disabled', 'user', $target);
+                $message = 'User access disabled and active sessions revoked.';
+            } else {
+                $db->prepare('INSERT INTO user_admin_state(user_id,disabled_at,updated_by) VALUES(?,NULL,?) ON DUPLICATE KEY UPDATE disabled_at=NULL,updated_by=VALUES(updated_by)')
+                    ->execute([$target, $adminId]);
+                adminAudit($db, $adminId, 'user_access_enabled', 'user', $target);
+                $message = 'User access enabled. The user must sign in again.';
+            }
+            $db->commit();
         } else {
             throw new OwnerPanelError('Action unavailable.');
         }
@@ -187,6 +208,10 @@ function csrfInput(): string { return '<input type="hidden" name="csrf" value="'
 <p><button type="submit">Save encrypted key</button></p></form>
 <?php if ($saved): ?><form method="post"><?=csrfInput()?><input type="hidden" name="action" value="delete_provider"><input type="hidden" name="provider" value="<?=h($provider)?>"><button class="danger" type="submit">Remove key</button><p class="muted small">Removal takes effect immediately.</p></form><?php endif; ?></article>
 <?php endforeach; ?></div></section><?php endif; ?>
+<section><h2>User access</h2><p class="muted">Disable an account to block API access and revoke its active sessions. Re-enabling requires a fresh sign-in. Owner-console accounts are managed separately through the CLI.</p><article class="card"><div style="overflow-x:auto"><table><thead><tr><th>Email</th><th>Created</th><th>Access</th><th>Action</th></tr></thead><tbody>
+<?php $q=$db->query('SELECT u.id,u.email,u.created_at,s.disabled_at FROM users u LEFT JOIN user_admin_state s ON s.user_id=u.id ORDER BY u.created_at DESC LIMIT 50'); foreach($q->fetchAll() as $managed): $disabled=$managed['disabled_at']!==null; ?>
+<tr><td><?=h((string)$managed['email'])?></td><td><?=h((string)$managed['created_at'])?></td><td><span class="status <?=$disabled?'off':''?>"><?=$disabled?'Disabled':'Enabled'?></span></td><td><form method="post"><?=csrfInput()?><input type="hidden" name="user_id" value="<?=h((string)$managed['id'])?>"><input type="hidden" name="action" value="<?=$disabled?'enable_user':'disable_user'?>"><button class="<?=$disabled?'secondary':'danger'?>" type="submit"><?=$disabled?'Enable access':'Disable access'?></button></form></td></tr>
+<?php endforeach; ?></tbody></table></div><p class="muted small">Showing the 50 most recently created accounts. Every change is audited.</p></article></section>
 <section><h2>Service health</h2><div class="grid">
 <?php try { $counts=[]; foreach (['users'=>'users','cloud accounts'=>'cloud_entitlements','cloud projects'=>'cloud_projects','private media objects'=>'cloud_files'] as $label=>$table) {$counts[$label]=(int)$db->query('SELECT COUNT(*) FROM '.$table)->fetchColumn();} ?>
 <article class="card"><span class="status">Database connected</span><table><tbody><?php foreach($counts as $label=>$count): ?><tr><th><?=h($label)?></th><td><?=h((string)$count)?></td></tr><?php endforeach; ?></tbody></table><p class="muted small">Counts only; no personal project content or credentials are displayed.</p></article>
@@ -195,5 +220,5 @@ function csrfInput(): string { return '<input type="hidden" name="csrf" value="'
 <section><h2>Recent owner audit events</h2><article class="card"><table><thead><tr><th>Time (UTC)</th><th>Event</th><th>Target</th></tr></thead><tbody>
 <?php $q=$db->query('SELECT occurred_at,event_code,target_type,target_id FROM admin_audit_log ORDER BY id DESC LIMIT 20'); foreach($q->fetchAll() as $event): ?><tr><td><?=h((string)$event['occurred_at'])?></td><td><?=h((string)$event['event_code'])?></td><td><?=h(trim((string)$event['target_type'].' '.(string)$event['target_id']))?></td></tr><?php endforeach; ?>
 </tbody></table></article></section>
-<p class="muted small">This operations panel is an early owner-console slice, not the full production administration system. User roles, subscription controls, uploads/jobs management, backup drills, MFA recovery and service monitoring still require release gates.</p>
+<p class="muted small">This operations panel is an early owner-console slice, not the full production administration system. Role administration, subscription controls, uploads/jobs management, backup drills, MFA recovery and service monitoring still require release gates.</p>
 <?php endif; ?></main></body></html>

@@ -22,6 +22,16 @@ CREATE TABLE IF NOT EXISTS admin_accounts (
   UNIQUE KEY uq_admin_email (email)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE IF NOT EXISTS user_admin_state (
+  user_id CHAR(36) CHARACTER SET ascii COLLATE ascii_bin NOT NULL PRIMARY KEY,
+  disabled_at DATETIME NULL,
+  updated_by CHAR(36) CHARACTER SET ascii COLLATE ascii_bin NULL,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  KEY ix_user_admin_disabled (disabled_at),
+  CONSTRAINT fk_user_admin_state_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  CONSTRAINT fk_user_admin_state_admin FOREIGN KEY (updated_by) REFERENCES admin_accounts(id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS provider_secrets (
   provider VARCHAR(32) CHARACTER SET ascii COLLATE ascii_bin NOT NULL PRIMARY KEY,
   ciphertext VARBINARY(4096) NOT NULL,
