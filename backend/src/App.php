@@ -8,6 +8,7 @@ use Throwable;
 
 require_once __DIR__ . '/Support.php';
 require_once __DIR__ . '/ModelCatalog.php';
+require_once __DIR__ . '/FeatureFlags.php';
 
 final class App
 {
@@ -68,12 +69,14 @@ final class App
                 $this->send(200, ['ok' => true]); return;
             }
             if ($route === '/v1/models' && $method === 'GET') {
-                $this->send(200, ModelCatalog::response($this->config)); return;
+                $this->send(200, ModelCatalog::response($this->config,
+                    FeatureFlags::mockGenerationEnabled($this->db, $this->config))); return;
             }
             if ($route === '/v1/me' && $method === 'GET') {
                 $e = $this->entitlement($user['id']);
                 $credits = null;
-                if (($this->config['mock_jobs_enabled'] ?? false) === true) {
+                $mockGenerationEnabled = FeatureFlags::mockGenerationEnabled($this->db, $this->config);
+                if ($mockGenerationEnabled) {
                     $q = $this->db->prepare('SELECT balance FROM credit_accounts WHERE user_id=?');
                     $q->execute([$user['id']]);
                     $credits = (int)($q->fetchColumn() ?: 0);
@@ -86,7 +89,7 @@ final class App
                         'quotaBytes' => isset($e['quota_bytes']) ? (int) $e['quota_bytes'] : 0,
                         'usedBytes' => isset($e['used_bytes']) ? (int) $e['used_bytes'] : 0,
                         'expiresAt' => $e['expires_at'] ?? null],
-                    'mockGeneration' => ['enabled' => ($this->config['mock_jobs_enabled'] ?? false) === true,
+                    'mockGeneration' => ['enabled' => $mockGenerationEnabled,
                         'credits' => $credits, 'unit' => 'simulated_credits', 'moneyValue' => 0],
                 ]); return;
             }
@@ -145,7 +148,7 @@ final class App
 
     private function requireMockJobs(): void
     {
-        if (($this->config['mock_jobs_enabled'] ?? false) !== true) {
+        if (!FeatureFlags::mockGenerationEnabled($this->db, $this->config)) {
             throw new ApiError(503, 'Mock generation is disabled on this server.');
         }
     }
@@ -286,7 +289,6 @@ final class App
 
     private function listJobs(string $user): void
     {
-        $this->requireMockJobs();
         $q = $this->db->prepare('SELECT id FROM generation_jobs WHERE user_id=? ORDER BY created_at DESC LIMIT 50');
         $q->execute([$user]);
         $jobs = [];
@@ -296,7 +298,6 @@ final class App
 
     private function getJob(string $user, string $id): void
     {
-        $this->requireMockJobs();
         $job = $this->jobForUser($user, $id);
         if ($job === null) throw new ApiError(404, 'Job not found.');
         $this->send(200, ['job' => $job]);
@@ -318,7 +319,6 @@ final class App
 
     private function cancelJob(string $user, string $id): void
     {
-        $this->requireMockJobs();
         $this->db->beginTransaction();
         $this->db->prepare('INSERT INTO credit_accounts(user_id,balance) VALUES(?,0) ON DUPLICATE KEY UPDATE user_id=VALUES(user_id)')
             ->execute([$user]);
@@ -684,4 +684,5 @@ final class App
         return Support::assertPrivateStorage($path, $roots);
     }
 }
+
 

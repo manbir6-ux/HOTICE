@@ -72,6 +72,40 @@ test "$(curl -sS -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $user_
 fresh_login=$(curl -fsS -H 'Content-Type: application/json' -d "{\"email\":\"$managed_email\",\"password\":\"$managed_password\"}" "$BASE/v1/auth/login")
 fresh_token=$(echo "$fresh_login" | jq -er '.accessToken')
 trial_auth="Authorization: Bearer $fresh_token"
+
+# The owner feature flag narrows the server master gate and protects queued credits.
+php backend/bin/grant-mock-credits.php "$managed_email" 100 'owner-flag-test-credit-grant-01'
+mock_request=$(jq -cn '{modelId:"hotice.mock.video.v1",prompt:"Owner flag disable test",simulate:"success"}')
+mock_quote_body=$(jq -cn --argjson r "$mock_request" '{request:$r}')
+mock_quote=$(curl -fsS -H "$trial_auth" -H 'Content-Type: application/json' -d "$mock_quote_body" "$BASE/v1/jobs/quote" | jq -er '.quoteToken')
+mock_job_body=$(jq -cn --arg q "$mock_quote" --argjson r "$mock_request" '{quoteToken:$q,request:$r}')
+mock_job=$(curl -fsS -X POST -H "$trial_auth" -H 'Content-Type: application/json' \
+  -H 'Idempotency-Key: owner-flag-queued-job-0001' -d "$mock_job_body" "$BASE/v1/jobs" | jq -er '.job.id')
+test "$(curl -fsS -H "$trial_auth" "$BASE/v1/models" | jq -er '.models | length')" = '1'
+page=$(curl -fsS -H "Cookie: HOTICE_OWNER=$session" "$BASE/admin.php")
+csrf=$(printf '%s' "$page" | sed -n 's/.*name="csrf" value="\([^"]*\)".*/\1/p' | head -1)
+status=$(curl -sS -D "$headers" -o /dev/null -w '%{http_code}' -H "Cookie: HOTICE_OWNER=$session" \
+  -H 'Content-Type: application/x-www-form-urlencoded' --data-urlencode "csrf=$csrf" \
+  --data-urlencode 'action=set_feature_flag' --data-urlencode 'flag_key=mock_generation' \
+  --data-urlencode 'enabled=0' "$BASE/admin.php")
+test "$status" = '303'
+test "$(curl -fsS -H "$trial_auth" "$BASE/v1/models" | jq -er '.models | length')" = '0'
+test "$(curl -fsS -H "$trial_auth" "$BASE/v1/me" | jq -er '.mockGeneration.enabled')" = 'false'
+test "$(curl -sS -o /dev/null -w '%{http_code}' -H "$trial_auth" -H 'Content-Type: application/json' \
+  -d '{}' "$BASE/v1/jobs/quote")" = '503'
+test "$(curl -fsS -H "$trial_auth" "$BASE/v1/jobs/$mock_job" | jq -er '.job.status')" = 'queued'
+php -r 'require "backend/src/App.php"; require "backend/src/MockJobWorker.php"; $c=require "backend/config.php"; $db=(new \Hotice\App($c))->database(); $r=\Hotice\MockJobWorker::runOne($db,$c); if (($r["status"]??null)!=="disabled") exit(1);'
+curl -fsS -X POST -H "$trial_auth" "$BASE/v1/jobs/$mock_job/cancel" | jq -e '.job.status == "cancelled" and .alreadyCancelled == false' >/dev/null
+curl -fsS -X POST -H "$trial_auth" "$BASE/v1/jobs/$mock_job/cancel" | jq -e '.job.status == "cancelled" and .alreadyCancelled == true' >/dev/null
+php -r 'require "backend/src/App.php"; $c=require "backend/config.php"; $db=(new \Hotice\App($c))->database(); $q=$db->prepare("SELECT balance FROM credit_accounts WHERE user_id=?"); $q->execute([$argv[1]]); if ((int)$q->fetchColumn()!==100) exit(1); $q=$db->prepare("SELECT COUNT(*) FROM admin_audit_log WHERE event_code=? AND target_type=? AND target_id=?"); $q->execute(["feature_flag_changed","feature","mock_generation:disabled"]); if ((int)$q->fetchColumn()!==1) exit(2);' "$user_id"
+page=$(curl -fsS -H "Cookie: HOTICE_OWNER=$session" "$BASE/admin.php")
+csrf=$(printf '%s' "$page" | sed -n 's/.*name="csrf" value="\([^"]*\)".*/\1/p' | head -1)
+status=$(curl -sS -D "$headers" -o /dev/null -w '%{http_code}' -H "Cookie: HOTICE_OWNER=$session" \
+  -H 'Content-Type: application/x-www-form-urlencoded' --data-urlencode "csrf=$csrf" \
+  --data-urlencode 'action=set_feature_flag' --data-urlencode 'flag_key=mock_generation' \
+  --data-urlencode 'enabled=1' "$BASE/admin.php")
+test "$status" = '303'
+test "$(curl -fsS -H "$trial_auth" "$BASE/v1/models" | jq -er '.models | length')" = '1'
 page=$(curl -fsS -H "Cookie: HOTICE_OWNER=$session" "$BASE/admin.php")
 csrf=$(printf '%s' "$page" | sed -n 's/.*name="csrf" value="\([^\"]*\)".*/\1/p' | head -1)
 status=$(curl -sS -D "$headers" -o /dev/null -w '%{http_code}' -H "Cookie: HOTICE_OWNER=$session" \
@@ -134,5 +168,6 @@ status=$(curl -sS -o /dev/null -w '%{http_code}' -H "Cookie: HOTICE_OWNER=$sessi
   --data-urlencode 'action=save_provider' --data-urlencode 'provider=google' \
   --data-urlencode 'secret=blocked' "$BASE/admin.php")
 test "$status" = '400'
-echo 'Owner MFA/session, user access, trial entitlement and billing-protection, encrypted key, no-echo, deletion and CSRF checks passed.'
+echo 'Owner MFA/session, feature-flag master gate, model availability, worker pause, queued-job inspection/cancel/refund, user access, trial/billing protection, encrypted-key secrecy and CSRF checks passed.'
+
 

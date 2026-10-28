@@ -3,9 +3,11 @@ declare(strict_types=1);
 
 require_once dirname(__DIR__) . '/src/App.php';
 require_once dirname(__DIR__) . '/src/AdminSecurity.php';
+require_once dirname(__DIR__) . '/src/FeatureFlags.php';
 
 use Hotice\AdminSecurity;
 use Hotice\App;
+use Hotice\FeatureFlags;
 
 final class OwnerPanelError extends RuntimeException {}
 
@@ -126,7 +128,29 @@ try {
             }
             session_destroy(); redirectAdmin();
         }
-        if ($action === 'save_provider' || $action === 'delete_provider') {
+        if ($action === 'set_feature_flag') {
+            $flag = (string)($_POST['flag_key'] ?? '');
+            $enabled = (string)($_POST['enabled'] ?? '');
+            if ($flag !== FeatureFlags::MOCK_GENERATION || !in_array($enabled, ['0', '1'], true)) {
+                throw new OwnerPanelError('Feature flag selection is invalid.');
+            }
+            if ($enabled === '1' && ($config['mock_jobs_enabled'] ?? false) !== true) {
+                throw new OwnerPanelError('The server configuration keeps mock generation disabled.');
+            }
+            $db->beginTransaction();
+            try {
+                $db->prepare('INSERT INTO system_feature_flags(flag_key,enabled,updated_by) VALUES(?,?,?) ON DUPLICATE KEY UPDATE enabled=VALUES(enabled),updated_by=VALUES(updated_by)')
+                    ->execute([$flag, (int)$enabled, $adminId]);
+                adminAudit($db, $adminId, 'feature_flag_changed', 'feature', $flag . ':' . ($enabled === '1' ? 'enabled' : 'disabled'));
+                $db->commit();
+            } catch (Throwable $e) {
+                if ($db->inTransaction()) $db->rollBack();
+                throw $e;
+            }
+            $message = $enabled === '1'
+                ? 'Mock generation dry run enabled. No provider calls or videos are created.'
+                : 'Mock generation disabled. Submission and worker processing are paused; queued jobs can still be reviewed or cancelled.';
+        } elseif ($action === 'save_provider' || $action === 'delete_provider') {
             $provider = (string) ($_POST['provider'] ?? '');
             if (!isset($providers[$provider])) throw new OwnerPanelError('Unknown provider.');
             if ($action === 'delete_provider') {
@@ -238,6 +262,18 @@ function csrfInput(): string { return '<input type="hidden" name="csrf" value="'
 <p><button type="submit">Sign in securely</button></p></form><p class="muted small">HTTPS, an owner-only account, CSRF protection and authenticator verification are required.</p></section>
 <?php else: ?>
 <h1>Operations overview</h1><p class="muted">Signed in as <?=h((string)$owner['email'])?>. Provider credentials are encrypted at rest and never shown again.</p>
+<?php
+$mockServerAllows = ($config['mock_jobs_enabled'] ?? false) === true;
+$mockGenerationEnabled = FeatureFlags::mockGenerationEnabled($db, $config);
+?>
+<section><h2>Feature flags</h2><div class="grid"><article class="card">
+<div class="row"><h2>Mock generation dry run</h2><span class="status <?=$mockGenerationEnabled?'':'off'?>"><?=$mockGenerationEnabled?'Enabled':'Disabled'?></span></div>
+<p class="muted small">This controls only the mock quote/job flow. It never contacts a provider, creates media, or charges money. The private server configuration remains the master gate.</p>
+<form method="post"><?=csrfInput()?><input type="hidden" name="action" value="set_feature_flag"><input type="hidden" name="flag_key" value="<?=h(FeatureFlags::MOCK_GENERATION)?>">
+<label for="mock-generation-enabled">Availability</label><select id="mock-generation-enabled" name="enabled"><option value="1" <?=$mockGenerationEnabled?'selected':''?> <?=$mockServerAllows?'':'disabled'?>>Enabled for dry runs</option><option value="0" <?=$mockGenerationEnabled?'':'selected'?>>Disabled</option></select>
+<p><button type="submit">Save feature flag</button></p>
+<?php if (!$mockServerAllows): ?><p class="muted small">The private server configuration blocks enabling. Keep this owner override disabled before changing that master setting.</p><?php endif; ?></form>
+</article></div></section>
 <?php if (!empty($providers)): ?><section><h2>Provider credentials</h2><p class="muted">Saving a key replaces the encrypted server-side value. Blank fields never reveal existing keys.</p><div class="grid">
 <?php foreach ($providers as $provider => $label): $q=$db->prepare('SELECT updated_at FROM provider_secrets WHERE provider=?');$q->execute([$provider]);$saved=$q->fetch(); ?>
 <article class="card"><div class="row"><h2><?=h($label)?></h2><span class="status <?=$saved?'':'off'?>"><?=$saved?'Configured':'Not configured'?></span></div>
@@ -262,3 +298,4 @@ function csrfInput(): string { return '<input type="hidden" name="csrf" value="'
 </tbody></table></article></section>
 <p class="muted small">This operations panel is an early owner-console slice, not the full production administration system. Role administration, subscription controls, uploads/jobs management, backup drills, MFA recovery and service monitoring still require release gates.</p>
 <?php endif; ?></main></body></html>
+
