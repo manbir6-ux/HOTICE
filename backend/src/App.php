@@ -178,25 +178,41 @@ final class App
         $email = Support::email((string) ($b['email'] ?? ''));
         $password = (string) ($b['password'] ?? '');
         $fingerprint = $this->throttle($email);
-        $q = $this->db->prepare('SELECT id,email,password_hash FROM users WHERE email=? LIMIT 1');
-        $q->execute([$email]);
-        $user = $q->fetch();
-        if (!$user || !password_verify($password, $user['password_hash'])) {
-            $this->recordFailedLogin($fingerprint);
-            throw new ApiError(401, 'Invalid email or password.');
+        $this->db->beginTransaction();
+        try {
+            // Lock the user row so an owner suspension cannot race a new session.
+            $q = $this->db->prepare('SELECT id,email,password_hash FROM users WHERE email=? LIMIT 1 FOR UPDATE');
+            $q->execute([$email]);
+            $user = $q->fetch();
+            $state = null;
+            if ($user) {
+                $check = $this->db->prepare('SELECT disabled_at FROM user_admin_state WHERE user_id=?');
+                $check->execute([$user['id']]);
+                $state = $check->fetch();
+            }
+            if (!$user || !password_verify($password, $user['password_hash']) ||
+                ($state && $state['disabled_at'] !== null)) {
+                $this->db->rollBack();
+                $this->recordFailedLogin($fingerprint);
+                throw new ApiError(401, 'Invalid email or password.');
+            }
+            // Never clear the IP budget on a successful login: a single valid
+            // account must not let attackers reset their IP-wide spray limit.
+            $this->db->prepare('DELETE FROM login_attempts WHERE fingerprint=?')->execute([$fingerprint['email']]);
+            if (password_needs_rehash($user['password_hash'], PASSWORD_DEFAULT)) {
+                $this->db->prepare('UPDATE users SET password_hash=? WHERE id=?')
+                    ->execute([password_hash($password, PASSWORD_DEFAULT), $user['id']]);
+            }
+            $token = bin2hex(random_bytes(32));
+            $hours = max(1, min(168, (int) ($this->config['token_ttl_hours'] ?? 24)));
+            $expires = gmdate('Y-m-d H:i:s', time() + $hours * 3600);
+            $this->db->prepare('INSERT INTO sessions (id,user_id,token_sha256,expires_at) VALUES (?,?,?,?)')
+                ->execute([Support::uuid(), $user['id'], hash('sha256', $token), $expires]);
+            $this->db->commit();
+        } catch (Throwable $e) {
+            if ($this->db->inTransaction()) $this->db->rollBack();
+            throw $e;
         }
-        // Never clear the IP budget on a successful login: a single valid
-        // account must not let attackers reset their IP-wide spray limit.
-        $this->db->prepare('DELETE FROM login_attempts WHERE fingerprint=?')->execute([$fingerprint['email']]);
-        if (password_needs_rehash($user['password_hash'], PASSWORD_DEFAULT)) {
-            $this->db->prepare('UPDATE users SET password_hash=? WHERE id=?')
-                ->execute([password_hash($password, PASSWORD_DEFAULT), $user['id']]);
-        }
-        $token = bin2hex(random_bytes(32));
-        $hours = max(1, min(168, (int) ($this->config['token_ttl_hours'] ?? 24)));
-        $expires = gmdate('Y-m-d H:i:s', time() + $hours * 3600);
-        $this->db->prepare('INSERT INTO sessions (id,user_id,token_sha256,expires_at) VALUES (?,?,?,?)')
-            ->execute([Support::uuid(), $user['id'], hash('sha256', $token), $expires]);
         $this->send(200, ['accessToken' => $token, 'tokenType' => 'Bearer',
             'expiresAt' => str_replace(' ', 'T', $expires) . 'Z']);
     }
@@ -205,7 +221,7 @@ final class App
     {
         $auth = (string) ($_SERVER['HTTP_AUTHORIZATION'] ?? $_SERVER['REDIRECT_HTTP_AUTHORIZATION'] ?? '');
         if (!preg_match('/^Bearer ([a-fA-F0-9]{64})$/D', $auth, $m)) throw new ApiError(401, 'Authentication required.');
-        $q = $this->db->prepare('SELECT s.id AS session_id,u.id,u.email FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token_sha256=? AND s.revoked_at IS NULL AND s.expires_at > UTC_TIMESTAMP() LIMIT 1');
+        $q = $this->db->prepare('SELECT s.id AS session_id,u.id,u.email FROM sessions s JOIN users u ON u.id=s.user_id LEFT JOIN user_admin_state uas ON uas.user_id=u.id WHERE s.token_sha256=? AND s.revoked_at IS NULL AND s.expires_at > UTC_TIMESTAMP() AND uas.disabled_at IS NULL LIMIT 1');
         $q->execute([hash('sha256', strtolower($m[1]))]);
         $user = $q->fetch();
         if (!$user) throw new ApiError(401, 'Session expired or revoked.');
