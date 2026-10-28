@@ -219,8 +219,15 @@ final class App
         $this->requireMockJobs();
         $body = Support::jsonInput(20000);
         $request = $this->normalizeMockJobRequest($body['request'] ?? null);
-        $requestJson = json_encode($request, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
-        $requestHash = hash('sha256', $requestJson);
+        // The staging worker never sends the prompt to a provider. Keep only
+        // execution metadata in its durable queue record and retain the
+        // one-way hash for quote binding and idempotency. This avoids storing
+        // user prompt text in plaintext in the mock jobs table.
+        $requestHash = $this->mockRequestHash($request);
+        $requestJson = json_encode([
+            'modelId' => $request['modelId'],
+            'simulate' => $request['simulate'],
+        ], JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
         $idempotencyKey = trim((string)($_SERVER['HTTP_IDEMPOTENCY_KEY'] ?? ''));
         if (!preg_match('/^[A-Za-z0-9._~:-]{16,128}$/D', $idempotencyKey)) {
             throw new ApiError(400, 'Idempotency-Key header required (16–128 safe characters).');
