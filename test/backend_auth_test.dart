@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hotice/src/backend_auth.dart';
+import 'package:hotice/src/backend_dry_run.dart';
 import 'package:hotice/src/state.dart';
 import 'package:hotice/src/welcome.dart';
 import 'package:http/http.dart' as http;
@@ -28,6 +29,23 @@ http.Response jsonResponse(int status, Object body) => http.Response(
       status,
       headers: {'content-type': 'application/json'},
     );
+
+Map<String, Object?> modelCatalog({bool enabled = true}) => {
+  'catalogVersion': '2026-10-29.1',
+  'liveGenerationEnabled': false,
+  'models': enabled ? [
+    {
+      'id': 'hotice.mock.video.v1',
+      'name': 'HOTICE generation dry run',
+      'availability': 'dry_run',
+      'enabled': true,
+      'capabilities': ['text_to_video'],
+      'inputs': ['prompt'],
+      'outputs': [],
+      'notice': 'Dry run only. It creates no video and makes no provider call.',
+    },
+  ] : <Object?>[],
+};
 
 void main() {
   test('login verifies identity before storing a server token', () async {
@@ -90,6 +108,10 @@ void main() {
         requests.add(request);
         expect(request.followRedirects, isFalse);
         expect(request.headers['authorization'], 'Bearer $token');
+        if (request.url.path == '/v1/models') {
+          expect(request.method, 'GET');
+          return jsonResponse(200, modelCatalog());
+        }
         if (request.url.path == '/v1/jobs/quote') {
           expect(jsonDecode(request.body)['request']['modelId'], 'hotice.mock.video.v1');
           return jsonResponse(200, {'quoteToken': 'signed-quote'});
@@ -113,7 +135,68 @@ void main() {
     expect(created.reservedCredits, 5);
     expect((await client.getMockVideoJob(created.id)).id, created.id);
     expect((await client.cancelMockVideoJob(created.id)).status, 'cancelled');
-    expect(requests, hasLength(4));
+    expect(requests, hasLength(5));
+    client.close();
+  });
+
+  test('model catalog accepts only the enabled prompt-to-video dry run', () {
+    final available = BackendModelCatalog.fromJson(modelCatalog());
+    expect(available.catalogVersion, '2026-10-29.1');
+    expect(available.liveGenerationEnabled, isFalse);
+    expect(available.mockVideoDryRun?.id, 'hotice.mock.video.v1');
+    expect(BackendModelCatalog.fromJson(modelCatalog(enabled: false)).mockVideoDryRun, isNull);
+    expect(() => BackendModelCatalog.fromJson({'models': 'invalid'}),
+        throwsA(isA<BackendAuthException>()));
+  });
+
+  test('server job submission stops before quote when catalog disables dry runs', () async {
+    final vault = MemoryTokenStore()..value = token;
+    final requests = <http.Request>[];
+    final client = BackendAuthClient(
+      baseUri: Uri.parse('https://api.example.test'),
+      tokenStore: vault,
+      client: MockClient((request) async {
+        requests.add(request);
+        expect(request.headers['authorization'], 'Bearer $token');
+        return jsonResponse(200, modelCatalog(enabled: false));
+      }),
+    );
+
+    await expectLater(
+      client.submitMockVideoJob('A quiet landscape', idempotencyKey: 'hotice-dry-run-00000002'),
+      throwsA(isA<BackendAuthException>().having((e) => e.message,
+          'message', contains('currently unavailable'))),
+    );
+    expect(requests.map((request) => request.url.path), ['/v1/models']);
+    client.close();
+  });
+
+  testWidgets('dry-run UI stays disabled when the server pauses the model', (tester) async {
+    final vault = MemoryTokenStore()..value = token;
+    final client = BackendAuthClient(
+      baseUri: Uri.parse('https://api.example.test'),
+      tokenStore: vault,
+      client: MockClient((request) async {
+        expect(request.url.path, '/v1/models');
+        return jsonResponse(200, modelCatalog(enabled: false));
+      }),
+    );
+
+    await tester.pumpWidget(MaterialApp(
+      home: BackendDryRunPage(client: client, isAuthenticated: true),
+    ));
+    await tester.pumpAndSettle();
+
+    expect(find.text('No staging dry-run model is currently enabled on this server.'),
+        findsOneWidget);
+    final submit = tester.widget<ButtonStyleButton>(
+      find.ancestor(
+        of: find.text('Queue server dry run'),
+        matching: find.byWidgetPredicate((widget) => widget is ButtonStyleButton),
+      ),
+    );
+    expect(submit.onPressed, isNull);
+    expect(tester.takeException(), isNull);
     client.close();
   });
 

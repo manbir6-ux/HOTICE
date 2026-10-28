@@ -55,6 +55,91 @@ class BackendUser {
   final String email;
 }
 
+class BackendAvailableModel {
+  const BackendAvailableModel({
+    required this.id,
+    required this.name,
+    required this.availability,
+    required this.enabled,
+    required this.capabilities,
+    required this.inputs,
+    required this.outputs,
+    this.notice,
+  });
+
+  final String id;
+  final String name;
+  final String availability;
+  final bool enabled;
+  final List<String> capabilities;
+  final List<String> inputs;
+  final List<String> outputs;
+  final String? notice;
+
+  factory BackendAvailableModel.fromJson(Object? value) {
+    if (value is! Map<String, dynamic> ||
+        value['id'] is! String || value['name'] is! String ||
+        value['availability'] is! String || value['enabled'] is! bool ||
+        value['capabilities'] is! List || value['inputs'] is! List ||
+        value['outputs'] is! List ||
+        !(value['capabilities'] as List).every((item) => item is String) ||
+        !(value['inputs'] as List).every((item) => item is String) ||
+        !(value['outputs'] as List).every((item) => item is String)) {
+      throw const BackendAuthException('The HOTICE server returned an invalid model profile.');
+    }
+    return BackendAvailableModel(
+      id: value['id'] as String,
+      name: value['name'] as String,
+      availability: value['availability'] as String,
+      enabled: value['enabled'] as bool,
+      capabilities: List<String>.unmodifiable((value['capabilities'] as List).cast<String>()),
+      inputs: List<String>.unmodifiable((value['inputs'] as List).cast<String>()),
+      outputs: List<String>.unmodifiable((value['outputs'] as List).cast<String>()),
+      notice: value['notice'] is String ? value['notice'] as String : null,
+    );
+  }
+}
+
+class BackendModelCatalog {
+  const BackendModelCatalog({
+    required this.catalogVersion,
+    required this.liveGenerationEnabled,
+    required this.models,
+  });
+
+  final String catalogVersion;
+  final bool liveGenerationEnabled;
+  final List<BackendAvailableModel> models;
+
+  BackendAvailableModel? get mockVideoDryRun {
+    for (final model in models) {
+      if (model.id == 'hotice.mock.video.v1' &&
+          model.availability == 'dry_run' && model.enabled &&
+          model.capabilities.contains('text_to_video') &&
+          model.inputs.contains('prompt') && model.outputs.isEmpty) {
+        return model;
+      }
+    }
+    return null;
+  }
+
+  factory BackendModelCatalog.fromJson(Object? value) {
+    if (value is! Map<String, dynamic> ||
+        value['catalogVersion'] is! String ||
+        value['liveGenerationEnabled'] is! bool ||
+        value['models'] is! List) {
+      throw const BackendAuthException('The HOTICE server returned an invalid model catalog.');
+    }
+    return BackendModelCatalog(
+      catalogVersion: value['catalogVersion'] as String,
+      liveGenerationEnabled: value['liveGenerationEnabled'] as bool,
+      models: List<BackendAvailableModel>.unmodifiable(
+        (value['models'] as List).map(BackendAvailableModel.fromJson),
+      ),
+    );
+  }
+}
+
 abstract interface class SessionTokenStore {
   Future<String?> read();
   Future<void> write(String token);
@@ -192,6 +277,16 @@ class BackendAuthClient {
     }
   }
 
+  Future<BackendModelCatalog> loadModelCatalog() async {
+    final token = await _tokenStore.read();
+    if (token == null) {
+      throw const BackendAuthException('Sign in to the HOTICE server first.');
+    }
+    final response = await _send('GET', 'v1/models', token: token);
+    _checkSuccess(response, 'The server could not load model availability.');
+    return BackendModelCatalog.fromJson(_decodeObject(response));
+  }
+
   Future<BackendGenerationJob> submitMockVideoJob(
     String prompt, {required String idempotencyKey}
   ) async {
@@ -204,8 +299,15 @@ class BackendAuthClient {
     if (token == null) {
       throw const BackendAuthException('Sign in to the HOTICE server first.');
     }
+    final catalogResponse = await _send('GET', 'v1/models', token: token);
+    _checkSuccess(catalogResponse, 'The server could not verify dry-run availability.');
+    final catalog = BackendModelCatalog.fromJson(_decodeObject(catalogResponse));
+    final model = catalog.mockVideoDryRun;
+    if (model == null) {
+      throw const BackendAuthException('Server dry-run generation is currently unavailable.');
+    }
     final requestBody = <String, Object?>{
-      'modelId': 'hotice.mock.video.v1',
+      'modelId': model.id,
       'prompt': normalized,
       'simulate': 'success',
     };

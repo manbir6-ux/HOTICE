@@ -30,11 +30,11 @@ Automated HTTP tests use mock responses to verify request paths, HTTPS, redirect
 
 ## Authenticated job dry run (staging only)
 
-The Generate workspace has a separate **Server dry run** tab. It requires both a configured API origin and a server-verified sign-in. It posts a mock-only request to `POST /v1/jobs/quote`, then `POST /v1/jobs` with an idempotency key. The user can refresh or cancel a queued job. Polling/status access uses the same short-lived bearer token held in OS secure storage; tokens and prompts are never written to device project archives or diagnostic logs.
+The Generate workspace has a separate **Server dry run** tab. It requires both a configured API origin and a server-verified sign-in. When the tab opens, the client reads the authenticated `GET /v1/models` manifest and displays the server's current availability. Submissions are disabled when the manifest is unavailable or does not explicitly advertise the enabled `hotice.mock.video.v1` text-to-video dry run. The client checks the manifest again immediately before requesting a quote, then posts to `POST /v1/jobs/quote` and `POST /v1/jobs` with an idempotency key. The user can refresh or cancel a queued job. Polling/status access uses the same short-lived bearer token held in OS secure storage; tokens and prompts are never written to device project archives or diagnostic logs.
 
-The only model accepted is `hotice.mock.video.v1`. The backend must have `mock_jobs_enabled=true`, which is intended only for controlled dry-run environments. This path creates no media, contacts no model provider, does not use real paid credits, and does not send project/avatar files. A disabled server rejects the operation. Do not enable the mock flag on a public production service.
+The server currently advertises only `hotice.mock.video.v1` when the private server master setting and audited owner feature flag both allow mock jobs. The manifest labels it `dry_run`, has no output media, and reports live generation disabled. This path creates no video, contacts no model provider, does not use real paid credits, and does not send project/avatar files. A paused or misconfigured server blocks both the UI and the quote request. Do not enable the mock flag on a public production service.
 
-CI tests validate request paths, bearer headers, idempotency header, job parsing, poll and cancel calls with mocked HTTP. The backend MySQL integration separately validates the real API and worker lifecycle. This does not prove cPanel deployment or live provider generation.
+CI tests validate model-catalog parsing and request paths, bearer headers, manifest-gated submissions, idempotency header, job parsing, polling and cancellation with mocked HTTP. The backend MySQL integration separately validates the real API and worker lifecycle. This does not prove cPanel deployment or live provider generation.
 
 
 ## Static web build and cPanel
