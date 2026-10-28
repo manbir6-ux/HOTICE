@@ -67,6 +67,50 @@ attempt_operation=$(php -r 'require "backend/src/App.php"; $c=require "backend/c
 page=$(curl -fsS -H "Cookie: HOTICE_OWNER=$session" "$BASE/admin.php")
 [[ "$page" == *"$attempt_job"* && "$page" == *"$attempt_operation"* && "$page" == *"$managed_email"* ]]
 csrf=$(printf '%s' "$page" | sed -n 's/.*name="csrf" value="\([^\"]*\)".*/\1/p' | head -1)
+attempt_id=$(php -r 'require "backend/src/App.php"; $c=require "backend/config.php"; $db=(new \Hotice\App($c))->database(); $q=$db->prepare("SELECT id FROM provider_attempts WHERE job_id=?"); $q->execute([$argv[1]]); echo $q->fetchColumn();' "$attempt_job")
+php -r 'require "backend/src/App.php"; $c=require "backend/config.php"; $db=(new \Hotice\App($c))->database(); $db->prepare("UPDATE generation_jobs SET status=\x27processing\x27,error_code=\x27provider_outcome_unknown\x27,lease_token=NULL,lease_until=NULL,finished_at=NULL WHERE id=?")->execute([$argv[1]]); $db->prepare("UPDATE provider_attempts SET status=\x27unknown\x27,error_code=\x27provider_outcome_unknown\x27,remote_operation_id=NULL,finished_at=NULL WHERE id=?")->execute([$argv[2]]);' "$attempt_job" "$attempt_id"
+page=$(curl -fsS -H "Cookie: HOTICE_OWNER=$session" "$BASE/admin.php")
+[[ "$page" == *'Resolve ambiguous provider outcomes'* && "$page" == *"$attempt_id"* ]]
+csrf=$(printf '%s' "$page" | sed -n 's/.*name="csrf" value="\([^"]*\)".*/\1/p' | head -1)
+status=$(curl -sS -o "$TMP_DIR/reconcile-confirmation" -w '%{http_code}' -H "Cookie: HOTICE_OWNER=$session" \
+  -H 'Content-Type: application/x-www-form-urlencoded' --data-urlencode "csrf=$csrf" \
+  --data-urlencode 'action=reconcile_provider_attempt' --data-urlencode "attempt_id=$attempt_id" \
+  --data-urlencode 'resolution=confirmed_not_accepted_retry' --data-urlencode 'evidence_reference=provider-case-0001' \
+  --data-urlencode 'confirmation=NOPE' "$BASE/admin.php")
+test "$status" = '200'
+grep -q 'Type RETRY exactly' "$TMP_DIR/reconcile-confirmation"
+php -r 'require "backend/src/App.php"; $c=require "backend/config.php"; $db=(new \Hotice\App($c))->database(); $q=$db->prepare("SELECT status FROM provider_attempts WHERE id=?"); $q->execute([$argv[1]]); if($q->fetchColumn()!=="unknown") exit(1);' "$attempt_id"
+balance_before_retry=$(php -r 'require "backend/src/App.php"; $c=require "backend/config.php"; $db=(new \Hotice\App($c))->database(); $q=$db->prepare("SELECT balance FROM credit_accounts WHERE user_id=?"); $q->execute([$argv[1]]); echo $q->fetchColumn();' "$user_id")
+status=$(curl -sS -D "$headers" -o /dev/null -w '%{http_code}' -H "Cookie: HOTICE_OWNER=$session" \
+  -H 'Content-Type: application/x-www-form-urlencoded' --data-urlencode "csrf=$csrf" \
+  --data-urlencode 'action=reconcile_provider_attempt' --data-urlencode "attempt_id=$attempt_id" \
+  --data-urlencode 'resolution=confirmed_not_accepted_retry' --data-urlencode 'evidence_reference=provider-case-0001' \
+  --data-urlencode 'confirmation=RETRY' "$BASE/admin.php")
+test "$status" = '303'
+php -r 'require "backend/src/App.php"; $c=require "backend/config.php"; $db=(new \Hotice\App($c))->database(); $q=$db->prepare("SELECT status,error_code FROM generation_jobs WHERE id=?"); $q->execute([$argv[1]]); $j=$q->fetch(); $q=$db->prepare("SELECT status,error_code FROM provider_attempts WHERE id=?"); $q->execute([$argv[2]]); $a=$q->fetch(); $q=$db->prepare("SELECT action_code,evidence_reference FROM provider_attempt_reconciliations WHERE attempt_id=?"); $q->execute([$argv[2]]); $r=$q->fetch(); $q=$db->prepare("SELECT balance FROM credit_accounts WHERE user_id=?"); $q->execute([$argv[3]]); if($j["status"]!=="queued"||$j["error_code"]!==null||$a["status"]!=="retryable_rejected"||$a["error_code"]!=="owner_confirmed_not_accepted"||$r["action_code"]!=="confirmed_not_accepted_retry"||$r["evidence_reference"]!=="provider-case-0001"||(int)$q->fetchColumn()!==(int)$argv[4]) exit(1);' "$attempt_job" "$attempt_id" "$user_id" "$balance_before_retry"
+
+refund_attempt_id=$(php -r 'require "backend/src/App.php"; $c=require "backend/config.php"; $db=(new \Hotice\App($c))->database(); $db->beginTransaction(); $q=$db->prepare("SELECT request_sha256,model_id FROM generation_jobs WHERE id=? FOR UPDATE"); $q->execute([$argv[1]]); $j=$q->fetch(); $id=\Hotice\Support::uuid(); $key=hash("sha256","test-second-attempt:".bin2hex(random_bytes(16))); $db->prepare("UPDATE generation_jobs SET status=\x27processing\x27,attempt_count=2,error_code=\x27provider_outcome_unknown\x27,lease_token=NULL,lease_until=NULL WHERE id=?")->execute([$argv[1]]); $db->prepare("INSERT INTO provider_attempts(id,job_id,attempt_number,provider_id,model_id,operation_key,request_sha256,status,error_code,lease_token) VALUES(?,?,2,\x27mock\x27,?,?,?,\x27unknown\x27,\x27provider_outcome_unknown\x27,?)")->execute([$id,$argv[1],$j["model_id"],$key,$j["request_sha256"],str_repeat("b",32)]); $db->commit(); echo $id;' "$attempt_job")
+balance_before_refund=$(php -r 'require "backend/src/App.php"; $c=require "backend/config.php"; $db=(new \Hotice\App($c))->database(); $q=$db->prepare("SELECT balance FROM credit_accounts WHERE user_id=?"); $q->execute([$argv[1]]); echo $q->fetchColumn();' "$user_id")
+reserved_credits=$(php -r 'require "backend/src/App.php"; $c=require "backend/config.php"; $db=(new \Hotice\App($c))->database(); $q=$db->prepare("SELECT reserved_credits FROM generation_jobs WHERE id=?"); $q->execute([$argv[1]]); echo $q->fetchColumn();' "$attempt_job")
+page=$(curl -fsS -H "Cookie: HOTICE_OWNER=$session" "$BASE/admin.php")
+[[ "$page" == *"$refund_attempt_id"* ]]
+csrf=$(printf '%s' "$page" | sed -n 's/.*name="csrf" value="\([^"]*\)".*/\1/p' | head -1)
+status=$(curl -sS -D "$headers" -o /dev/null -w '%{http_code}' -H "Cookie: HOTICE_OWNER=$session" \
+  -H 'Content-Type: application/x-www-form-urlencoded' --data-urlencode "csrf=$csrf" \
+  --data-urlencode 'action=reconcile_provider_attempt' --data-urlencode "attempt_id=$refund_attempt_id" \
+  --data-urlencode 'resolution=confirmed_failed_refund' --data-urlencode 'evidence_reference=provider-case-0002' \
+  --data-urlencode 'confirmation=REFUND' "$BASE/admin.php")
+test "$status" = '303'
+php -r 'require "backend/src/App.php"; $c=require "backend/config.php"; $db=(new \Hotice\App($c))->database(); $q=$db->prepare("SELECT status,error_code FROM generation_jobs WHERE id=?"); $q->execute([$argv[1]]); $j=$q->fetch(); $key=hash("sha256","refund:".$argv[1]); $q=$db->prepare("SELECT COUNT(*) FROM credit_ledger WHERE event_key=? AND event_type=\x27refund\x27"); $q->execute([$key]); $count=(int)$q->fetchColumn(); $q=$db->prepare("SELECT status FROM provider_attempts WHERE id=?"); $q->execute([$argv[2]]); $a=$q->fetchColumn(); $q=$db->prepare("SELECT action_code FROM provider_attempt_reconciliations WHERE attempt_id=?"); $q->execute([$argv[2]]); $r=$q->fetchColumn(); $q=$db->prepare("SELECT balance FROM credit_accounts WHERE user_id=?"); $q->execute([$argv[3]]); $balance=(int)$q->fetchColumn(); if($j["status"]!=="failed"||$j["error_code"]!=="owner_confirmed_terminal_failure"||$a!=="failed"||$r!=="confirmed_failed_refund"||$count!==1||$balance!==(int)$argv[4]+(int)$argv[5]) exit(1);' "$attempt_job" "$refund_attempt_id" "$user_id" "$balance_before_refund" "$reserved_credits"
+status=$(curl -sS -o "$TMP_DIR/reconcile-replay" -w '%{http_code}' -H "Cookie: HOTICE_OWNER=$session" \
+  -H 'Content-Type: application/x-www-form-urlencoded' --data-urlencode "csrf=$csrf" \
+  --data-urlencode 'action=reconcile_provider_attempt' --data-urlencode "attempt_id=$refund_attempt_id" \
+  --data-urlencode 'resolution=confirmed_failed_refund' --data-urlencode 'evidence_reference=provider-case-0002' \
+  --data-urlencode 'confirmation=REFUND' "$BASE/admin.php")
+test "$status" = '200'
+grep -q 'Only an unresolved provider attempt' "$TMP_DIR/reconcile-replay"
+php -r 'require "backend/src/App.php"; $c=require "backend/config.php"; $db=(new \Hotice\App($c))->database(); $key=hash("sha256","refund:".$argv[1]); $q=$db->prepare("SELECT COUNT(*) FROM credit_ledger WHERE event_key=? AND event_type=\x27refund\x27"); $q->execute([$key]); if((int)$q->fetchColumn()!==1) exit(1);' "$attempt_job"
+echo '[owner-reconciliation-test] bounded retry, terminal refund, exact confirmation, evidence audit and duplicate-refund rejection passed'
 status=$(curl -sS -D "$headers" -o /dev/null -w '%{http_code}' -H "Cookie: HOTICE_OWNER=$session" \
   -H 'Content-Type: application/x-www-form-urlencoded' --data-urlencode "csrf=$csrf" \
   --data-urlencode 'action=disable_user' --data-urlencode "user_id=$user_id" "$BASE/admin.php")

@@ -135,6 +135,18 @@ CREATE TABLE IF NOT EXISTS provider_attempts (
   CONSTRAINT fk_provider_attempt_job FOREIGN KEY (job_id) REFERENCES generation_jobs(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- Owner-reviewed resolution of an ambiguous provider operation. The evidence
+-- field is an opaque support/ticket reference only, never provider payloads.
+CREATE TABLE IF NOT EXISTS provider_attempt_reconciliations (
+  attempt_id CHAR(36) CHARACTER SET ascii COLLATE ascii_bin NOT NULL PRIMARY KEY,
+  admin_id CHAR(36) CHARACTER SET ascii COLLATE ascii_bin NULL,
+  action_code ENUM('confirmed_not_accepted_retry','confirmed_failed_refund') NOT NULL,
+  evidence_reference VARCHAR(128) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_provider_reconciliation_attempt FOREIGN KEY (attempt_id) REFERENCES provider_attempts(id) ON DELETE CASCADE,
+  CONSTRAINT fk_provider_reconciliation_admin FOREIGN KEY (admin_id) REFERENCES admin_accounts(id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS credit_ledger (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
   user_id CHAR(36) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,

@@ -16,6 +16,74 @@ function adminAudit(PDO $db, ?string $admin, string $event, ?string $type = null
     $db->prepare('INSERT INTO admin_audit_log(admin_id,event_code,target_type,target_id) VALUES(?,?,?,?)')
         ->execute([$admin, $event, $type, $id]);
 }
+function reconcileProviderAttempt(PDO $db, string $admin, string $attemptId, string $action, string $evidence): string
+{
+    if (!\Hotice\Support::isUuid($attemptId)) throw new OwnerPanelError('Provider attempt selection is invalid.');
+    if (!in_array($action, ['confirmed_not_accepted_retry', 'confirmed_failed_refund'], true)) {
+        throw new OwnerPanelError('Choose a supported provider resolution.');
+    }
+    if (!preg_match('/^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$/D', $evidence)) {
+        throw new OwnerPanelError('Enter an opaque provider case reference (8–128 letters, digits, dots, underscores, colons or hyphens).');
+    }
+    $db->beginTransaction();
+    try {
+        // Match the worker's account -> job -> attempt lock order before any
+        // balance or queue mutation, then recheck every precondition under lock.
+        $lookup = $db->prepare('SELECT j.user_id FROM provider_attempts a JOIN generation_jobs j ON j.id=a.job_id WHERE a.id=?');
+        $lookup->execute([$attemptId]);
+        $userId = $lookup->fetchColumn();
+        if (!is_string($userId) || !\Hotice\Support::isUuid($userId)) throw new OwnerPanelError('Provider attempt was not found.');
+        $account = $db->prepare('SELECT balance FROM credit_accounts WHERE user_id=? FOR UPDATE');
+        $account->execute([$userId]);
+        $balanceValue = $account->fetchColumn();
+        if ($balanceValue === false) throw new OwnerPanelError('The job credit reservation could not be verified.');
+        $balance = (int)$balanceValue;
+        $q = $db->prepare('SELECT a.id,a.job_id,a.status AS attempt_status,j.status AS job_status,j.error_code,j.lease_token,j.attempt_count,j.max_attempts,j.reserved_credits FROM provider_attempts a JOIN generation_jobs j ON j.id=a.job_id WHERE a.id=? AND j.user_id=? FOR UPDATE');
+        $q->execute([$attemptId, $userId]);
+        $row = $q->fetch();
+        if (!$row || $row['attempt_status'] !== 'unknown' || $row['job_status'] !== 'processing' ||
+            $row['error_code'] !== 'provider_outcome_unknown' || $row['lease_token'] !== null) {
+            throw new OwnerPanelError('Only an unresolved provider attempt with a held job can be reconciled.');
+        }
+        $reserved = (int)$row['reserved_credits'];
+        if ($reserved < 0 || $balance > PHP_INT_MAX - $reserved) throw new OwnerPanelError('The simulated credit balance cannot be safely reconciled.');
+        if ($action === 'confirmed_not_accepted_retry') {
+            if ((int)$row['attempt_count'] >= (int)$row['max_attempts']) {
+                throw new OwnerPanelError('This job has exhausted its retry limit; confirm terminal failure and refund instead.');
+            }
+            $attempt = $db->prepare("UPDATE provider_attempts SET status='retryable_rejected',error_code='owner_confirmed_not_accepted',finished_at=UTC_TIMESTAMP() WHERE id=? AND status='unknown'");
+            $attempt->execute([$attemptId]);
+            $job = $db->prepare("UPDATE generation_jobs SET status='queued',available_at=UTC_TIMESTAMP(),error_code=NULL,lease_token=NULL,lease_until=NULL WHERE id=? AND status='processing' AND error_code='provider_outcome_unknown' AND lease_token IS NULL");
+            $job->execute([$row['job_id']]);
+            if ($attempt->rowCount() !== 1 || $job->rowCount() !== 1) throw new OwnerPanelError('Provider attempt changed during reconciliation; refresh and inspect it.');
+            $message = 'Provider confirmed no operation was created. The held reservation remains in place and the job was queued for its next bounded attempt.';
+        } else {
+            $refundKey = hash('sha256', 'refund:' . $row['job_id']);
+            $existingRefund = $db->prepare("SELECT id FROM credit_ledger WHERE event_key=? AND event_type='refund'");
+            $existingRefund->execute([$refundKey]);
+            if ($existingRefund->fetchColumn() !== false) throw new OwnerPanelError('A refund is already recorded for this job; no balance was changed.');
+            $attempt = $db->prepare("UPDATE provider_attempts SET status='failed',error_code='owner_confirmed_terminal_failure',finished_at=UTC_TIMESTAMP() WHERE id=? AND status='unknown'");
+            $attempt->execute([$attemptId]);
+            $job = $db->prepare("UPDATE generation_jobs SET status='failed',actual_credits=0,error_code='owner_confirmed_terminal_failure',finished_at=UTC_TIMESTAMP(),lease_token=NULL,lease_until=NULL WHERE id=? AND status='processing' AND error_code='provider_outcome_unknown' AND lease_token IS NULL");
+            $job->execute([$row['job_id']]);
+            if ($attempt->rowCount() !== 1 || $job->rowCount() !== 1) throw new OwnerPanelError('Provider attempt changed during reconciliation; refresh and inspect it.');
+            $nextBalance = $balance + $reserved;
+            $db->prepare('UPDATE credit_accounts SET balance=? WHERE user_id=?')->execute([$nextBalance, $userId]);
+            $db->prepare("INSERT INTO credit_ledger(user_id,job_id,event_key,event_type,delta,balance_after) VALUES(?,?,?,'refund',?,?)")
+                ->execute([$userId, $row['job_id'], $refundKey, $reserved, $nextBalance]);
+            $message = 'Provider confirmed terminal failure with no billable usage. The job was failed and its held credit reservation was refunded once.';
+        }
+        $db->prepare('INSERT INTO provider_attempt_reconciliations(attempt_id,admin_id,action_code,evidence_reference) VALUES(?,?,?,?)')
+            ->execute([$attemptId, $admin, $action, $evidence]);
+        adminAudit($db, $admin, $action === 'confirmed_not_accepted_retry'
+            ? 'provider_attempt_reconcile_retry' : 'provider_attempt_reconcile_refund', 'provider_attempt', $attemptId);
+        $db->commit();
+        return $message;
+    } catch (Throwable $e) {
+        if ($db->inTransaction()) $db->rollBack();
+        throw $e;
+    }
+}
 
 header('X-Content-Type-Options: nosniff');
 header('X-Frame-Options: DENY');
@@ -144,6 +212,16 @@ try {
                 adminAudit($db, $adminId, 'provider_secret_saved', 'provider', $provider);
                 $message = $providers[$provider] . ' key saved encrypted.';
             }
+        } elseif ($action === 'reconcile_provider_attempt') {
+            $attemptId = trim((string)($_POST['attempt_id'] ?? ''));
+            $resolution = trim((string)($_POST['resolution'] ?? ''));
+            $evidence = trim((string)($_POST['evidence_reference'] ?? ''));
+            $confirmation = trim((string)($_POST['confirmation'] ?? ''));
+            $expectedConfirmation = $resolution === 'confirmed_not_accepted_retry' ? 'RETRY' : 'REFUND';
+            if (!hash_equals($expectedConfirmation, $confirmation)) {
+                throw new OwnerPanelError('Type ' . $expectedConfirmation . ' exactly to confirm this provider resolution.');
+            }
+            $message = reconcileProviderAttempt($db, (string)$adminId, $attemptId, $resolution, $evidence);
         } elseif ($action === 'disable_user' || $action === 'enable_user') {
             $target = (string) ($_POST['user_id'] ?? '');
             if (!\Hotice\Support::isUuid($target)) throw new OwnerPanelError('User selection is invalid.');
@@ -258,7 +336,8 @@ function csrfInput(): string { return '<input type="hidden" name="csrf" value="'
 <?php } catch (Throwable) { ?><article class="card"><span class="status off">Partial</span><p class="muted">Some optional tables are unavailable. Run the documented database installer.</p></article><?php } ?>
 <article class="card"><h2>Generation queue</h2><?php try { $queue=$db->query('SELECT status,COUNT(*) AS total FROM generation_jobs GROUP BY status')->fetchAll(); if (!$queue): ?><p class="muted">No generation jobs recorded.</p><?php else: ?><table><tbody><?php foreach($queue as $item): ?><tr><th><?=h((string)$item['status'])?></th><td><?=h((string)$item['total'])?></td></tr><?php endforeach; ?></tbody></table><?php endif; ?><p class="muted small">Job prompts and provider outputs are not displayed here.</p><?php } catch (Throwable) { ?><p class="muted">Generation queue schema is not installed.</p><?php } ?><p class="muted small">Only the explicit mock worker exists. Live provider submission remains disabled.</p></article>
 <article class="card"><h2>Recent provider attempts</h2><?php try { $attempts=$db->query('SELECT a.job_id,u.email,a.attempt_number,a.provider_id,a.model_id,a.status,a.remote_operation_id,a.error_code,a.updated_at FROM provider_attempts a JOIN generation_jobs j ON j.id=a.job_id JOIN users u ON u.id=j.user_id ORDER BY a.updated_at DESC LIMIT 30')->fetchAll(); if (!$attempts): ?><p class="muted">No provider attempts recorded.</p><?php else: ?><div style="overflow-x:auto"><table><thead><tr><th>User</th><th>Job</th><th>Attempt</th><th>Provider/model</th><th>Status</th><th>Operation ID</th><th>Error</th><th>Updated (UTC)</th></tr></thead><tbody><?php foreach($attempts as $item): ?><tr><td><?=h((string)$item['email'])?></td><td><code><?=h((string)$item['job_id'])?></code></td><td><?=h((string)$item['attempt_number'])?></td><td><?=h((string)$item['provider_id'])?> / <?=h((string)$item['model_id'])?></td><td><?=h((string)$item['status'])?></td><td><code><?=h((string)($item['remote_operation_id'] ?? '—'))?></code></td><td><?=h((string)($item['error_code'] ?? '—'))?></td><td><?=h((string)$item['updated_at'])?></td></tr><?php endforeach; ?></tbody></table></div><?php endif; ?><p class="muted small">This view contains operational identifiers only. Prompts, attachments, credentials and provider response bodies are excluded. An unknown outcome keeps its credit reservation; reconcile with the provider before any manual retry or refund.</p><?php } catch (Throwable) { ?><p class="muted">Provider attempt ledger is not installed.</p><?php } ?></article></div></section>
-<section><h2>Recent owner audit events</h2><article class="card"><table><thead><tr><th>Time (UTC)</th><th>Event</th><th>Target</th></tr></thead><tbody>
+<section><h2>Resolve ambiguous provider outcomes</h2><p class="muted">Only reconcile after checking the provider account. A retry requires confirmed non-acceptance; a refund requires confirmed terminal failure with no billable usage. Successful output recovery is not supported here. The opaque evidence reference is retained in the audit record; do not enter prompts, credentials, URLs or provider response bodies.</p>
+<?php try { $unknowns=$db->query("SELECT a.id,a.job_id,a.provider_id,a.model_id,a.attempt_number FROM provider_attempts a JOIN generation_jobs j ON j.id=a.job_id WHERE a.status='unknown' AND j.status='processing' AND j.error_code='provider_outcome_unknown' AND j.lease_token IS NULL ORDER BY a.updated_at DESC LIMIT 20")->fetchAll(); if (!$unknowns): ?><article class="card"><p class="muted">No unresolved provider attempts need review.</p></article><?php else: ?><div class="grid"><?php foreach($unknowns as $unknown): ?><article class="card"><p><strong><?=h((string)$unknown['provider_id'])?> / <?=h((string)$unknown['model_id'])?></strong><br>Job <code><?=h((string)$unknown['job_id'])?></code> · attempt <?=h((string)$unknown['attempt_number'])?></p><form method="post"><?=csrfInput()?><input type="hidden" name="action" value="reconcile_provider_attempt"><input type="hidden" name="attempt_id" value="<?=h((string)$unknown['id'])?>"><label>Provider-confirmed resolution<select name="resolution" required><option value="confirmed_not_accepted_retry">Confirmed no operation was created · retry within limit</option><option value="confirmed_failed_refund">Confirmed terminal failure and no billable usage · refund</option></select></label><label>Opaque evidence reference<input name="evidence_reference" minlength="8" maxlength="128" pattern="[A-Za-z0-9][A-Za-z0-9._:-]{7,127}" autocomplete="off" required placeholder="provider-case-123456"></label><label>Type RETRY or REFUND as selected<input name="confirmation" minlength="5" maxlength="6" autocomplete="off" required></label><button class="danger" type="submit">Record verified resolution</button></form></article><?php endforeach; ?></div><?php endif; ?><?php } catch (Throwable) { ?><article class="card"><p class="muted">Provider reconciliation storage is not installed. Run the documented schema installer.</p></article><?php } ?></section><section><h2>Recent owner audit events</h2><article class="card"><table><thead><tr><th>Time (UTC)</th><th>Event</th><th>Target</th></tr></thead><tbody>
 <?php $q=$db->query('SELECT occurred_at,event_code,target_type,target_id FROM admin_audit_log ORDER BY id DESC LIMIT 20'); foreach($q->fetchAll() as $event): ?><tr><td><?=h((string)$event['occurred_at'])?></td><td><?=h((string)$event['event_code'])?></td><td><?=h(trim((string)$event['target_type'].' '.(string)$event['target_id']))?></td></tr><?php endforeach; ?>
 </tbody></table></article></section>
 <p class="muted small">This operations panel is an early owner-console slice, not the full production administration system. Role administration, subscription controls, uploads/jobs management, backup drills, MFA recovery and service monitoring still require release gates.</p>
