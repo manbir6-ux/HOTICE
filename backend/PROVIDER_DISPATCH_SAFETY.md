@@ -2,6 +2,8 @@
 
 **Status: design gate only. Live provider dispatch is not implemented or enabled.** The current `MockJobWorker` registers only `MockProviderAdapter` and must remain the only worker available until every gate below is implemented and verified. Mock adapter idempotency exists only in process memory; it does not prove that a remote provider deduplicates submissions.
 
+The mock worker now persists a `provider_attempts` row in the same transaction as each job claim. It records only provider/model identifiers, request digest, stable per-attempt idempotency key, lease token, normalized state, and (after acceptance) the remote operation ID. If an accepted/dispatching attempt has an expired lease, recovery changes it to `unknown`, leaves the job reserved and non-claimable, and does not retry or refund. This exercises the durable fail-closed path without network access. **There is not yet an owner reconciliation action or live-provider worker**, and the mock adapter's in-memory operation cannot be resumed after process restart.
+
 ## Failure that must be safe
 
 A worker can send a generation request, the provider can accept and bill it, and the connection can fail before HOTICE receives or stores the provider operation ID. Retrying the job may create and bill a second operation. A process can also stop after receiving the operation ID but before persisting it. A normal worker lease expiring does not prove the provider did not accept the request.
