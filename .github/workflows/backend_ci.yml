@@ -25,7 +25,7 @@ jobs:
         run: php backend/tests/smoke.php
 
   php-mysql-integration:
-    name: Auth, cloud entitlement, media and storage integration
+    name: Auth, owner console, cloud entitlement, media and storage integration
     runs-on: ubuntu-latest
     services:
       mysql:
@@ -69,3 +69,5 @@ jobs:
         run: php backend/bin/install.php
       - name: HTTP cloud API integration
         run: bash backend/tests/http-integration.sh
+      - name: Owner MFA console and encrypted provider settings
+        run: bash backend/tests/admin-integration.sh

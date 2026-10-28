@@ -7,6 +7,60 @@ CREATE TABLE IF NOT EXISTS users (
   UNIQUE KEY uq_users_email (email)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- Separate owner identities cannot be created through public app registration.
+-- TOTP secrets are envelope-encrypted by the application before storage.
+CREATE TABLE IF NOT EXISTS admin_accounts (
+  id CHAR(36) CHARACTER SET ascii COLLATE ascii_bin NOT NULL PRIMARY KEY,
+  email VARCHAR(254) NOT NULL,
+  password_hash VARCHAR(255) NOT NULL,
+  totp_secret_ciphertext VARBINARY(64) NOT NULL,
+  totp_nonce VARBINARY(12) NOT NULL,
+  totp_tag VARBINARY(16) NOT NULL,
+  disabled_at DATETIME NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  last_login_at DATETIME NULL,
+  UNIQUE KEY uq_admin_email (email)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS user_admin_state (
+  user_id CHAR(36) CHARACTER SET ascii COLLATE ascii_bin NOT NULL PRIMARY KEY,
+  disabled_at DATETIME NULL,
+  updated_by CHAR(36) CHARACTER SET ascii COLLATE ascii_bin NULL,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  KEY ix_user_admin_disabled (disabled_at),
+  CONSTRAINT fk_user_admin_state_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  CONSTRAINT fk_user_admin_state_admin FOREIGN KEY (updated_by) REFERENCES admin_accounts(id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS provider_secrets (
+  provider VARCHAR(32) CHARACTER SET ascii COLLATE ascii_bin NOT NULL PRIMARY KEY,
+  ciphertext VARBINARY(4096) NOT NULL,
+  nonce VARBINARY(12) NOT NULL,
+  tag VARBINARY(16) NOT NULL,
+  updated_by CHAR(36) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  CONSTRAINT fk_provider_secret_admin FOREIGN KEY (updated_by) REFERENCES admin_accounts(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS admin_audit_log (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  admin_id CHAR(36) CHARACTER SET ascii COLLATE ascii_bin NULL,
+  event_code VARCHAR(48) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  target_type VARCHAR(32) CHARACTER SET ascii COLLATE ascii_bin NULL,
+  target_id VARCHAR(80) CHARACTER SET ascii COLLATE ascii_bin NULL,
+  occurred_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  KEY ix_admin_audit_time (occurred_at),
+  KEY ix_admin_audit_actor (admin_id, occurred_at),
+  CONSTRAINT fk_admin_audit_actor FOREIGN KEY (admin_id) REFERENCES admin_accounts(id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS admin_login_attempts (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  fingerprint CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  occurred_at DATETIME NOT NULL,
+  KEY ix_admin_attempts_fingerprint (fingerprint, occurred_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS sessions (
   id CHAR(36) CHARACTER SET ascii COLLATE ascii_bin NOT NULL PRIMARY KEY,
   user_id CHAR(36) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
