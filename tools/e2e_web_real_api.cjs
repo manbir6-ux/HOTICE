@@ -153,6 +153,9 @@ async function main() {
     const verificationToken = verificationBody.match(/#token=([a-f0-9]{64})/i)?.[1];
     assert(verificationToken, 'CI mail capture must contain the one-time verification URL.');
     await page.goto(`http://127.0.0.1:${port}/#token=${verificationToken}`, {waitUntil: 'networkidle'});
+    const verificationResponse = apiResponses.filter((response) => response.method === 'POST' && response.path === '/v1/auth/verify-email').at(-1);
+    assert.equal(verificationResponse?.status, 200,
+      `Browser email verification API response must succeed: ${JSON.stringify(verificationResponse)}`);
     await page.getByText('Email verified. You can now sign in securely.').waitFor();
 
     await page.locator('#accountEmail').fill(registerEmail);
