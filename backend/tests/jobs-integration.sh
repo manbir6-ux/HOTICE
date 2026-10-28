@@ -28,8 +28,11 @@ test "$(curl -fsS -H "$AUTH" "$BASE/v1/me" | jq -er '.mockGeneration.credits')" 
 echo 'checkpoint: account reports simulated credits'
 
 request=$(jq -cn --arg p 'A blue sailboat at sunrise' '{modelId:"hotice.mock.video.v1",prompt:$p,simulate:"success"}')
+echo "checkpoint: request=$request"
 quote_body=$(jq -cn --argjson r "$request" '{request:$r}')
+echo "checkpoint: quote body=$quote_body"
 quote_response=$(curl -sS -H "$AUTH" -H 'Content-Type: application/json' -d "$quote_body" "$BASE/v1/jobs/quote")
+echo "checkpoint: quote response=$quote_response"
 quote=$(echo "$quote_response" | jq -er '.quoteToken') || { echo "Quote response: $quote_response"; cat /tmp/hotice-job-test.log; exit 1; }
 body=$(jq -cn --arg q "$quote" --argjson r "$request" '{quoteToken:$q,request:$r}')
 key='mock-job-success-00000001'
