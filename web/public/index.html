@@ -8,6 +8,7 @@
 <!-- Public API origin only. Use exact HTTPS in deployment; loopback HTTP is accepted only for local web development. Never put a provider key here. -->
 <meta name="hotice-api-origin" content="">
 <link rel="stylesheet" href="assets/site.css">
+<link rel="stylesheet" href="assets/account-preferences.css">
 </head>
 <body>
 <div class="ambient" aria-hidden="true"></div>
@@ -60,6 +61,16 @@
 <form id="accountResetRequest" autocomplete="on" hidden><label for="resetRequestEmail">Email address</label><input id="resetRequestEmail" type="email" autocomplete="email" maxlength="254" required><button class="button tiny" type="submit">Send password reset link</button><button class="tool" type="button" data-account-view="login">Back to sign in</button><p class="editor-note">If an eligible account exists, we’ll email a one-time link.</p></form>
 <form id="accountResetComplete" autocomplete="on" hidden><label for="resetNewPassword">New password</label><input id="resetNewPassword" type="password" autocomplete="new-password" minlength="12" maxlength="256" required><label for="resetConfirmPassword">Confirm new password</label><input id="resetConfirmPassword" type="password" autocomplete="new-password" minlength="12" maxlength="256" required><button class="button tiny" type="submit">Set new password</button><button class="tool" type="button" data-account-view="login">Back to sign in</button></form>
 <div id="accountSignedIn" hidden><p>Signed in as <strong id="accountIdentity"></strong></p><p id="accountCloudStatus" class="editor-note"></p>
+<section id="accountAppearance" class="account-preferences" aria-labelledby="accountAppearanceTitle">
+<h3 id="accountAppearanceTitle">Appearance across your HOTICE clients</h3>
+<p class="editor-note">These account settings apply to compatible HOTICE clients. Project content and media stay on this device unless you separately choose a cloud action.</p>
+<div class="account-preference-grid">
+<label for="accountThemeMode">Display mode<select id="accountThemeMode" disabled><option value="system">System</option><option value="light">Light</option><option value="dark">Dark</option></select></label>
+<label for="accountAccent">Colour theme<select id="accountAccent" disabled><option value="electric">Electric</option><option value="ocean">Ocean</option><option value="ember">Ember</option><option value="glacier">Glacier</option><option value="moss">Moss</option></select></label>
+<label for="accountFont">Typography<select id="accountFont" disabled><option value="modern">Modern</option><option value="editorial">Editorial</option><option value="technical">Technical</option></select></label>
+</div>
+<p id="accountPreferencesStatus" class="editor-note" role="status" aria-live="polite">Loading your account appearance settings…</p>
+</section>
 <div class="account-actions"><button id="accountExport" class="tool" type="button">Download my account data</button><button id="accountSignOut" class="tool" type="button">Sign out</button></div>
 <p class="editor-note">The export covers data held by HOTICE. Device-only projects and media files are not included; keep a separate backup of local work.</p>
 <form id="accountDeleteForm" autocomplete="off"><h3>Delete HOTICE account</h3><p class="editor-note">This permanently deletes your account and server-held projects, media records and job history. Device-local projects remain on this device.</p>

@@ -94,6 +94,36 @@ async function main() {
     await page.locator('#accountPassword').fill(password);
     await page.locator('#accountSignIn').click();
     await page.getByText('Signed in and verified with the HOTICE server.').waitFor();
+    await page.getByText('Synced with your HOTICE account. Changes apply to compatible clients.').waitFor();
+    const preferencesRead = apiRequests.find((request) =>
+      request.path === '/v1/me/preferences' && request.method === 'GET');
+    assert(preferencesRead && preferencesRead.headers.authorization?.startsWith('Bearer '),
+      'Browser must load appearance settings through the authenticated account API.');
+    let preferenceWriteResponse = page.waitForResponse((response) =>
+      new URL(response.url()).pathname === '/v1/me/preferences' &&
+      response.request().method() === 'PUT' && response.status() === 200);
+    await page.locator('#accountThemeMode').selectOption('light');
+    await preferenceWriteResponse;
+    preferenceWriteResponse = page.waitForResponse((response) =>
+      new URL(response.url()).pathname === '/v1/me/preferences' &&
+      response.request().method() === 'PUT' && response.status() === 200);
+    await page.locator('#accountAccent').selectOption('ocean');
+    await preferenceWriteResponse;
+    preferenceWriteResponse = page.waitForResponse((response) =>
+      new URL(response.url()).pathname === '/v1/me/preferences' &&
+      response.request().method() === 'PUT' && response.status() === 200);
+    await page.locator('#accountFont').selectOption('editorial');
+    await preferenceWriteResponse;
+    await page.waitForFunction(() => document.documentElement.dataset.themeMode === 'light' &&
+      document.documentElement.dataset.accent === 'ocean' &&
+      document.documentElement.dataset.font === 'editorial');
+    await page.getByText('Synced with your HOTICE account. Changes apply to compatible clients.').waitFor();
+    const preferencesWrite = apiRequests.filter((request) =>
+      request.path === '/v1/me/preferences' && request.method === 'PUT').at(-1);
+    assert.deepEqual(preferencesWrite?.body, {themeMode: 'light', accent: 'ocean', font: 'editorial'},
+      'Browser appearance changes must persist exact validated settings through the shared API.');
+    assert(preferencesWrite?.headers.authorization?.startsWith('Bearer '),
+      'Preference updates must require the authenticated server session.');
     assert.equal(await page.locator('#quoteMockJob').isDisabled(), false, 'server mock flag enables the authenticated workflow');
     await page.locator('#quoteMockJob').click();
     await page.getByText(/Mock dry run quote: .* simulated credits/).waitFor();
@@ -121,6 +151,10 @@ async function main() {
     // Exercise the public account lifecycle in the actual browser/API pair.
     await page.locator('#accountSignOut').click();
     await page.getByText('Signed out. The server session was revoked.').waitFor();
+    assert.equal(await page.locator('html').getAttribute('data-theme-mode'), 'dark',
+      'Signing out must reset account appearance in the browser document.');
+    assert.equal(await page.locator('html').getAttribute('data-accent'), 'electric');
+    assert.equal(await page.locator('html').getAttribute('data-font'), 'modern');
     await page.locator('#showRegister').click();
     await page.locator('#registerEmail').fill(registerEmail);
     await page.locator('#registerPassword').fill(registerPassword);
@@ -235,6 +269,7 @@ async function main() {
       'prompt-only request shape with no media, actor references or preview-model routing',
       'bearer token absent from browser storage',
       'browser registration, pending-account sign-in denial and email verification',
+      'authenticated cross-client appearance preferences load, live apply, persist and reset on sign-out',
       'browser password reset, session revocation and old-password rejection',
       'authenticated account export download and privacy boundaries',
       'password-confirmed account deletion and browser session cleanup',
