@@ -4,10 +4,14 @@ on:
     branches: [main]
     paths:
       - 'backend/**'
+      - 'tools/verify_cpanel_deployment.mjs'
+      - 'tools/test_cpanel_deployment_verifier.mjs'
       - '.github/workflows/backend_ci.yml'
   pull_request:
     paths:
       - 'backend/**'
+      - 'tools/verify_cpanel_deployment.mjs'
+      - 'tools/test_cpanel_deployment_verifier.mjs'
       - '.github/workflows/backend_ci.yml'
 jobs:
   php-static:
@@ -19,10 +23,15 @@ jobs:
         with:
           php-version: '8.2'
           extensions: pdo_mysql, fileinfo
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
       - name: PHP syntax lint
         run: find backend -type f -name '*.php' -print0 | xargs -0 -n1 php -l
       - name: Self tests
         run: php backend/tests/smoke.php
+      - name: cPanel deployment verifier contract tests
+        run: node --test tools/test_cpanel_deployment_verifier.mjs
 
   php-mysql-integration:
     name: Auth, owner console, cloud entitlement, media and storage integration
