@@ -200,8 +200,23 @@ async function main() {
     assert.equal(exportData.deviceLocalProjectsIncluded, false);
     assert.equal(apiResponses.find((response) => response.path === '/v1/me/export')?.status, 200,
       'Account export must download through the authenticated shared API.');
+    assert.equal(apiResponses.find((response) => response.path === '/v1/me/export')?.headers['access-control-allow-origin'],
+      `http://127.0.0.1:${port}`, 'Account export must use the exact configured browser origin.');
+    const deleteRequestsBeforeConfirmation = apiRequests.filter((request) => request.path === '/v1/me' && request.method === 'DELETE').length;
+    await page.locator('#accountDeletePassword').fill(rotatedPassword);
+    await page.locator('#accountDeleteConfirmation').fill('delete');
+    await page.locator('#accountDelete').click();
+    await page.getByText('Type DELETE exactly to confirm. Your account is unchanged.').waitFor();
+    assert.equal(apiRequests.filter((request) => request.path === '/v1/me' && request.method === 'DELETE').length,
+      deleteRequestsBeforeConfirmation, 'The browser must reject a non-exact deletion confirmation locally.');
     await page.locator('#accountDeletePassword').fill(rotatedPassword);
     await page.locator('#accountDeleteConfirmation').fill('DELETE');
+    await page.locator('#accountDeletePassword').fill('WrongPassword123!');
+    await page.locator('#accountDelete').click();
+    await page.getByText('The current password was not accepted. Your account is unchanged.').waitFor();
+    assert.equal(apiResponses.filter((response) => response.path === '/v1/me' && response.method === 'DELETE').at(-1)?.status, 403,
+      'The server must reject account deletion without the current password.');
+    await page.locator('#accountDeletePassword').fill(rotatedPassword);
     await page.locator('#accountDelete').click();
     await page.getByText('Your account and server-held data were deleted. Device-only projects remain on this device.').waitFor();
     const deletionRequest = apiRequests.filter((request) => request.path === '/v1/me' && request.method === 'DELETE').at(-1);

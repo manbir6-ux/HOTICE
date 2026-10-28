@@ -85,7 +85,7 @@ GitHub Actions `HOTICE PHP Backend Security & API` also spins up an ephemeral My
 
 - Email deliverability and staging verification for the configured cPanel mailbox; abuse protection/CAPTCHA; token refresh/rotation and multi-device session management.
 - Flutter optional cloud project synchronization, user consent and explicit backup selection.
-- Browser and native settings UX for downloading the export and confirming deletion; the endpoints are API-only.
+- Native settings UX for downloading the export and confirming deletion; the browser account page exposes both authenticated actions. Staging hosting, backup restore, and retention/privacy review remain open.
 - Payment provider webhook signature verification, idempotent credit ledger, subscription renewal/cancel/refund and server-controlled plan catalog.
 - AI model proxy/provider adapters, secure file signing, async job queue/callback verification, token/cost reservation and reconciliation.
 - Large media uploads with chunking/object storage; cloud-client encryption if required; retention, antivirus/file scanning, abuse review, legal/compliance, disaster recovery, capacity scaling, physical-device testing.

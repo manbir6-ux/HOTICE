@@ -1259,7 +1259,7 @@
         ? 'The current password was not accepted. Your account is unchanged.'
         : error.status === 422
           ? 'Type DELETE exactly and provide your current password. Your account is unchanged.'
-          : 'Could not confirm account deletion. Your account is unchanged; try again or sign out.');
+          : 'Could not confirm whether deletion finished. Sign in again to check; device-only projects remain on this device.');
     } finally {
       button.disabled = false;
       password.value = '';
