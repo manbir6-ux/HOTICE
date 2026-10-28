@@ -11,6 +11,8 @@ require_once __DIR__ . '/Support.php';
 final class App
 {
     private PDO $db;
+    /** @var list<string> */
+    private array $webAllowedOrigins;
 
     public function __construct(private readonly array $config)
     {
@@ -20,6 +22,7 @@ final class App
         if (!preg_match('/^[a-f0-9]{64}$/iD', (string) ($config['app_key'] ?? ''))) {
             throw new \RuntimeException('Server app_key must be a unique 64-character hex secret.');
         }
+        $this->webAllowedOrigins = $this->validateWebOrigins($config['web_allowed_origins'] ?? []);
         $dsn = (string) $config['db']['dsn'];
         $this->db = new PDO($dsn, (string) $config['db']['user'],
             (string) $config['db']['password'], [
@@ -30,6 +33,43 @@ final class App
     }
 
     public function database(): PDO { return $this->db; }
+
+    /** @return list<string> */
+    private function validateWebOrigins(mixed $origins): array
+    {
+        if (!is_array($origins) || !array_is_list($origins)) {
+            throw new \RuntimeException('web_allowed_origins must be a list of exact HTTPS origins.');
+        }
+        $validated = [];
+        foreach ($origins as $origin) {
+            if (!is_string($origin) || $origin === '' || strlen($origin) > 255) {
+                throw new \RuntimeException('Invalid web origin in server configuration.');
+            }
+            $parts = parse_url($origin);
+            if (!is_array($parts) || array_diff(array_keys($parts), ['scheme', 'host', 'port']) !== [] ||
+                !isset($parts['scheme'], $parts['host'])) {
+                throw new \RuntimeException('Web origins must not include paths, credentials, queries, or fragments.');
+            }
+            $scheme = strtolower((string)$parts['scheme']);
+            $host = strtolower((string)$parts['host']);
+            $isLocalHost = in_array($host, ['localhost', '127.0.0.1'], true);
+            if (($scheme !== 'https' && !($scheme === 'http' && $isLocalHost)) ||
+                (filter_var($host, FILTER_VALIDATE_IP) === false &&
+                    filter_var($host, FILTER_VALIDATE_DOMAIN, FILTER_FLAG_HOSTNAME) === false)) {
+                throw new \RuntimeException('Web origins must use HTTPS (HTTP is allowed for localhost only).');
+            }
+            $port = $parts['port'] ?? null;
+            if ($port !== null && ($port < 1 || $port > 65535)) {
+                throw new \RuntimeException('Invalid web origin port.');
+            }
+            $normalized = $scheme . '://' . $host . ($port === null ? '' : ':' . $port);
+            if ($origin !== $normalized || in_array($origin, $validated, true)) {
+                throw new \RuntimeException('Web origins must be unique canonical origins without a trailing slash.');
+            }
+            $validated[] = $origin;
+        }
+        return $validated;
+    }
 
     public function run(): void
     {
@@ -46,6 +86,7 @@ final class App
                 throw new ApiError(426, 'HTTPS is required.');
             }
             $method = strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET'));
+            if ($this->handleCors($method)) return;
             $route = parse_url((string) ($_SERVER['REQUEST_URI'] ?? '/'), PHP_URL_PATH);
             if (!is_string($route)) throw new ApiError(400, 'Invalid request path.');
             $route = rtrim($route, '/') ?: '/';
@@ -106,6 +147,44 @@ final class App
             error_log('HOTICE API request ' . $requestId . ' failed (' . get_class($e) . ')');
             $this->send(500, ['error' => 'Internal server error.', 'requestId' => $requestId]);
         }
+    }
+
+    /**
+     * Allow browser clients only from exact configured origins. Native clients
+     * omit Origin and continue to use the same bearer-authenticated API.
+     */
+    private function handleCors(string $method): bool
+    {
+        header('Vary: Origin');
+        $origin = (string)($_SERVER['HTTP_ORIGIN'] ?? '');
+        if ($origin !== '') {
+            if (!in_array($origin, $this->webAllowedOrigins, true)) {
+                throw new ApiError(403, 'Browser origin is not allowed.');
+            }
+            header('Access-Control-Allow-Origin: ' . $origin);
+        }
+        if ($method !== 'OPTIONS') return false;
+        if ($origin === '') throw new ApiError(400, 'CORS preflight requires an Origin header.');
+
+        $methods = ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'];
+        $requestedMethod = strtoupper(trim((string)($_SERVER['HTTP_ACCESS_CONTROL_REQUEST_METHOD'] ?? '')));
+        if (!in_array($requestedMethod, $methods, true)) {
+            throw new ApiError(403, 'Requested browser method is not allowed.');
+        }
+        $allowedHeaders = ['authorization', 'content-type', 'idempotency-key'];
+        $requestedHeaders = trim((string)($_SERVER['HTTP_ACCESS_CONTROL_REQUEST_HEADERS'] ?? ''));
+        if ($requestedHeaders !== '') {
+            foreach (explode(',', strtolower($requestedHeaders)) as $headerName) {
+                if (!in_array(trim($headerName), $allowedHeaders, true)) {
+                    throw new ApiError(403, 'Requested browser header is not allowed.');
+                }
+            }
+        }
+        header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS');
+        header('Access-Control-Allow-Headers: Authorization, Content-Type, Idempotency-Key');
+        header('Access-Control-Max-Age: 600');
+        http_response_code(204);
+        return true;
     }
 
     private function https(): bool
@@ -446,3 +525,4 @@ final class App
         return Support::assertPrivateStorage($path, $roots);
     }
 }
+

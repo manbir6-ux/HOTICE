@@ -444,4 +444,141 @@
     try { await video.play(); } catch (_) { sequence = false; }
   });
   renderClips();
+
+  // Browser sign-in uses the same HTTPS API and bearer sessions as native
+  // clients. The token stays in memory only; it is never written to web storage.
+  const accountForm = get('accountLogin');
+  const accountSignIn = get('accountSignIn');
+  const accountSignedIn = get('accountSignedIn');
+  const apiOriginMeta = document.querySelector('meta[name="hotice-api-origin"]');
+  let accountToken = null;
+  let accountApiOrigin = null;
+  try {
+    const configured = (apiOriginMeta?.content || '').trim();
+    const parsed = new URL(configured);
+    if (parsed.protocol === 'https:' && parsed.origin === configured &&
+        !parsed.username && !parsed.password && !parsed.search && !parsed.hash) {
+      accountApiOrigin = parsed.origin;
+    }
+  } catch (_) {
+    // Unconfigured or malformed origins fail closed. Do not send credentials.
+  }
+
+  if (!accountApiOrigin) {
+    status('accountStatus',
+      'Account sign-in is unavailable: configure the exact HTTPS HOTICE API origin for this deployment.');
+    accountForm?.querySelectorAll('input, button').forEach((control) => {
+      control.disabled = true;
+    });
+  } else {
+    status('accountStatus',
+      'Secure account service configured. Sign in to verify your account; this preview does not sync project data.');
+  }
+
+  async function accountApi(path, {method = 'GET', token = null, body = null} = {}) {
+    const headers = {Accept: 'application/json'};
+    if (token) headers.Authorization = 'Bearer ' + token;
+    if (body !== null) headers['Content-Type'] = 'application/json';
+    const response = await fetch(accountApiOrigin + path, {
+      method,
+      mode: 'cors',
+      credentials: 'omit',
+      cache: 'no-store',
+      redirect: 'error',
+      headers,
+      ...(body === null ? {} : {body: JSON.stringify(body)}),
+    });
+    let result = null;
+    try { result = await response.json(); } catch (_) { /* Treat as an invalid API response. */ }
+    if (!response.ok || !result || typeof result !== 'object') {
+      const error = new Error('HOTICE account request failed.');
+      error.status = response.status;
+      throw error;
+    }
+    return result;
+  }
+
+  function showAccountForm(message) {
+    accountToken = null;
+    accountSignedIn.hidden = true;
+    accountForm.hidden = false;
+    status('accountStatus', message);
+  }
+
+  accountForm?.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    if (!accountApiOrigin || !accountSignIn || accountSignIn.disabled) return;
+    const emailField = get('accountEmail');
+    const passwordField = get('accountPassword');
+    const email = emailField.value.trim();
+    const password = passwordField.value;
+    accountSignIn.disabled = true;
+    status('accountStatus', 'Signing in and verifying your server session…');
+    let issuedToken = null;
+    try {
+      const login = await accountApi('/v1/auth/login', {
+        method: 'POST', body: {email, password},
+      });
+      issuedToken = login.accessToken;
+      if (typeof issuedToken !== 'string' || !/^[a-f0-9]{64}$/i.test(issuedToken)) {
+        throw new Error('Invalid HOTICE session response.');
+      }
+      const profile = await accountApi('/v1/me', {token: issuedToken});
+      const returnedEmail = profile.user?.email;
+      if (typeof returnedEmail !== 'string' ||
+          returnedEmail.toLowerCase() !== email.toLowerCase()) {
+        throw new Error('HOTICE account identity could not be verified.');
+      }
+      accountToken = issuedToken;
+      get('accountIdentity').textContent = returnedEmail;
+      const cloudActive = profile.cloud?.active === true;
+      get('accountCloudStatus').textContent = cloudActive
+        ? 'Cloud entitlement is active. This preview does not upload or sync browser projects.'
+        : 'Cloud entitlement is inactive. This preview does not upload or sync browser projects.';
+      accountForm.hidden = true;
+      accountSignedIn.hidden = false;
+      status('accountStatus', 'Signed in and verified with the HOTICE server.');
+    } catch (error) {
+      if (issuedToken && accountApiOrigin) {
+        accountApi('/v1/auth/logout', {method: 'POST', token: issuedToken}).catch(() => {});
+      }
+      accountToken = null;
+      status('accountStatus', error.status === 401
+        ? 'Sign-in was not accepted. Check the email and password.'
+        : error.status === 403
+          ? 'This website origin is not enabled in the HOTICE server configuration.'
+          : 'The account service could not be reached or verified. Try again later.');
+    } finally {
+      passwordField.value = '';
+      accountSignIn.disabled = false;
+    }
+  });
+
+  get('accountSignOut')?.addEventListener('click', async () => {
+    const token = accountToken;
+    accountToken = null;
+    accountSignedIn.hidden = true;
+    accountForm.hidden = false;
+    status('accountStatus', 'Signing out and revoking this server session…');
+    try {
+      if (token) await accountApi('/v1/auth/logout', {method: 'POST', token});
+      status('accountStatus', 'Signed out. The server session was revoked.');
+    } catch (_) {
+      status('accountStatus',
+        'Signed out in this browser, but server revocation could not be confirmed. The session may remain valid until it expires.');
+    }
+  });
+
+  window.addEventListener('pagehide', () => {
+    const token = accountToken;
+    accountToken = null;
+    if (token && accountApiOrigin) {
+      fetch(accountApiOrigin + '/v1/auth/logout', {
+        method: 'POST', mode: 'cors', credentials: 'omit', cache: 'no-store',
+        redirect: 'error', keepalive: true,
+        headers: {Authorization: 'Bearer ' + token},
+      }).catch(() => {});
+    }
+  });
 })();
+

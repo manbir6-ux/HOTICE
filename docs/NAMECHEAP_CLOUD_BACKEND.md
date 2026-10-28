@@ -17,7 +17,9 @@
 
 Endpoints: GET /health; POST /v1/auth/login, /register (disabled by default), /logout; GET /v1/me; GET /v1/projects; GET/PUT/DELETE /v1/projects/{UUID}; PUT /v1/projects/{UUID}/files/{UUID}; GET/DELETE /v1/files/{UUID}.
 
-Implementation principles: password_hash and verification; random bearer tokens stored only as SHA-256 digests; per-IP/email throttled login; prepared PDO queries, owner-scoped authorization; server-side cloud entitlement; transactional quotas; optimistic project revision conflict 409; MIME inspection; 20MiB upload guard; random filenames; private media outside web root; sanitised errors; no permissive CORS.
+Implementation principles: password_hash and verification; random bearer tokens stored only as SHA-256 digests; per-IP/email throttled login; prepared PDO queries, owner-scoped authorization; server-side cloud entitlement; transactional quotas; optimistic project revision conflict 409; MIME inspection; 20MiB upload guard; random filenames; private media outside web root; sanitised errors; exact HTTPS-origin CORS allowlist for the browser client, with no wildcards or cookies.
+
+The static web preview now has an account sign-in/profile/sign-out workflow against the same `/v1/auth/login`, `/v1/me`, and `/v1/auth/logout` API used by native clients. Configure its public `meta[name="hotice-api-origin"]` with the HTTPS API origin and set that website origin in the private `web_allowed_origins` list. The browser bearer token stays in memory only; no projects or media are synced by this page. CORS defaults to an empty allowlist and blocks unlisted browser origins. This connection has not been deployed or tested against a public cPanel service.
 
 ## Verification truth
 - Local PHP 8.4 syntax checks: nine PHP files passed.
@@ -29,10 +31,11 @@ Implementation principles: password_hash and verification; random bearer tokens 
 
 ## Release-critical next steps
 1. Verify committed PHP source under `backend/` and run/fix the independent MySQL integration GitHub Actions workflow. Resolve security concerns before release.
-2. Connect secure Flutter device storage and real auth in separate reviewed PRs, including access tokens in native secure storage, explicit cloud sync opt-in and offline conflict handling.
+2. Review and integrate the secure Flutter local persistence/sign-in stack and browser API account workflow. Cloud sync still needs explicit user consent, offline conflict handling, durable media-transfer policy and staging validation.
 3. Configure a dedicated, HTTPS-only cPanel subdomain, SQL database, server-only secrets, private media directory, backups and recovery; validate direct URL blocking of config/private files.
 4. Integrate **verified** billing webhooks before automatically granting any paid cloud entitlement; add refunds, cancellations and webhook idempotency.
 5. Implement allowlisted AI provider adapters, capability/pricing catalog, jobs, retry, charge reconciliation and large object storage using proper asynchronous infrastructure.
 6. Complete integration QA on real devices and hosting, security review, email verification, deletion/privacy policy and quotas before release.
 
 This plan reflects the user's requirement: **projects default to the device; cloud only for entitled subscribers; all provider secrets on server.**
+

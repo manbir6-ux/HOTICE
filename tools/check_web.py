@@ -45,6 +45,9 @@ def main():
     assert "Use this prompt" not in html or "libraryCards" in html
     assert "admin.php" not in html, "Do not link to an unimplemented admin"
     assert "youtube.com/watch" not in html, "No uncleared external example embeds"
+    assert 'name="hotice-api-origin"' in html, "Configure the shared HTTPS API origin at deployment"
+    for element_id in ("accountLogin", "accountEmail", "accountPassword", "accountStatus", "accountSignOut"):
+        assert 'id="' + element_id + '"' in html, "Missing shared-account workflow control: " + element_id
 
     raw = json.loads((PUBLIC / "assets" / "inspiration.json").read_text(encoding="utf-8"))
     assert raw["schemaVersion"] == 1
@@ -80,6 +83,11 @@ def main():
     assert len(ids) >= 5, "Catalog needs a meaningful collection"
     assert "actorNameInput" in html and "actorAssignments" in html
     script = (PUBLIC / "assets" / "site.js").read_text(encoding="utf-8")
+    assert "accountApi('/v1/auth/login'" in script and "accountApi('/v1/me'" in script
+    assert "accountApi('/v1/auth/logout'" in script
+    assert "credentials: 'omit'" in script and "redirect: 'error'" in script
+    assert "localStorage.setItem('hotice.accessToken'" not in script
+    assert "sessionStorage.setItem('hotice.accessToken'" not in script
     assert "actorStorageKey" in script
     assert "Assign your Actors to this prompt" in script
     assert "prompt.replaceAll('{{' + role + '}}', actors[index])" in script
@@ -94,3 +102,4 @@ if __name__ == "__main__":
     except Exception as exc:
         print("WEB CHECK FAILED:", str(exc), file=sys.stderr)
         raise
+

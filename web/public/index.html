@@ -5,12 +5,14 @@
 <title>HOTICE — Direct the impossible</title>
 <meta name="description" content="HOTICE cinematic AI creation studio. Discover models, cast named actors, design scenes and edit your footage in one workspace.">
 <meta name="theme-color" content="#090c18">
+<!-- Public API origin only. Configure the exact HTTPS origin at deployment; never put a provider key here. -->
+<meta name="hotice-api-origin" content="">
 <link rel="stylesheet" href="assets/site.css">
 </head>
 <body>
 <div class="ambient" aria-hidden="true"></div>
 <header class="topbar"><a class="brand" href="#home" aria-label="HOTICE home"><span class="brandmark">H</span><span>HOTICE</span></a>
-<nav aria-label="Main navigation"><a href="#showcase">Showcase</a><a href="#studio">Studio</a><a href="#workflow">How it works</a><a href="#faq">FAQ</a></nav>
+<nav aria-label="Main navigation"><a href="#showcase">Showcase</a><a href="#studio">Studio</a><a href="#account">Account</a><a href="#workflow">How it works</a><a href="#faq">FAQ</a></nav>
 <a class="button tiny" href="#studio">Launch studio <span aria-hidden="true">↗</span></a></header>
 <main>
 <section class="hero section" id="home"><div class="hero-text">
@@ -36,6 +38,20 @@
 <div id="libraryCards" class="library-grid" aria-live="polite"><p class="editor-note">Loading the inspiration catalog...</p></div>
 <p class="fine">These prompts were written for HOTICE. They are examples, not claimed exact prompts for any third-party showcase video. AI rendering is not connected.</p>
 </section>
+<section class="section account" id="account">
+<div class="section-heading"><div><span class="eyebrow">YOUR HOTICE ACCOUNT</span><h2>One account. Your work stays yours.</h2><p>Sign in to verify your account against the shared HOTICE server. This preview does not upload your prompts, Actors, or media.</p></div><span class="disclosure">SECURE SERVER SESSION</span></div>
+<div class="account-card">
+<p id="accountStatus" class="account-status" role="status" aria-live="polite">Checking the account service configuration…</p>
+<form id="accountLogin" autocomplete="on">
+<label for="accountEmail">Email address</label><input id="accountEmail" name="email" type="email" autocomplete="username" maxlength="254" required>
+<label for="accountPassword">Password</label><input id="accountPassword" name="password" type="password" autocomplete="current-password" required>
+<button id="accountSignIn" class="button tiny" type="submit">Sign in securely</button>
+<p class="editor-note">Account access is provisioned by HOTICE; self-registration is not available from this preview. Your bearer session stays in memory and is cleared when you reload or close this page.</p>
+</form>
+<div id="accountSignedIn" hidden><p>Signed in as <strong id="accountIdentity"></strong></p><p id="accountCloudStatus" class="editor-note"></p><button id="accountSignOut" class="tool" type="button">Sign out</button></div>
+<p class="editor-note">Cloud project sync is not connected to this browser. No project data is uploaded by this page.</p>
+</div>
+</section>
 <section class="section" id="workflow"><span class="eyebrow">ONE CREATIVE PIPELINE</span><h2>From an idea to your cut.</h2><div class="features"><article><span>01</span><h3>Cast your actors</h3><p>Create named reusable actor profiles on your phone. Guided camera capture and advanced identity matching are under development.</p></article><article><span>02</span><h3>Build your scene</h3><p>Write a prompt, choose compatible reference media and refine model-specific advanced options when integrations are ready.</p></article><article><span>03</span><h3>Edit the story</h3><p>Import your own clips, trim and rearrange them directly in your browser. Browser support varies; all media remains local in this preview.</p></article></div></section>
 <section class="section studio" id="studio"><div class="section-heading"><div><span class="eyebrow">HOTICE CREATOR DESK</span><h2>Browser video editor <span class="gradient">preview.</span></h2><p>Local video editing starter—no uploads or paid AI calls. Use short clips in Chrome or Edge for best results.</p></div><span class="disclosure">LOCAL-FIRST · BETA</span></div>
 <div class="browser-composer"><div class="composer-intro"><span class="eyebrow">SCENE COMPOSER · DEMO</span><h3>Direct your next scene</h3><p>Start with an Inspiration template, name your cast and choose a model preview. No AI request is sent.</p></div>
@@ -60,3 +76,4 @@
 <section class="section endcta"><div><span class="eyebrow">THE FUTURE OF STORYTELLING</span><h2>Make every frame matter.</h2><p>HOTICE is being designed for creators who want powerful tools without a complicated workflow.</p><a class="button" href="#home">Explore HOTICE ↑</a></div></section>
 </main><footer><span>HOTICE © 2026 · ParmTech</span><span>Creative tools preview · AI integrations and live generation not yet connected</span></footer>
 <script src="assets/site.js" defer></script></body></html>
+
