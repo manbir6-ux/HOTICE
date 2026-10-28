@@ -3,6 +3,8 @@ import 'package:file_picker/file_picker.dart';
 import 'smart_references.dart';
 import 'state.dart';
 import 'video_models.dart';
+import 'model_compatibility_page.dart';
+import 'model_registry.dart';
 import 'avatar_identity.dart';
 import 'design.dart';
 import 'dialogs.dart';
@@ -504,6 +506,24 @@ class _GenerationPageState extends State<GenerationPage> {
             'These are demo capability profiles, not connected AI providers.',
             style: TextStyle(fontSize: 12),
           ),
+          const SizedBox(height: 9),
+          OutlinedButton.icon(
+            onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+              builder: (_) => const ModelCompatibilityPage(),
+            )),
+            icon: const Icon(Icons.hub_outlined),
+            label: Text('Explore ' + HoticeAiCatalog.entries
+              .where((entry) => entry.status != AiStatus.retired)
+              .length.toString() + ' real API model research profiles'),
+          ),
+          const SizedBox(height: 6),
+          const Text(
+            'Production model controls are separate from this offline demo. '
+            'Real provider options, reference roles and duration constraints '
+            'must come from a tested backend model catalog.',
+            style: TextStyle(fontSize: 12),
+          ),
+
           const SizedBox(height: 13),
           Text('Accepted reference attachments',
               style: Theme.of(context).textTheme.titleSmall),
