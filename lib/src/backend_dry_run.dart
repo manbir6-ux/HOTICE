@@ -51,7 +51,11 @@ class _BackendDryRunPageState extends State<BackendDryRunPage> {
         TextField(controller: _prompt, minLines: 3, maxLines: 6, maxLength: 2000,
           enabled: !_busy && (job == null || (job.status != 'queued' && job.status != 'processing')),
           decoration: const InputDecoration(labelText: 'Dry-run prompt', hintText: 'A quiet coastal film at blue hour...', border: OutlineInputBorder()),
-          onChanged: (_) => setState(() { _job = null; _key = null; })),
+          onChanged: (_) {
+            if (job != null && job.status != 'queued' && job.status != 'processing') {
+              setState(() { _job = null; _key = null; });
+            }
+          }),
         const SizedBox(height: 12),
         FilledButton.icon(onPressed: _busy || job != null || _prompt.text.trim().isEmpty ? null : _submit,
           icon: const Icon(Icons.cloud_upload_outlined), label: Text(_busy ? 'Working…' : 'Queue server dry run')),
@@ -65,8 +69,8 @@ class _BackendDryRunPageState extends State<BackendDryRunPage> {
             if (job.message != null) Text(job.message!),
             if (job.errorCode != null) Text('Error: ${job.errorCode}'),
             Wrap(spacing: 8, children: [
-              OutlinedButton.icon(onPressed: _busy ? null : () => _perform(() => client!.getMockVideoJob(job.id)), icon: const Icon(Icons.refresh), label: const Text('Refresh status')),
-              if (job.status == 'queued') TextButton.icon(onPressed: _busy ? null : () => _perform(() => client!.cancelMockVideoJob(job.id)), icon: const Icon(Icons.cancel_outlined), label: const Text('Cancel')),
+              OutlinedButton.icon(onPressed: _busy ? null : () => _perform(() => client.getMockVideoJob(job.id)), icon: const Icon(Icons.refresh), label: const Text('Refresh status')),
+              if (job.status == 'queued') TextButton.icon(onPressed: _busy ? null : () => _perform(() => client.cancelMockVideoJob(job.id)), icon: const Icon(Icons.cancel_outlined), label: const Text('Cancel')),
             ]),
           ]))),
         ],
