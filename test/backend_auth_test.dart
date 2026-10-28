@@ -70,6 +70,53 @@ void main() {
     client.close();
   });
 
+  test('queues, polls and cancels a mock job with the secure server token', () async {
+    final vault = MemoryTokenStore()..value = token;
+    final requests = <http.Request>[];
+    final job = {
+      'id': '01234567-89ab-4cde-8fab-0123456789ab',
+      'status': 'queued',
+      'attempts': 0,
+      'maxAttempts': 3,
+      'reservedCredits': 5,
+      'chargedCredits': 0,
+      'result': null,
+      'errorCode': null,
+    };
+    final client = BackendAuthClient(
+      baseUri: Uri.parse('https://api.example.test'),
+      tokenStore: vault,
+      client: MockClient((request) async {
+        requests.add(request);
+        expect(request.followRedirects, isFalse);
+        expect(request.headers['authorization'], 'Bearer $token');
+        if (request.url.path == '/v1/jobs/quote') {
+          expect(jsonDecode(request.body)['request']['modelId'], 'hotice.mock.video.v1');
+          return jsonResponse(200, {'quoteToken': 'signed-quote'});
+        }
+        if (request.url.path == '/v1/jobs' && request.method == 'POST') {
+          expect(request.headers['Idempotency-Key'], 'hotice-dry-run-00000001');
+          expect(jsonDecode(request.body)['quoteToken'], 'signed-quote');
+          return jsonResponse(201, {'job': job});
+        }
+        if (request.url.path.endsWith('/cancel')) {
+          return jsonResponse(200, {'job': {...job, 'status': 'cancelled'}});
+        }
+        return jsonResponse(200, {'job': job});
+      }),
+    );
+
+    final created = await client.submitMockVideoJob(
+      'An ocean at dusk', idempotencyKey: 'hotice-dry-run-00000001',
+    );
+    expect(created.status, 'queued');
+    expect(created.reservedCredits, 5);
+    expect((await client.getMockVideoJob(created.id)).id, created.id);
+    expect((await client.cancelMockVideoJob(created.id)).status, 'cancelled');
+    expect(requests, hasLength(4));
+    client.close();
+  });
+
   test('does not store a token when server identity does not match login', () async {
     final vault = MemoryTokenStore();
     final client = BackendAuthClient(
