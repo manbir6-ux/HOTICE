@@ -36,15 +36,22 @@ void main() {
   test('Gemini Omni text vs image-to-video have separate input contracts', () {
     final text = HoticeAiCatalog.find('google/omni-1.1:text-video')!;
     final image = HoticeAiCatalog.find('google/omni-1.1:image-video')!;
-    expect(text.validate(video(text)), isEmpty);
+    expect(text.validate(AiRequest(task: AiTask.video,
+      prompt: 'Cinematic landscape', aspect: '16:9',
+      resolution: '720p')), isEmpty);
+    expect(text.validate(video(text)), isNotEmpty);
     expect(text.validate(video(text, seconds: 11)), isNotEmpty);
     expect(text.validate(video(text, assets: [first])), isNotEmpty);
-    expect(image.validate(video(image, assets: [first])), isEmpty);
-    expect(image.validate(video(image, assets: [first, last])), isEmpty);
-    expect(image.validate(video(image, assets: [face])), isNotEmpty);
-    expect(image.validate(video(image, assets: [last])), isNotEmpty);
-    expect(image.validate(video(image, assets: [first, last, face])), isNotEmpty);
-    expect(image.validate(video(image, assets: [first, mesh])), isNotEmpty);
+    AiRequest imageIntent(List<AiAsset> assets) => AiRequest(
+      task: AiTask.video, prompt: 'Film', aspect: '16:9',
+      resolution: '720p', assets: assets,
+    );
+    expect(image.validate(imageIntent([first])), isEmpty);
+    expect(image.validate(imageIntent([first, last])), isEmpty);
+    expect(image.validate(imageIntent([face])), isNotEmpty);
+    expect(image.validate(imageIntent([last])), isNotEmpty);
+    expect(image.validate(imageIntent([first, last, face])), isNotEmpty);
+    expect(image.validate(imageIntent([first, mesh])), isNotEmpty);
   });
 
   test('Runway rejects aspect labels and accepts provider pixel dimensions', () {
