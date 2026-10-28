@@ -47,6 +47,7 @@ echo "$export_json" | jq -e '.format == "hotice-account-export-v1" and .account.
 ! echo "$export_json" | jq -e 'has("password_hash") or has("passwordHash") or (.cloudMediaMetadata[]? | has("storage_name"))' >/dev/null
 outsider_export=$(curl -fsS -H "Authorization: Bearer $other_token" "$BASE/v1/me/export")
 echo "$outsider_export" | jq -e '(.cloudProjects | length) == 0 and (.generationJobs | length) == 0' >/dev/null
+echo '[account-lifecycle-test] bounded export and account isolation passed'
 test "$(curl -sS -o /dev/null -w '%{http_code}' -X DELETE -H "$AUTH" -H 'Content-Type: application/json' -d '{"confirmation":"DELETE","password":"WrongPassword123!"}' "$BASE/v1/me")" = '403'
 test "$(curl -sS -o /dev/null -w '%{http_code}' -X DELETE -H "$AUTH" -H 'Content-Type: application/json' -d '{"confirmation":"delete","password":"AccountDeletePass123!"}' "$BASE/v1/me")" = '422'
 

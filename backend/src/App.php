@@ -743,9 +743,15 @@ final class App
         $ledgerRows = $ledger->fetchAll();
         if (count($ledgerRows) > 2000) throw new ApiError(413, 'Account export exceeds the credit history limit. Contact HOTICE support before deletion.');
 
-        foreach ($projectRows as &$project) $project['document'] = json_decode((string)$project['document_json'], false, 32, JSON_THROW_ON_ERROR);
+        foreach ($projectRows as &$project) {
+            $project['revision'] = (int)$project['revision'];
+            $project['document'] = json_decode((string)$project['document_json'], false, 32, JSON_THROW_ON_ERROR);
+        }
         unset($project);
         foreach ($jobRows as &$job) {
+            $job['attempt_count'] = (int)$job['attempt_count'];
+            $job['reserved_credits'] = (int)$job['reserved_credits'];
+            $job['actual_credits'] = (int)$job['actual_credits'];
             $job['request'] = json_decode((string)$job['request_json'], false, 32, JSON_THROW_ON_ERROR);
             $job['result'] = $job['result_json'] === null ? null : json_decode((string)$job['result_json'], false, 32, JSON_THROW_ON_ERROR);
             unset($job['request_json'], $job['result_json']);
@@ -753,12 +759,24 @@ final class App
         unset($job);
         foreach ($projectRows as &$project) unset($project['document_json']);
         unset($project);
+        foreach ($files as &$file) $file['byte_size'] = (int)$file['byte_size'];
+        unset($file);
+        foreach ($ledgerRows as &$entry) {
+            $entry['delta'] = (int)$entry['delta'];
+            $entry['balance_after'] = (int)$entry['balance_after'];
+        }
+        unset($entry);
         $entitlement = $this->db->prepare('SELECT source,plan_code,quota_bytes,used_bytes,expires_at FROM cloud_entitlements WHERE user_id=?');
         $entitlement->execute([$user]);
+        $entitlementData = $entitlement->fetch() ?: null;
+        if ($entitlementData) {
+            $entitlementData['quota_bytes'] = (int)$entitlementData['quota_bytes'];
+            $entitlementData['used_bytes'] = (int)$entitlementData['used_bytes'];
+        }
         $balance = $this->db->prepare('SELECT balance FROM credit_accounts WHERE user_id=?');
         $balance->execute([$user]);
         $payload = ['format' => 'hotice-account-export-v1', 'exportedAt' => gmdate('Y-m-d\TH:i:s\Z'),
-            'account' => $account, 'cloudEntitlement' => $entitlement->fetch() ?: null,
+            'account' => $account, 'cloudEntitlement' => $entitlementData,
             'simulatedCreditBalance' => ($value = $balance->fetchColumn()) === false ? null : (int)$value,
             'cloudProjects' => $projectRows, 'cloudMediaMetadata' => $files,
             'generationJobs' => $jobRows, 'simulatedCreditLedger' => $ledgerRows,
