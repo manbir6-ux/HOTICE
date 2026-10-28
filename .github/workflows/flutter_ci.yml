@@ -31,6 +31,11 @@ jobs:
         run: flutter analyze --no-fatal-infos
       - name: Unit and widget tests
         run: flutter test test/
+      - name: PHP server-side AI payload policy checks
+        run: |
+          php -l backend/php/ProviderEnvelope.php
+          php -l backend/tests/provider_envelope_test.php
+          php backend/tests/provider_envelope_test.php
 
   android-preview:
     name: Versioned Android debug APK
