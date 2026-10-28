@@ -70,7 +70,35 @@ status=$(curl -sS -D "$headers" -o /dev/null -w '%{http_code}' -H "Cookie: HOTIC
 test "$status" = '303'
 test "$(curl -sS -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $user_token" "$BASE/v1/me")" = '401'
 fresh_login=$(curl -fsS -H 'Content-Type: application/json' -d "{\"email\":\"$managed_email\",\"password\":\"$managed_password\"}" "$BASE/v1/auth/login")
-test -n "$(echo "$fresh_login" | jq -er '.accessToken')"
+fresh_token=$(echo "$fresh_login" | jq -er '.accessToken')
+trial_auth="Authorization: Bearer $fresh_token"
+page=$(curl -fsS -H "Cookie: HOTICE_OWNER=$session" "$BASE/admin.php")
+csrf=$(printf '%s' "$page" | sed -n 's/.*name="csrf" value="\([^\"]*\)".*/\1/p' | head -1)
+status=$(curl -sS -D "$headers" -o /dev/null -w '%{http_code}' -H "Cookie: HOTICE_OWNER=$session" \
+  -H 'Content-Type: application/x-www-form-urlencoded' --data-urlencode "csrf=$csrf" \
+  --data-urlencode 'action=grant_cloud_trial' --data-urlencode "user_id=$user_id" \
+  --data-urlencode 'quota_mib=32' --data-urlencode 'days=7' "$BASE/admin.php")
+test "$status" = '303'
+curl -fsS -H "$trial_auth" "$BASE/v1/me" | jq -e '.cloud.active == true and .cloud.plan == "trial" and .cloud.quotaBytes == 33554432' >/dev/null
+page=$(curl -fsS -H "Cookie: HOTICE_OWNER=$session" "$BASE/admin.php")
+csrf=$(printf '%s' "$page" | sed -n 's/.*name="csrf" value="\([^\"]*\)".*/\1/p' | head -1)
+status=$(curl -sS -D "$headers" -o /dev/null -w '%{http_code}' -H "Cookie: HOTICE_OWNER=$session" \
+  -H 'Content-Type: application/x-www-form-urlencoded' --data-urlencode "csrf=$csrf" \
+  --data-urlencode 'action=revoke_cloud_trial' --data-urlencode "user_id=$user_id" "$BASE/admin.php")
+test "$status" = '303'
+curl -fsS -H "$trial_auth" "$BASE/v1/me" | jq -e '.cloud.active == false and .cloud.readable == true' >/dev/null
+
+# An owner trial action cannot replace an entitlement managed by verified billing.
+php -r 'require "backend/src/App.php"; $c=require "backend/config.php"; $db=(new \Hotice\App($c))->database(); $q=$db->prepare("UPDATE cloud_entitlements SET source=\x27verified_billing\x27,plan_code=\x27pro\x27,quota_bytes=67108864,expires_at=DATE_ADD(UTC_TIMESTAMP(),INTERVAL 7 DAY) WHERE user_id=?"); $q->execute([$argv[1]]);' "$user_id"
+page=$(curl -fsS -H "Cookie: HOTICE_OWNER=$session" "$BASE/admin.php")
+csrf=$(printf '%s' "$page" | sed -n 's/.*name="csrf" value="\([^\"]*\)".*/\1/p' | head -1)
+status=$(curl -sS -o "$TMP_DIR/trial-denied" -w '%{http_code}' -H "Cookie: HOTICE_OWNER=$session" \
+  -H 'Content-Type: application/x-www-form-urlencoded' --data-urlencode "csrf=$csrf" \
+  --data-urlencode 'action=grant_cloud_trial' --data-urlencode "user_id=$user_id" \
+  --data-urlencode 'quota_mib=1' --data-urlencode 'days=1' "$BASE/admin.php")
+test "$status" = '200'
+grep -q 'Paid cloud access is controlled by verified billing' "$TMP_DIR/trial-denied"
+php -r 'require "backend/src/App.php"; $c=require "backend/config.php"; $db=(new \Hotice\App($c))->database(); $q=$db->prepare("SELECT source,plan_code,quota_bytes FROM cloud_entitlements WHERE user_id=?"); $q->execute([$argv[1]]); $e=$q->fetch(); if (!$e || $e["source"]!==\x27verified_billing\x27 || $e["plan_code"]!==\x27pro\x27 || (int)$e["quota_bytes"]!==67108864) exit(1);' "$user_id"
 
 test_key='ci-only-provider-secret-never-a-real-key'
 status=$(curl -sS -D "$headers" -o /dev/null -w '%{http_code}' \
@@ -106,5 +134,5 @@ status=$(curl -sS -o /dev/null -w '%{http_code}' -H "Cookie: HOTICE_OWNER=$sessi
   --data-urlencode 'action=save_provider' --data-urlencode 'provider=google' \
   --data-urlencode 'secret=blocked' "$BASE/admin.php")
 test "$status" = '400'
-echo 'Owner MFA/session, user disable/revoke/reactivate, encrypted key storage, no-echo, deletion and CSRF checks passed.'
+echo 'Owner MFA/session, user access, trial entitlement and billing-protection, encrypted key, no-echo, deletion and CSRF checks passed.'
 
