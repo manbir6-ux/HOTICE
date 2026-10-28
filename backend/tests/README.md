@@ -1,1 +1,2 @@
-The PHP core smoke test runs without a database. The GitHub Actions integration suite requires ephemeral MySQL and starts the API over localhost HTTP **only inside CI**. Production configuration always requires HTTPS; this is not an exemption for cPanel hosting.
+The PHP core, server-model-catalog, and smoke tests run without a database. The GitHub Actions integration suite requires ephemeral MySQL and starts the API over localhost HTTP **only inside CI**. Production configuration always requires HTTPS; this is not an exemption for cPanel hosting. `GET /v1/models` is an authenticated server-authoritative availability manifest; the current response may advertise only the explicit mock dry-run model, and always reports live generation disabled.
+

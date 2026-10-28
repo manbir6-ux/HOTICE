@@ -23,6 +23,8 @@ jobs:
         run: find backend -type f -name '*.php' -print0 | xargs -0 -n1 php -l
       - name: Self tests
         run: php backend/tests/smoke.php
+      - name: Server model catalog tests
+        run: php backend/tests/model-catalog.php
 
   php-mysql-integration:
     name: Auth, owner console, cloud entitlement, media and storage integration
@@ -76,3 +78,4 @@ jobs:
         run: bash backend/tests/admin-integration.sh
       - name: Mock generation quotes, idempotency, retries and refunds
         run: bash backend/tests/jobs-integration.sh
+

@@ -7,6 +7,7 @@ use PDO;
 use Throwable;
 
 require_once __DIR__ . '/Support.php';
+require_once __DIR__ . '/ModelCatalog.php';
 
 final class App
 {
@@ -65,6 +66,9 @@ final class App
                 $this->db->prepare('UPDATE sessions SET revoked_at=UTC_TIMESTAMP() WHERE id=? AND user_id=?')
                     ->execute([$user['session_id'], $user['id']]);
                 $this->send(200, ['ok' => true]); return;
+            }
+            if ($route === '/v1/models' && $method === 'GET') {
+                $this->send(200, ModelCatalog::response($this->config)); return;
             }
             if ($route === '/v1/me' && $method === 'GET') {
                 $e = $this->entitlement($user['id']);
@@ -680,3 +684,4 @@ final class App
         return Support::assertPrivateStorage($path, $roots);
     }
 }
+
