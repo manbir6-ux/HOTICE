@@ -17,7 +17,7 @@ HOTICE_TEST_ROOT="$PWD" php -S 127.0.0.1:18885 -t backend/public "$TMP_DIR/https
 SERVER_PID=$!
 page=''
 for _ in $(seq 1 40); do
-  page=$(curl -sS "$BASE/admin.php" || true)
+  page=$(curl -sS -c "$TMP_DIR/cookies" "$BASE/admin.php" || true)
   if [[ "$page" == *'Owner sign in'* ]]; then break; fi
   sleep 0.25
 done
@@ -34,7 +34,7 @@ if [[ ${#totp_secret} -lt 20 ]]; then echo 'Owner provisioning did not return it
 code=$(php -r 'require "backend/src/AdminSecurity.php"; echo \Hotice\AdminSecurity::totp($argv[1], time());' "$totp_secret")
 
 headers="$TMP_DIR/headers"
-login_cookie=$(curl -sS -D "$headers" -o "$TMP_DIR/login" -c "$TMP_DIR/cookies" -w '%{http_code}' \
+login_cookie=$(curl -sS -D "$headers" -o "$TMP_DIR/login" -b "$TMP_DIR/cookies" -c "$TMP_DIR/cookies" -w '%{http_code}' \
   -H 'Content-Type: application/x-www-form-urlencoded' \
   --data-urlencode "csrf=$(printf '%s' "$page" | sed -n 's/.*name="csrf" value="\([^"]*\)".*/\1/p' | head -1)" \
   --data-urlencode 'action=login' --data-urlencode "email=$owner_email" \
