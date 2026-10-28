@@ -85,6 +85,12 @@ def main():
     script = (PUBLIC / "assets" / "site.js").read_text(encoding="utf-8")
     assert "accountApi('/v1/auth/login'" in script and "accountApi('/v1/me'" in script
     assert "accountApi('/v1/auth/logout'" in script
+    assert "accountApi('/v1/auth/register'" in script
+    assert "accountApi('/v1/auth/verify-email'" in script
+    assert "accountApi('/v1/auth/verification/resend'" in script
+    assert "window.history.replaceState" in script, "Verification tokens must be removed from browser history"
+    assert 'name="referrer" content="no-referrer"' in html
+    assert "Account access is provisioned by HOTICE; self-registration is not available" not in html
     assert "credentials: 'omit'" in script and "redirect: 'error'" in script
     assert "localStorage.setItem('hotice.accessToken'" not in script
     assert "sessionStorage.setItem('hotice.accessToken'" not in script
@@ -102,4 +108,5 @@ if __name__ == "__main__":
     except Exception as exc:
         print("WEB CHECK FAILED:", str(exc), file=sys.stderr)
         raise
+
 

@@ -59,6 +59,12 @@ jobs:
             'require_https' => false, // ONLY CI HTTP localhost
             'web_allowed_origins' => ['https://studio.hotice.test'],
             'allow_registration' => true, // ONLY CI test user creation
+            'verification_url' => 'https://studio.hotice.test/verify-email',
+            'mail_transport' => static function ($to, $subject, $body) {
+              $capture = getenv('HOTICE_TEST_MAIL_CAPTURE');
+              return is_string($capture) && file_put_contents($capture,
+                json_encode(['to' => $to, 'subject' => $subject, 'body' => $body]) . "\n", FILE_APPEND | LOCK_EX) !== false;
+            },
             'token_ttl_hours' => 1,
             'max_file_bytes' => 1048576,
             'max_project_bytes' => 131072,
@@ -69,5 +75,8 @@ jobs:
       - name: Initialize SQL schema
         run: php backend/bin/install.php
       - name: HTTP cloud API integration
+        env:
+          HOTICE_TEST_MAIL_CAPTURE: ${{ runner.temp }}/hotice-mail-capture.jsonl
         run: bash backend/tests/http-integration.sh
+
 

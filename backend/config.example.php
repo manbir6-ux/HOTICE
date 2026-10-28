@@ -16,7 +16,9 @@ return [
     // Exact browser origins only; no wildcard, path, trailing slash, or credentials.
     // Example: ['https://studio.example.com']
     'web_allowed_origins' => [],
-    'allow_registration' => false, // switch on ONLY after signup/email verification controls are in place
+    'allow_registration' => false, // switch on only after mail and verification UI are configured
+    'verification_url' => 'https://studio.example.com/verify-email', // public HTTPS page that accepts #token=...
+    'mail_from' => 'accounts@example.com', // cPanel mailbox on a domain with SPF/DKIM configured
     'token_ttl_hours' => 24,
     'max_file_bytes' => 20 * 1024 * 1024, // conservative shared-host MVP, not large source videos
     'max_project_bytes' => 128 * 1024,
@@ -29,4 +31,5 @@ return [
         'runway' => ['api_key' => ''],
     ],
 ];
+
 

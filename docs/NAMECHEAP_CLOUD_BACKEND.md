@@ -12,6 +12,9 @@
 - Inactive/expired plans: deny writes; grace read-only export of 30 days is a *provisional technical policy*, not a contracted offer. Cloud deletion remains available after expiry.
 - Provider API keys and DB secrets never shipped inside Flutter. Use private server config and future outbound allowlisted provider proxy with billable-usage controls.
 
+## Email verification setup
+Public registration stays disabled (`allow_registration=false`) until the cPanel mailbox and public verification page are configured. Create a domain mailbox, publish SPF and DKIM records, and confirm delivery to external providers before enabling registration. Set `mail_from` to that mailbox and `verification_url` to the HTTPS page in the web client that reads `#token=` and POSTs it to `/v1/auth/verify-email`. The token is in the URL fragment, so browsers do not send it to static hosting logs or as an HTTP Referer. PHP `mail()` delivery is attempted only after the user and hashed, 30-minute token are stored; a failed delivery leaves a pending account that can request a fresh link through `/v1/auth/verification/resend`. Never expose the raw token in API responses or logs. The built-in test transport is CI-only and must not be copied into production config.
+
 ## Backend ZIP contents (also committed in backend/ in this PR)
 `backend/public/index.php`, `backend/public/.htaccess`, `backend/src/App.php`, `backend/src/Support.php`, `backend/schema.sql`, `backend/config.example.php`, CLI installer/create-user/grant-trial/cleanup, smoke and MySQL HTTP integration tests, cPanel README, and independent `.github/workflows/backend_ci.yml`.
 
@@ -38,4 +41,5 @@ The static web preview now has an account sign-in/profile/sign-out workflow agai
 6. Complete integration QA on real devices and hosting, security review, email verification, deletion/privacy policy and quotas before release.
 
 This plan reflects the user's requirement: **projects default to the device; cloud only for entitled subscribers; all provider secrets on server.**
+
 

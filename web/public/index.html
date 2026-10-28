@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="referrer" content="no-referrer">
 <title>HOTICE — Direct the impossible</title>
 <meta name="description" content="HOTICE cinematic AI creation studio. Discover models, cast named actors, design scenes and edit your footage in one workspace.">
 <meta name="theme-color" content="#090c18">
@@ -42,12 +42,21 @@
 <div class="section-heading"><div><span class="eyebrow">YOUR HOTICE ACCOUNT</span><h2>One account. Your work stays yours.</h2><p>Sign in to verify your account against the shared HOTICE server. This preview does not upload your prompts, Actors, or media.</p></div><span class="disclosure">SECURE SERVER SESSION</span></div>
 <div class="account-card">
 <p id="accountStatus" class="account-status" role="status" aria-live="polite">Checking the account service configuration…</p>
+<div class="account-actions"><button id="showLogin" class="tool" type="button">Sign in</button><button id="showRegister" class="tool" type="button">Create account</button></div>
 <form id="accountLogin" autocomplete="on">
 <label for="accountEmail">Email address</label><input id="accountEmail" name="email" type="email" autocomplete="username" maxlength="254" required>
 <label for="accountPassword">Password</label><input id="accountPassword" name="password" type="password" autocomplete="current-password" required>
 <button id="accountSignIn" class="button tiny" type="submit">Sign in securely</button>
-<p class="editor-note">Account access is provisioned by HOTICE; self-registration is not available from this preview. Your bearer session stays in memory and is cleared when you reload or close this page.</p>
+<p class="editor-note">Your bearer session stays in memory and is cleared when you reload or close this page.</p>
 </form>
+<form id="accountRegister" autocomplete="on" hidden>
+<label for="registerEmail">Email address</label><input id="registerEmail" name="email" type="email" autocomplete="email" maxlength="254" required>
+<label for="registerPassword">Create a password</label><input id="registerPassword" name="new-password" type="password" autocomplete="new-password" minlength="12" maxlength="256" required>
+<label for="registerPasswordConfirm">Confirm password</label><input id="registerPasswordConfirm" name="confirm-password" type="password" autocomplete="new-password" minlength="12" maxlength="256" required>
+<button id="accountCreate" class="button tiny" type="submit">Create account securely</button>
+<p class="editor-note">We’ll send a one-time verification link. Sign-in stays locked until you verify your email.</p>
+</form>
+<form id="accountResend" autocomplete="on" hidden><label for="resendEmail">Email address</label><input id="resendEmail" type="email" maxlength="254" required><button class="tool" type="submit">Resend verification link</button></form>
 <div id="accountSignedIn" hidden><p>Signed in as <strong id="accountIdentity"></strong></p><p id="accountCloudStatus" class="editor-note"></p><button id="accountSignOut" class="tool" type="button">Sign out</button></div>
 <p class="editor-note">Cloud project sync is not connected to this browser. No project data is uploaded by this page.</p>
 </div>
@@ -76,4 +85,5 @@
 <section class="section endcta"><div><span class="eyebrow">THE FUTURE OF STORYTELLING</span><h2>Make every frame matter.</h2><p>HOTICE is being designed for creators who want powerful tools without a complicated workflow.</p><a class="button" href="#home">Explore HOTICE ↑</a></div></section>
 </main><footer><span>HOTICE © 2026 · ParmTech</span><span>Creative tools preview · AI integrations and live generation not yet connected</span></footer>
 <script src="assets/site.js" defer></script></body></html>
+
 

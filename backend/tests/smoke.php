@@ -16,6 +16,14 @@ for ($i = 0; $i < 100; $i++) {
 }
 check(Support::email(' A@EXAMPLE.COM ') === 'a@example.com', 'normalize email');
 try { Support::email('not-an-email'); check(false, 'invalid email rejected'); } catch (ApiError $e) { check($e->status === 422, 'invalid email'); }
+$longPasswordA = str_repeat('x', 72) . 'first-suffix';
+$longPasswordB = str_repeat('x', 72) . 'second-suffix';
+$safePasswordHash = Support::passwordHash($longPasswordA);
+check(Support::passwordVerify($longPasswordA, $safePasswordHash), 'long password verifies in full');
+check(!Support::passwordVerify($longPasswordB, $safePasswordHash), 'long password suffix is significant');
+check(Support::passwordNeedsRehash($safePasswordHash) === false, 'versioned password hash is current');
+$legacyHash = password_hash($longPasswordA, PASSWORD_DEFAULT);
+check(Support::passwordVerify($longPasswordB, $legacyHash), 'legacy bcrypt preserves historical 72-byte behavior');
 check(Support::secureFileName(str_repeat('a', 64)), 'valid storage name');
 check(!Support::secureFileName('../secret'), 'reject traversal');
 check(Support::jsonString(['a' => 'b'], 50) === '{"a":"b"}', 'JSON serialization');
@@ -58,3 +66,4 @@ try {
     rmdir($tmpBase);
 }
 echo "HOTICE backend core: $assertions assertions passed.\n";
+

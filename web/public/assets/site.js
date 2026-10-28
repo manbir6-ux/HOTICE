@@ -448,6 +448,8 @@
   // Browser sign-in uses the same HTTPS API and bearer sessions as native
   // clients. The token stays in memory only; it is never written to web storage.
   const accountForm = get('accountLogin');
+  const registerForm = get('accountRegister');
+  const resendForm = get('accountResend');
   const accountSignIn = get('accountSignIn');
   const accountSignedIn = get('accountSignedIn');
   const apiOriginMeta = document.querySelector('meta[name="hotice-api-origin"]');
@@ -470,6 +472,8 @@
     accountForm?.querySelectorAll('input, button').forEach((control) => {
       control.disabled = true;
     });
+    registerForm?.querySelectorAll('input, button').forEach((control) => { control.disabled = true; });
+    resendForm?.querySelectorAll('input, button').forEach((control) => { control.disabled = true; });
   } else {
     status('accountStatus',
       'Secure account service configured. Sign in to verify your account; this preview does not sync project data.');
@@ -496,6 +500,79 @@
       throw error;
     }
     return result;
+  }
+
+  function selectAccountForm(mode) {
+    accountForm.hidden = mode !== 'login';
+    registerForm.hidden = mode !== 'register';
+    resendForm.hidden = mode !== 'resend';
+  }
+
+  get('showLogin')?.addEventListener('click', () => selectAccountForm('login'));
+  get('showRegister')?.addEventListener('click', () => selectAccountForm('register'));
+
+  registerForm?.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const email = get('registerEmail').value.trim();
+    const password = get('registerPassword').value;
+    const confirm = get('registerPasswordConfirm').value;
+    const submit = get('accountCreate');
+    if (password !== confirm) { status('accountStatus', 'Those passwords do not match.'); return; }
+    const passwordBytes = new TextEncoder().encode(password).length;
+    if (passwordBytes < 12 || passwordBytes > 256) {
+      status('accountStatus', 'Use a password between 12 and 256 bytes.'); return;
+    }
+    submit.disabled = true;
+    status('accountStatus', 'Creating your account and sending a verification link…');
+    try {
+      await accountApi('/v1/auth/register', {method: 'POST', body: {email, password}});
+      get('registerPassword').value = '';
+      get('registerPasswordConfirm').value = '';
+      get('resendEmail').value = email;
+      selectAccountForm('resend');
+      status('accountStatus', 'If registration is available, a verification link will be sent. Verify your email before signing in.');
+    } catch (error) {
+      status('accountStatus', error.status === 403
+        ? 'Account creation is not enabled on this HOTICE service yet.'
+        : error.status === 429
+          ? 'Too many account requests. Try again later.'
+          : 'The account service could not complete registration. Try again later.');
+    } finally { submit.disabled = false; }
+  });
+
+  resendForm?.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const email = get('resendEmail').value.trim();
+    const submit = resendForm.querySelector('button');
+    submit.disabled = true;
+    try {
+      await accountApi('/v1/auth/verification/resend', {method: 'POST', body: {email}});
+      status('accountStatus', 'If this account needs verification, a fresh link will be sent.');
+    } catch (error) {
+      status('accountStatus', error.status === 429
+        ? 'Too many requests. Try again later.'
+        : 'The account service could not process that request. Try again later.');
+    } finally { submit.disabled = false; }
+  });
+
+  // Remove one-time tokens from the address bar before sending them to API.
+  const verificationUrl = new URL(window.location.href);
+  const fragmentParams = new URLSearchParams(verificationUrl.hash.replace(/^#/, ''));
+  const verificationToken = fragmentParams.get('token') || verificationUrl.searchParams.get('token');
+  if (verificationToken) {
+    verificationUrl.searchParams.delete('token');
+    fragmentParams.delete('token');
+    const cleanHash = fragmentParams.toString();
+    window.history.replaceState({}, '', verificationUrl.pathname + verificationUrl.search + (cleanHash ? '#' + cleanHash : ''));
+    if (/^[a-f0-9]{64}$/i.test(verificationToken) && accountApiOrigin) {
+      status('accountStatus', 'Verifying your email address…');
+      accountApi('/v1/auth/verify-email', {method: 'POST', body: {token: verificationToken}})
+        .then(() => { selectAccountForm('login'); status('accountStatus', 'Email verified. You can now sign in securely.'); })
+        .catch(() => { selectAccountForm('resend'); status('accountStatus', 'This verification link is invalid or expired. Request a fresh link.'); });
+    } else {
+      selectAccountForm('resend');
+      status('accountStatus', 'This verification link is invalid or the account service is not configured.');
+    }
   }
 
   function showAccountForm(message) {
@@ -581,4 +658,5 @@
     }
   });
 })();
+
 

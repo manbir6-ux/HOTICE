@@ -22,6 +22,16 @@ final class App
         if (!preg_match('/^[a-f0-9]{64}$/iD', (string) ($config['app_key'] ?? ''))) {
             throw new \RuntimeException('Server app_key must be a unique 64-character hex secret.');
         }
+        if (($config['allow_registration'] ?? false) === true) {
+            $verificationUrl = parse_url((string)($config['verification_url'] ?? ''));
+            $hasTransport = is_callable($config['mail_transport'] ?? null) ||
+                filter_var((string)($config['mail_from'] ?? ''), FILTER_VALIDATE_EMAIL) !== false;
+            if (!is_array($verificationUrl) || ($verificationUrl['scheme'] ?? '') !== 'https' ||
+                empty($verificationUrl['host']) || isset($verificationUrl['user']) || isset($verificationUrl['pass']) ||
+                isset($verificationUrl['query']) || isset($verificationUrl['fragment']) || !$hasTransport) {
+                throw new \RuntimeException('Public registration requires an HTTPS verification_url and configured mail delivery.');
+            }
+        }
         $this->webAllowedOrigins = $this->validateWebOrigins($config['web_allowed_origins'] ?? []);
         $dsn = (string) $config['db']['dsn'];
         $this->db = new PDO($dsn, (string) $config['db']['user'],
@@ -97,6 +107,12 @@ final class App
             }
             if ($route === '/v1/auth/register' && $method === 'POST') {
                 $this->register(); return;
+            }
+            if ($route === '/v1/auth/verify-email' && $method === 'POST') {
+                $this->verifyEmail(); return;
+            }
+            if ($route === '/v1/auth/verification/resend' && $method === 'POST') {
+                $this->resendVerification(); return;
             }
             if ($route === '/v1/auth/login' && $method === 'POST') {
                 $this->login(); return;
@@ -239,16 +255,89 @@ final class App
         $password = (string) ($b['password'] ?? '');
         if (strlen($password) < 12 || strlen($password) > 256) throw new ApiError(422, 'Password must be 12–256 bytes.');
         $f = $this->throttle($email);
-        // Use a generic response: do not disclose whether email is registered.
+        $this->recordFailedLogin($f); // shared bounded signup and login-attempt budget
+        // Registration never creates a usable account until the mailbox owner
+        // proves control using the one-time, short-lived verification token.
         $q = $this->db->prepare('INSERT INTO users (id,email,password_hash) VALUES (?,?,?)');
         try {
-            $q->execute([Support::uuid(), $email, password_hash($password, PASSWORD_DEFAULT)]);
+            $userId = Support::uuid();
+            $q->execute([$userId, $email, Support::passwordHash($password)]);
         } catch (\PDOException $e) {
             if ($e->getCode() !== '23000') throw $e;
-            $this->recordFailedLogin($f);
-            throw new ApiError(409, 'Account registration unavailable.');
+            $this->send(202, ['registered' => true, 'verificationRequired' => true]);
+            return;
         }
-        $this->send(201, ['registered' => true, 'note' => 'No cloud entitlement activated.']);
+        $this->issueVerification($userId, $email);
+        $this->send(202, ['registered' => true, 'verificationRequired' => true]);
+    }
+
+    private function issueVerification(string $userId, string $email): void
+    {
+        $token = bin2hex(random_bytes(32));
+        $expires = gmdate('Y-m-d H:i:s', time() + 30 * 60);
+        $this->db->prepare('INSERT INTO email_verification_tokens (id,user_id,token_sha256,expires_at) VALUES (?,?,?,?)')
+            ->execute([Support::uuid(), $userId, hash('sha256', $token), $expires]);
+        $base = (string) ($this->config['verification_url'] ?? '');
+        $parts = parse_url($base);
+        if (!is_array($parts) || ($parts['scheme'] ?? '') !== 'https' || empty($parts['host']) ||
+            isset($parts['user']) || isset($parts['pass']) || isset($parts['query']) || isset($parts['fragment'])) {
+            throw new \RuntimeException('A public HTTPS verification_url is required before registration can be enabled.');
+        }
+        // Keep the credential in the URL fragment so static hosts, access
+        // logs, and HTTP Referer headers never receive it.
+        $url = rtrim($base, '/') . '#token=' . rawurlencode($token);
+        $subject = 'Verify your HOTICE account';
+        $body = "Verify your email address within 30 minutes by opening this link:\n\n$url\n\nIf you did not create this account, ignore this message.";
+        $testTransport = $this->config['mail_transport'] ?? null;
+        if (is_callable($testTransport)) {
+            if (!$testTransport($email, $subject, $body)) throw new \RuntimeException('Verification message delivery failed.');
+            return;
+        }
+        $from = (string) ($this->config['mail_from'] ?? '');
+        if (!filter_var($from, FILTER_VALIDATE_EMAIL) || !mail($email, $subject, $body,
+            "From: HOTICE <$from>\r\nContent-Type: text/plain; charset=UTF-8")) {
+            throw new \RuntimeException('Verification message delivery failed.');
+        }
+    }
+
+    private function resendVerification(): void
+    {
+        $b = Support::jsonInput(2048);
+        $email = Support::email((string) ($b['email'] ?? ''));
+        $f = $this->throttle($email);
+        $this->recordFailedLogin($f);
+        $q = $this->db->prepare('SELECT id,email_verified_at FROM users WHERE email=? LIMIT 1');
+        $q->execute([$email]);
+        $user = $q->fetch();
+        if ($user && $user['email_verified_at'] === null) {
+            $this->db->prepare('UPDATE email_verification_tokens SET used_at=UTC_TIMESTAMP() WHERE user_id=? AND used_at IS NULL')
+                ->execute([$user['id']]);
+            $this->issueVerification((string) $user['id'], $email);
+        }
+        $this->send(202, ['accepted' => true]);
+    }
+
+    private function verifyEmail(): void
+    {
+        $b = Support::jsonInput(2048);
+        $token = (string) ($b['token'] ?? '');
+        if (!preg_match('/^[a-f0-9]{64}$/D', $token)) throw new ApiError(400, 'Verification link is invalid or expired.');
+        $this->db->beginTransaction();
+        try {
+            $q = $this->db->prepare('SELECT id,user_id FROM email_verification_tokens WHERE token_sha256=? AND used_at IS NULL AND expires_at>UTC_TIMESTAMP() LIMIT 1 FOR UPDATE');
+            $q->execute([hash('sha256', $token)]);
+            $row = $q->fetch();
+            if (!$row) throw new ApiError(400, 'Verification link is invalid or expired.');
+            $this->db->prepare('UPDATE users SET email_verified_at=UTC_TIMESTAMP() WHERE id=? AND email_verified_at IS NULL')
+                ->execute([$row['user_id']]);
+            $this->db->prepare('UPDATE email_verification_tokens SET used_at=UTC_TIMESTAMP() WHERE user_id=? AND used_at IS NULL')
+                ->execute([$row['user_id']]);
+            $this->db->commit();
+        } catch (Throwable $e) {
+            if ($this->db->inTransaction()) $this->db->rollBack();
+            throw $e;
+        }
+        $this->send(200, ['verified' => true]);
     }
 
     private function login(): void
@@ -257,19 +346,22 @@ final class App
         $email = Support::email((string) ($b['email'] ?? ''));
         $password = (string) ($b['password'] ?? '');
         $fingerprint = $this->throttle($email);
-        $q = $this->db->prepare('SELECT id,email,password_hash FROM users WHERE email=? LIMIT 1');
+        $q = $this->db->prepare('SELECT id,email,password_hash,email_verified_at FROM users WHERE email=? LIMIT 1');
         $q->execute([$email]);
         $user = $q->fetch();
-        if (!$user || !password_verify($password, $user['password_hash'])) {
+        if (!$user || !Support::passwordVerify($password, $user['password_hash'])) {
             $this->recordFailedLogin($fingerprint);
             throw new ApiError(401, 'Invalid email or password.');
         }
+        if ($user['email_verified_at'] === null) throw new ApiError(403, 'Verify your email before signing in.');
         // Never clear the IP budget on a successful login: a single valid
         // account must not let attackers reset their IP-wide spray limit.
         $this->db->prepare('DELETE FROM login_attempts WHERE fingerprint=?')->execute([$fingerprint['email']]);
-        if (password_needs_rehash($user['password_hash'], PASSWORD_DEFAULT)) {
+        // Preserve the effective behavior of legacy bcrypt passwords longer
+        // than 72 bytes rather than silently changing their login semantics.
+        if (Support::passwordNeedsRehash($user['password_hash']) && strlen($password) <= 72) {
             $this->db->prepare('UPDATE users SET password_hash=? WHERE id=?')
-                ->execute([password_hash($password, PASSWORD_DEFAULT), $user['id']]);
+                ->execute([Support::passwordHash($password), $user['id']]);
         }
         $token = bin2hex(random_bytes(32));
         $hours = max(1, min(168, (int) ($this->config['token_ttl_hours'] ?? 24)));
@@ -525,4 +617,5 @@ final class App
         return Support::assertPrivateStorage($path, $roots);
     }
 }
+
 

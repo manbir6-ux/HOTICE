@@ -24,8 +24,14 @@ try {
     foreach (explode(';', $schema) as $sql) {
         if (trim($sql) !== '') $app->database()->exec($sql);
     }
+    // Additive migration for databases installed before email verification.
+    $columns = $app->database()->query('SHOW COLUMNS FROM users')->fetchAll(PDO::FETCH_COLUMN);
+    if (!in_array('email_verified_at', $columns, true)) {
+        $app->database()->exec('ALTER TABLE users ADD COLUMN email_verified_at DATETIME NULL AFTER password_hash');
+    }
     echo "HOTICE tables installed; private media directory verified.\n";
 } catch (\Throwable $e) {
     fwrite(STDERR, 'Installation failed; check PHP extensions, database permissions and file paths. ' . get_class($e) . "\n");
     exit(1);
 }
+
