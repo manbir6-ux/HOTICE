@@ -5,20 +5,27 @@ import 'src/pages.dart';
 import 'src/generation_hub.dart';
 import 'src/diagnostics.dart';
 import 'src/local_store.dart';
+import 'src/backend_auth.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   HoticeDiagnostics.install();
   final store = HotIceStore();
+  final authClient = BackendAuthClient.fromEnvironment();
   try {
     final archive = await HotIceLocalArchive.openOnDevice();
     final snapshot = await archive.restore();
     if (snapshot != null) store.restoreLocalSnapshot(snapshot);
+    if (authClient != null) {
+      final user = await authClient.restoreSession();
+      if (user != null) store.signInBackend(user.email);
+    }
     // A crash must never silently reset the user's encrypted projects.
     // Capture immutable JSON snapshots before queuing any asynchronous writes.
     store.addListener(() => archive.enqueue(store.exportLocalSnapshot()));
-    runApp(HotIceApp(initialStore: store));
+    runApp(HotIceApp(initialStore: store, authClient: authClient));
   } catch (_) {
+    authClient?.close();
     store.dispose();
     runApp(const MaterialApp(
       home: Scaffold(
@@ -41,8 +48,9 @@ Future<void> main() async {
 }
 
 class HotIceApp extends StatefulWidget {
-  const HotIceApp({super.key, this.initialStore});
+  const HotIceApp({super.key, this.initialStore, this.authClient});
   final HotIceStore? initialStore;
+  final BackendAuthClient? authClient;
 
   @override
   State<HotIceApp> createState() => _HotIceAppState();
@@ -51,6 +59,7 @@ class HotIceApp extends StatefulWidget {
 class _HotIceAppState extends State<HotIceApp> {
   late final HotIceStore store;
   bool showLogin = false;
+  bool showBackendLogin = false;
 
   late ThemeMode _lastThemeMode;
   late StudioAccent _lastAccent;
@@ -87,7 +96,30 @@ class _HotIceAppState extends State<HotIceApp> {
   void dispose() {
     store.removeListener(_handleAppearanceChanged);
     store.dispose();
+    widget.authClient?.close();
     super.dispose();
+  }
+
+  Future<void> _signInBackend(String email, String password) async {
+    final auth = widget.authClient;
+    if (auth == null) {
+      throw const BackendAuthException('Server sign-in is not configured in this build.');
+    }
+    final user = await auth.signIn(email, password);
+    store.signInBackend(user.email);
+  }
+
+  Future<String?> _signOut() async {
+    String? warning;
+    if (store.backendAuthenticated && widget.authClient != null) {
+      try {
+        await widget.authClient!.signOut();
+      } catch (_) {
+        warning = 'Signed out on this device. Server revocation could not be confirmed; the server session remains valid until its configured expiry.';
+      }
+    }
+    store.signOut();
+    return warning;
   }
 
   @override
@@ -107,15 +139,25 @@ class _HotIceAppState extends State<HotIceApp> {
       home: AnimatedBuilder(
         animation: store,
         builder: (context, _) => store.signedIn
-            ? StudioShell(key: ValueKey(store.selectedAccount), store: store)
+            ? StudioShell(
+                key: ValueKey(store.selectedAccount),
+                store: store,
+                onSignOut: _signOut,
+              )
             : showLogin
                 ? LoginPage(
                     onBack: () => setState(() => showLogin = false),
                     onSubmit: store.signInDemo,
                   )
+                : showBackendLogin
+                    ? BackendLoginPage(
+                        onBack: () => setState(() => showBackendLogin = false),
+                        onSubmit: widget.authClient == null ? null : _signInBackend,
+                      )
                 : WelcomePage(
                     onStart: () => setState(() => showLogin = true),
                     onDemoStart: () => store.signInDemo('creator@hotice.demo'),
+                    onBackendLogin: () => setState(() => showBackendLogin = true),
                   ),
       ),
     );
@@ -124,7 +166,8 @@ class _HotIceAppState extends State<HotIceApp> {
 
 class StudioShell extends StatefulWidget {
   final HotIceStore store;
-  const StudioShell({super.key, required this.store});
+  final Future<String?> Function()? onSignOut;
+  const StudioShell({super.key, required this.store, this.onSignOut});
 
   @override
   State<StudioShell> createState() => _StudioShellState();
@@ -272,7 +315,7 @@ class _StudioShellState extends State<StudioShell> {
                         AvatarsPage(store: store),
                         CreditsPage(store: store),
                         SettingsPage(store: store),
-                        AccountsPage(store: store),
+                        AccountsPage(store: store, onSignOut: widget.onSignOut),
                       ],
                     ),
                   ),

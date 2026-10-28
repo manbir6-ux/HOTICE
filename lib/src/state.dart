@@ -137,6 +137,7 @@ class _DemoWorkspace {
 
 class HotIceStore extends ChangeNotifier {
   bool signedIn = false;
+  bool backendAuthenticated = false;
   ThemeMode themeMode = ThemeMode.dark;
   StudioAccent accent = StudioAccent.electric;
   StudioFont font = StudioFont.modern;
@@ -165,11 +166,28 @@ class HotIceStore extends ChangeNotifier {
     _workspaces.putIfAbsent(normalized, () => _DemoWorkspace());
     selectedAccount = normalized;
     signedIn = true;
+    backendAuthenticated = false;
+    notifyListeners();
+  }
+
+  /// Enter a workspace only after the server authenticated the user.
+  /// Project data remains device-local until the user explicitly enables sync.
+  void signInBackend(String email) {
+    final normalized = email.trim().toLowerCase();
+    if (!isValidDemoEmail(normalized)) {
+      throw ArgumentError.value(email, 'email', 'Server returned an invalid account email.');
+    }
+    if (!accounts.contains(normalized)) accounts.add(normalized);
+    _workspaces.putIfAbsent(normalized, () => _DemoWorkspace());
+    selectedAccount = normalized;
+    signedIn = true;
+    backendAuthenticated = true;
     notifyListeners();
   }
 
   void signOut() {
     signedIn = false;
+    backendAuthenticated = false;
     notifyListeners();
   }
 
