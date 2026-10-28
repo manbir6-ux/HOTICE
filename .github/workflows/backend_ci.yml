@@ -57,6 +57,7 @@ jobs:
             'app_key' => str_repeat('a', 64),
             'storage_path' => __DIR__ . '/private-media',
             'require_https' => false, // ONLY CI HTTP localhost
+            'web_allowed_origins' => ['https://studio.hotice.test'],
             'allow_registration' => true, // ONLY CI test user creation
             'token_ttl_hours' => 1,
             'max_file_bytes' => 1048576,
@@ -69,3 +70,4 @@ jobs:
         run: php backend/bin/install.php
       - name: HTTP cloud API integration
         run: bash backend/tests/http-integration.sh
+

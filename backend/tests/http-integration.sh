@@ -7,6 +7,32 @@ server_pid=$!
 trap 'kill "$server_pid" 2>/dev/null || true' EXIT
 for i in $(seq 1 40); do if curl -fsS "$BASE/health" >/dev/null; then break; fi; sleep 0.25; done
 curl -fsS "$BASE/health" | jq -e '.status == "ok"' >/dev/null
+cors_headers=$(mktemp)
+curl -sS -D "$cors_headers" -o /dev/null -H 'Origin: https://studio.hotice.test' "$BASE/health"
+grep -iq '^Access-Control-Allow-Origin: https://studio.hotice.test' "$cors_headers"
+grep -iq '^Vary: Origin' "$cors_headers"
+! grep -iq '^Access-Control-Allow-Credentials:' "$cors_headers"
+! grep -iq '^Access-Control-Allow-Origin: \*' "$cors_headers"
+preflight_status=$(curl -sS -D "$cors_headers" -o /dev/null -w '%{http_code}' -X OPTIONS \
+  -H 'Origin: https://studio.hotice.test' \
+  -H 'Access-Control-Request-Method: POST' \
+  -H 'Access-Control-Request-Headers: authorization,content-type,idempotency-key' \
+  "$BASE/v1/auth/login")
+test "$preflight_status" = '204'
+grep -iq '^Access-Control-Allow-Headers: Authorization, Content-Type, Idempotency-Key' "$cors_headers"
+blocked_origin=$(curl -sS -D "$cors_headers" -o /dev/null -w '%{http_code}' \
+  -H 'Origin: https://attacker.example' "$BASE/health")
+test "$blocked_origin" = '403'
+! grep -iq '^Access-Control-Allow-Origin:' "$cors_headers"
+blocked_header=$(curl -sS -o /dev/null -w '%{http_code}' -X OPTIONS \
+  -H 'Origin: https://studio.hotice.test' \
+  -H 'Access-Control-Request-Method: POST' \
+  -H 'Access-Control-Request-Headers: authorization,x-unapproved' \
+  "$BASE/v1/auth/login")
+test "$blocked_header" = '403'
+rm -f "$cors_headers"
+php -r 'require "backend/src/App.php"; try { new Hotice\App(["app_key"=>str_repeat("a",64),"web_allowed_origins"=>["*"],"db"=>["dsn"=>"invalid:dsn","user"=>"","password"=>""]]); exit(1); } catch (RuntimeException $e) { if (!str_contains(strtolower($e->getMessage()),"origin")) exit(1); }'
+php -r 'require "backend/src/App.php"; try { new Hotice\App(["app_key"=>str_repeat("a",64),"web_allowed_origins"=>["https://studio.example.com/path"],"db"=>["dsn"=>"invalid:dsn","user"=>"","password"=>""]]); exit(1); } catch (RuntimeException $e) { if (!str_contains(strtolower($e->getMessage()),"origin")) exit(1); }'
 EMAIL='cloud-integration@example.com'
 PASS='TemporaryTestPassword123!'
 register=$(curl -sS -w '\n%{http_code}' -H 'Content-Type: application/json' -d "{\"email\":\"$EMAIL\",\"password\":\"$PASS\"}" "$BASE/v1/auth/register")
