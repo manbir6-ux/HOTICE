@@ -2,9 +2,11 @@
 
 > **Continue development here:** [HOTICE — Next Model Handoff](docs/CONTINUE_HERE.md). This file records the last verified GitHub state, user decisions, current CI/build limitations, and exact next development steps. Recheck the latest `main` branch and Actions results before continuing.
 
-**Cinematic AI Video Studio — Flutter UI foundation**
+**Cinematic AI Video Studio — Flutter client and PHP/MySQL cloud API foundation**
 
-HOTICE is a premium multi-AI video creation workspace. This repository contains the **first-stage, functional UI prototype**: navigation, forms, local project drafts, account profile switching, avatar presets, pricing selections and theme controls. The app does **not** yet generate video, accept payments, or authenticate users with a server.
+HOTICE is a multi-AI video creation workspace under active development. `main` contains a Flutter studio client and a Namecheap cPanel-compatible PHP/MySQL API for authenticated sessions, server-owned cloud entitlements, revisioned project snapshots and private media. The Flutter client is still a demo with largely in-memory state and is not connected to that API. HOTICE does **not** yet offer live AI generation or payments, and there is no production admin panel or deployed service.
+
+**Release decision: NOT READY TO PUBLISH.** Track the actionable release contract in [docs/READY_TO_PUBLISH.md](docs/READY_TO_PUBLISH.md) and [GitHub Issue #33](https://github.com/parmtech/HOTICE/issues/33). Keep API keys on a server; never add them to app code, builds, fixtures or logs.
 
 **Brand / product credit:** HOTICE  
 **Repository:** parmtech/HOTICE  
@@ -65,11 +67,12 @@ The platform scaffolds (Android/iOS) are intentionally not committed at this UI-
 
 See docs/BLUEPRINT.md and docs/PROGRESS.md.
 
-## Current verification (26 Oct 2026)
-- Flutter static analysis and widget tests passed on the development branch. See [verified CI run 40201075329](https://github.com/parmtech/HOTICE/actions/runs/40201075329).
-- An **Android debug APK** was successfully compiled and uploaded as the GitHub Actions artifact `HOTICE-Android-Preview-APK` in that run. It is a testing build, not a signed Play Store release.
-- Additional avatar editing changes landed after that first build; consult [Actions](https://github.com/parmtech/HOTICE/actions) for the latest complete validation and APK artifact.
-- No on-device usability test has been reported yet. No real camera/depth scan, face matching, AI generation, audio sync, checkout, live authentication, or cloud persistence is connected.
-- The Android and iOS native scaffolds are generated in CI/on demand; they are not committed to this repository.
+## Current verification and release limits
+- CI definitions cover Flutter analysis/tests, Android emulator navigation and a debug APK, plus PHP syntax/smoke and MySQL HTTP integration. Check the latest run for the exact commit before relying on a result.
+- A debug APK is a preview build, not a signed Play Store release. iOS release signing, staging deployment and physical-device acceptance are not demonstrated by these workflows.
+- The cPanel API source is an MVP and is not deployed or wired to Flutter. Production account verification/recovery, owner MFA/RBAC admin, payment webhooks/credit ledger, AI job submission, and provider keys/tests remain open.
+- Existing web inspiration work and model/Actor work are in open PRs. See [docs/READY_TO_PUBLISH.md](docs/READY_TO_PUBLISH.md) for branch coordination and gates; do not assume unmerged work is part of `main`.
+- No true 3D reconstruction, live paid provider call, or payment transaction is claimed.
 
-For continuation, see [docs/CONTINUE_HERE.md](docs/CONTINUE_HERE.md).
+For technical setup, see [backend/README.md](backend/README.md), [docs/NAMECHEAP_CLOUD_BACKEND.md](docs/NAMECHEAP_CLOUD_BACKEND.md), and [docs/CONTINUE_HERE.md](docs/CONTINUE_HERE.md).
+
