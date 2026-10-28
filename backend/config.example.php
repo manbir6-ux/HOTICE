@@ -13,6 +13,8 @@ return [
     // /home/account/public_html). The installer checks this BEFORE deployment.
     'public_webroot_path' => '/home/CPANEL_USERNAME/public_html',
     'require_https' => true,
+    // Exact browser origins only; omit until the web domain is deployed.
+    'web_allowed_origins' => [],
     'allow_registration' => false, // switch on ONLY after signup/email verification controls are in place
     'token_ttl_hours' => 24,
     'max_file_bytes' => 20 * 1024 * 1024, // conservative shared-host MVP, not large source videos
