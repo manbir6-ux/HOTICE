@@ -1,6 +1,6 @@
 # HOTICE Cloud API — Namecheap cPanel MVP v0.1
 
-This is a **working PHP 8.2+ and MySQL/MariaDB service implementation**, intended for cPanel shared hosting, **NOT an already deployed service or a paid production release**. It provides independent accounts/sessions, server-gated cloud entitlements, optimistic-revision project snapshots, and private media uploads/downloads with quota enforcement. **The Flutter app is not yet wired to these endpoints.** Real AI providers, payments and production registration are intentionally disabled; secrets belong on the server.
+This is a **working PHP 8.2+ and MySQL/MariaDB service implementation**, intended for cPanel shared hosting, **NOT an already deployed service or a paid production release**. It provides independent accounts/sessions, server-gated cloud entitlements, optimistic-revision project snapshots, and private media uploads/downloads with quota enforcement. Flutter account registration/sign-in and bearer-session handling now use these endpoints; the mobile studio's projects and generation screens remain local/demo workflows. Real AI providers, payments and production registration are intentionally disabled; secrets belong on the server.
 
 ## Local first, cloud only with a verified entitlement
 
@@ -28,6 +28,10 @@ This is a **working PHP 8.2+ and MySQL/MariaDB service implementation**, intende
 
 For the static HOTICE web app, set its public `meta[name="hotice-api-origin"]` to the HTTPS API origin and configure the same website origin in private `web_allowed_origins`, for example `['https://studio.example.com']`. Origins must be exact HTTPS origins with no path or trailing slash. Wildcards and credentialed CORS are unsupported; local HTTP origins are accepted only for localhost development. Keep the allowlist empty until the web domain is chosen. The browser preview keeps its short-lived bearer token in memory only and signs out on page exit where the browser permits; it does not persist the token or synchronize project data.
 
+### Native client account sign-in
+
+The Flutter account screen uses the same `/v1/auth/register`, `/v1/auth/verification/resend`, `/v1/auth/login`, `/v1/me`, `/v1/auth/logout`, and `/v1/auth/password-reset/request` endpoints. Configure the public API origin at build time, for example `flutter build apk --dart-define=HOTICE_API_BASE_URL=https://api.example.com`. Production origins must use HTTPS; HTTP is accepted only for localhost development. This value is an endpoint, never a credential. Bearer tokens are stored with `flutter_secure_storage` using Android Keystore-backed encryption and Apple Keychain on iOS; provider keys and server secrets are never shipped to the client. If the API origin is absent, sign-in and registration stay disabled and the separate guest demo remains available. The authenticated account does not silently enable cloud sync or paid generation; projects remain local until separately implemented, consented cloud controls are used. Email verification and password reset completion use the secure web link included in the email.
+
 ### Endpoint contract
 
 | Method/path | Function |
@@ -49,7 +53,7 @@ For the static HOTICE web app, set its public `meta[name="hotice-api-origin"]` t
 | `GET /v1/files/{uuid}` | Authenticated private download |
 | `DELETE /v1/files/{uuid}` | Remove own media and reclaim quota |
 
-**Security rules:** HTTPS required by default, JSON body size limits, `password_hash`, per-email+IP login attempt throttle, sessions store token hashes only, constant-type errors avoid sensitive SQL leakage, PDO prepared statements, real owner ID in every query, UUIDv4 IDs, revision conflict checks, per-user transactional cloud quotas, media type inspection using `finfo`, random file names, files outside web root, exact origin-allowlisted CORS for browser clients without cookies or wildcards, and no hardcoded provider keys. Native apps continue to use bearer auth without CORS. The browser account preview keeps its bearer token in memory only; native apps should store tokens using OS secure storage.
+**Security rules:** HTTPS required by default, JSON body size limits, `password_hash`, per-email+IP login attempt throttle, sessions store token hashes only, constant-type errors avoid sensitive SQL leakage, PDO prepared statements, real owner ID in every query, UUIDv4 IDs, revision conflict checks, per-user transactional cloud quotas, media type inspection using `finfo`, random file names, files outside web root, exact origin-allowlisted CORS for browser clients without cookies or wildcards, and no hardcoded provider keys. Native apps use bearer auth without CORS and store tokens with `flutter_secure_storage` backed by Android Keystore or Apple Keychain. The browser account preview keeps its bearer token in memory only.
 
 ### Test locally / in CI
 
@@ -62,7 +66,7 @@ GitHub Actions `HOTICE PHP Backend Security & API` also spins up an ephemeral My
 
 ### Known unfinished requirements
 
-- Flutter integration for local SQLite/secure storage plus optional cloud login/sync; user consent and explicit backup selection.
+- Durable local project persistence and explicit opt-in cloud sync with conflict resolution; the mobile account session is integrated, but account authentication does not itself synchronize local projects.
 - Abuse protection/CAPTCHA, real account lifecycle, token refresh/rotation, multi-device session management.
 - Payment provider webhook signature verification, idempotent credit ledger, subscription renewal/cancel/refund and server-controlled plan catalog.
 - AI model proxy/provider adapters, secure file signing, async job queue/callback verification, token/cost reservation and reconciliation.
@@ -73,5 +77,4 @@ GitHub Actions `HOTICE PHP Backend Security & API` also spins up an ephemeral My
 - Login and registration failure throttling now tracks **separate HMAC-hashed email and REMOTE_ADDR budgets** (12/email, 50/IP per rolling 15 minutes). Successful login clears its own email failure counter only, **not** the IP counter. Use scheduled `bin/cleanup.php` to expire records. For distributed abuse, add a trusted edge/WAF; this in-database throttle is only one layer and may treat multiple clients sharing NAT as one IP.
 - Media storage is validated using canonical `realpath` and checked against the actual PHP `DOCUMENT_ROOT`, configured cPanel `public_webroot_path`, and the app's `backend/public` directory. Both nested webroots and parent directories are rejected. **Never choose `public_html`, a subdirectory of it, or its parent as media storage.** Installer checks before running SQL migrations.
 - Application keys and personal media still require protected cPanel backups, file permissions, proper SSL, and a real deployment security review. Existing paid cloud entitlement is not real subscription billing.
-
 

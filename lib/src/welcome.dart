@@ -1,4 +1,7 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
+import 'account_api.dart';
 import 'design.dart';
 import 'state.dart';
 import 'diagnostics.dart';
@@ -58,7 +61,7 @@ class WelcomePage extends StatelessWidget {
                       FittedBox(
                         child: TextButton(
                           onPressed: onStart,
-                          child: const Text('Continue with demo email'),
+                          child: const Text('Sign in or create account'),
                         ),
                       ),
                       if (constraints.maxWidth >= 280) ...[
@@ -136,7 +139,7 @@ class WelcomePage extends StatelessWidget {
                                   child: TextButton.icon(
                                     onPressed: onStart,
                                     icon: const Icon(Icons.alternate_email),
-                                    label: const Text('Continue with a demo email',
+                                    label: const Text('Sign in or create account',
                                         style: TextStyle(color: Colors.white)),
                                   ),
                                 ),
@@ -211,11 +214,13 @@ class _Highlight extends StatelessWidget {
 
 class LoginPage extends StatefulWidget {
   final VoidCallback onBack;
-  final ValueChanged<String> onSubmit;
+  final AccountApi accountApi;
+  final ValueChanged<AccountUser> onAuthenticated;
   const LoginPage({
     super.key,
     required this.onBack,
-    required this.onSubmit,
+    required this.accountApi,
+    required this.onAuthenticated,
   });
   @override
   State<LoginPage> createState() => _LoginPageState();
@@ -224,16 +229,69 @@ class LoginPage extends StatefulWidget {
 class _LoginPageState extends State<LoginPage> {
   final formKey = GlobalKey<FormState>();
   final email = TextEditingController();
+  final password = TextEditingController();
+  bool creatingAccount = false;
+  bool busy = false;
+  bool statusIsError = false;
+  String? statusMessage;
 
   @override
   void dispose() {
     email.dispose();
+    password.dispose();
     super.dispose();
   }
 
-  void submit() {
-    if (formKey.currentState?.validate() ?? false) {
-      widget.onSubmit(email.text);
+  Future<void> submit() async {
+    if (busy || !(formKey.currentState?.validate() ?? false)) return;
+    setState(() { busy = true; statusMessage = null; statusIsError = false; });
+    try {
+      if (creatingAccount) {
+        await widget.accountApi.register(email.text, password.text);
+        if (!mounted) return;
+        setState(() {
+          creatingAccount = false;
+          statusMessage = 'Check your inbox for the verification link. Verify your email, then sign in.';
+          password.clear();
+        });
+      } else {
+        final user = await widget.accountApi.signIn(email.text, password.text);
+        if (mounted) widget.onAuthenticated(user);
+      }
+    } on AccountApiException catch (error) {
+      if (mounted) setState(() { statusMessage = error.message; statusIsError = true; });
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
+  Future<void> resendVerification() async {
+    if (busy) return;
+    setState(() { busy = true; statusMessage = null; statusIsError = false; });
+    try {
+      await widget.accountApi.resendVerification(email.text);
+      if (mounted) setState(() => statusMessage = 'If this account needs verification, a fresh link will be sent.');
+    } on AccountApiException catch (error) {
+      if (mounted) setState(() { statusMessage = error.message; statusIsError = true; });
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
+  Future<void> requestPasswordReset() async {
+    if (!isValidDemoEmail(email.text)) {
+      setState(() { statusMessage = 'Enter your account email first.'; statusIsError = true; });
+      return;
+    }
+    if (busy) return;
+    setState(() { busy = true; statusMessage = null; statusIsError = false; });
+    try {
+      await widget.accountApi.requestPasswordReset(email.text);
+      if (mounted) setState(() => statusMessage = 'If this verified account exists, a password reset link will be sent.');
+    } on AccountApiException catch (error) {
+      if (mounted) setState(() { statusMessage = error.message; statusIsError = true; });
+    } finally {
+      if (mounted) setState(() => busy = false);
     }
   }
 
@@ -241,7 +299,8 @@ class _LoginPageState extends State<LoginPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       body: SafeArea(
-        child: PageFrame(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(20, 28, 20, 56),
           child: Center(
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 475),
@@ -252,17 +311,17 @@ class _LoginPageState extends State<LoginPage> {
                     alignment: Alignment.centerLeft,
                     child: IconButton(
                       tooltip: 'Back to welcome',
-                      onPressed: widget.onBack,
+                      onPressed: busy ? null : widget.onBack,
                       icon: const Icon(Icons.arrow_back),
                     ),
                   ),
                   const SizedBox(height: 20),
                   const HotIceLogo(),
                   const SizedBox(height: 30),
-                  Text('Welcome to HOTICE',
+                  Text(creatingAccount ? 'Create your HOTICE account' : 'Welcome to HOTICE',
                     style: Theme.of(context).textTheme.headlineLarge),
                   const SizedBox(height: 8),
-                  const Text('Enter any valid email format to try a separate local demo workspace.'),
+                  const Text('Use your secure HOTICE account. Projects stay on this device unless you choose cloud features.'),
                   const SizedBox(height: 20),
                   StudioPanel(
                     child: Form(
@@ -270,29 +329,60 @@ class _LoginPageState extends State<LoginPage> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          const DemoNotice(
-                            'No real login or registration is connected. Never enter a password; demo profiles live only until the app closes.',
-                          ),
+                          if (!widget.accountApi.isConfigured)
+                            const DemoNotice('Secure account sign-in is not configured in this build. You can still explore the clearly labeled guest demo.'),
                           const SizedBox(height: 20),
                           TextFormField(
                             controller: email,
+                            enabled: !busy,
                             keyboardType: TextInputType.emailAddress,
-                            textInputAction: TextInputAction.done,
+                            textInputAction: TextInputAction.next,
                             autofillHints: const [AutofillHints.email],
-                            onFieldSubmitted: (_) => submit(),
                             decoration: const InputDecoration(
-                              labelText: 'Demo email',
+                              labelText: 'Email address',
                               prefixIcon: Icon(Icons.mail_outline),
                             ),
                             validator: (v) => !isValidDemoEmail(v ?? '')
-                                ? 'Enter a valid email format' : null,
+                                ? 'Enter a valid email address' : null,
                           ),
+                          const SizedBox(height: 14),
+                          TextFormField(
+                            controller: password,
+                            enabled: !busy,
+                            obscureText: true,
+                            autofillHints: [creatingAccount ? AutofillHints.newPassword : AutofillHints.password],
+                            textInputAction: TextInputAction.done,
+                            onFieldSubmitted: (_) => submit(),
+                            decoration: const InputDecoration(
+                              labelText: 'Password',
+                              prefixIcon: Icon(Icons.lock_outline),
+                            ),
+                            validator: (value) {
+                              final length = value == null ? 0 : utf8.encode(value).length;
+                              if (creatingAccount && length < 12) return 'Use at least 12 bytes.';
+                              if (length == 0) return 'Enter your password.';
+                              if (length > 256) return 'Password is too long.';
+                              return null;
+                            },
+                          ),
+                          if (statusMessage != null) ...[
+                            const SizedBox(height: 12),
+                            Text(statusMessage!, style: TextStyle(color: statusIsError ? Theme.of(context).colorScheme.error : Theme.of(context).colorScheme.primary)),
+                          ],
                           const SizedBox(height: 19),
                           PrimaryButton(
-                            label: 'Enter studio',
-                            onPressed: submit,
-                            icon: Icons.arrow_forward_rounded,
+                            label: busy ? 'Please wait…' : creatingAccount ? 'Create account' : 'Sign in',
+                            onPressed: busy || !widget.accountApi.isConfigured ? null : submit,
+                            icon: creatingAccount ? Icons.person_add_alt_1 : Icons.login_rounded,
                           ),
+                          TextButton(
+                            onPressed: busy ? null : () => setState(() { creatingAccount = !creatingAccount; statusMessage = null; statusIsError = false; }),
+                            child: Text(creatingAccount ? 'Already have an account? Sign in' : 'New to HOTICE? Create an account'),
+                          ),
+                          if (!creatingAccount) ...[
+                            TextButton(onPressed: busy ? null : requestPasswordReset, child: const Text('Forgot password?')),
+                            TextButton(onPressed: busy ? null : resendVerification, child: const Text('Resend verification email')),
+                          ],
                         ],
                       ),
                     ),

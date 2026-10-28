@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'src/account_api.dart';
 import 'src/state.dart';
 import 'src/design.dart';
 import 'src/pages.dart';
@@ -22,6 +23,9 @@ class HotIceApp extends StatefulWidget {
 
 class _HotIceAppState extends State<HotIceApp> {
   final HotIceStore store = HotIceStore();
+  late final AccountApi accountApi;
+  AccountUser? accountUser;
+  bool accountSessionChecked = false;
   bool showLogin = false;
 
   late ThemeMode _lastThemeMode;
@@ -31,10 +35,52 @@ class _HotIceAppState extends State<HotIceApp> {
   @override
   void initState() {
     super.initState();
+    accountApi = AccountApi();
+    _restoreAccount();
     _lastThemeMode = store.themeMode;
     _lastAccent = store.accent;
     _lastFont = store.font;
     store.addListener(_handleAppearanceChanged);
+  }
+
+  Future<void> _restoreAccount() async {
+    AccountUser? restored;
+    try {
+      restored = await accountApi.restoreSession();
+    } on AccountApiException catch (error) {
+      // Preserve the secure token during temporary network/service failures.
+      if (error.statusCode != 401 && error.statusCode != 403) restored = null;
+    }
+    if (!mounted) return;
+    setState(() {
+      accountUser = restored;
+      accountSessionChecked = true;
+      if (restored != null) store.signInDemo(restored.email);
+    });
+  }
+
+  void _onAuthenticated(AccountUser user) {
+    setState(() {
+      accountUser = user;
+      showLogin = false;
+      store.signInDemo(user.email);
+    });
+  }
+
+  Future<void> _signOut() async {
+    if (accountUser != null) {
+      try {
+        await accountApi.signOut();
+      } on AccountApiException {
+        // Local credentials are cleared even when the server cannot be reached.
+      }
+    }
+    if (!mounted) return;
+    setState(() {
+      accountUser = null;
+      showLogin = false;
+      store.signOut();
+    });
   }
 
   // Keep the Navigator/MaterialApp stable while demo accounts, projects and
@@ -58,6 +104,7 @@ class _HotIceAppState extends State<HotIceApp> {
   void dispose() {
     store.removeListener(_handleAppearanceChanged);
     store.dispose();
+    accountApi.dispose();
     super.dispose();
   }
 
@@ -77,12 +124,20 @@ class _HotIceAppState extends State<HotIceApp> {
       ),
       home: AnimatedBuilder(
         animation: store,
-        builder: (context, _) => store.signedIn
-            ? StudioShell(key: ValueKey(store.selectedAccount), store: store)
+        builder: (context, _) => !accountSessionChecked
+            ? const Scaffold(body: Center(child: CircularProgressIndicator()))
+            : store.signedIn
+            ? StudioShell(
+                key: ValueKey(store.selectedAccount),
+                store: store,
+                authenticatedEmail: accountUser?.email,
+                onSignOut: _signOut,
+              )
             : showLogin
                 ? LoginPage(
                     onBack: () => setState(() => showLogin = false),
-                    onSubmit: store.signInDemo,
+                    accountApi: accountApi,
+                    onAuthenticated: _onAuthenticated,
                   )
                 : WelcomePage(
                     onStart: () => setState(() => showLogin = true),
@@ -95,7 +150,9 @@ class _HotIceAppState extends State<HotIceApp> {
 
 class StudioShell extends StatefulWidget {
   final HotIceStore store;
-  const StudioShell({super.key, required this.store});
+  final String? authenticatedEmail;
+  final Future<void> Function() onSignOut;
+  const StudioShell({super.key, required this.store, required this.authenticatedEmail, required this.onSignOut});
 
   @override
   State<StudioShell> createState() => _StudioShellState();
@@ -261,7 +318,11 @@ class _StudioShellState extends State<StudioShell> {
                         AvatarsPage(store: store),
                         CreditsPage(store: store),
                         SettingsPage(store: store),
-                        AccountsPage(store: store),
+                        AccountsPage(
+                          store: store,
+                          authenticatedEmail: widget.authenticatedEmail,
+                          onSignOut: widget.onSignOut,
+                        ),
                         InspirationPage(onUse: useInspiration),
                       ],
                     ),
