@@ -112,4 +112,4 @@ test "$(curl -fsS -H "$AUTH" "$BASE/v1/me" | jq -er '.mockGeneration.credits')" 
 php backend/bin/jobs-worker.php --once | jq -e '.status == "idle"' >/dev/null
 test "$(curl -fsS -H "$AUTH" "$BASE/v1/me" | jq -er '.mockGeneration.credits')" = '75'
 
-echo 'Mock job quote, idempotency, ownership, durable provider-attempt states, ambiguous-outcome hold, retries, cancellation, simulated credits and refund checks passed. No provider call or video output was created.'\n
+echo 'Mock job quote, idempotency, ownership, durable provider-attempt states, ambiguous-outcome hold, retries, cancellation, simulated credits and refund checks passed. No provider call or video output was created.'

@@ -146,4 +146,4 @@ status=$(curl -sS -o /dev/null -w '%{http_code}' -H "Cookie: HOTICE_OWNER=$sessi
   --data-urlencode 'action=save_provider' --data-urlencode 'provider=google' \
   --data-urlencode 'secret=blocked' "$BASE/admin.php")
 test "$status" = '400'
-echo 'Owner MFA/session, user access, trial entitlement and billing-protection, encrypted key, no-echo, deletion and CSRF checks passed.'\n
+echo 'Owner MFA/session, user access, trial entitlement and billing-protection, encrypted key, no-echo, deletion and CSRF checks passed.'

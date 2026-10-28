@@ -205,4 +205,4 @@ main().catch((error) => {
   console.error(error.message);
   web.close();
   process.exitCode = 1;
-});\n
+});

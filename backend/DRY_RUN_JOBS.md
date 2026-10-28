@@ -46,4 +46,4 @@ See [PROVIDER_DISPATCH_SAFETY.md](PROVIDER_DISPATCH_SAFETY.md) for the required 
 
 ## Production gates still open
 
-Real model catalogs and account/region entitlement checks, provider adapters, signed quotes from a maintained pricing catalog, real currency conversion, payment webhooks, charge reservation/settlement/reconciliation, audit and fraud policy, attachment uploads, moderation, capacity/worker operations, output storage, retention, privacy/compliance and live staging review remain required before enabling any real provider call.\n
+Real model catalogs and account/region entitlement checks, provider adapters, signed quotes from a maintained pricing catalog, real currency conversion, payment webhooks, charge reservation/settlement/reconciliation, audit and fraud policy, attachment uploads, moderation, capacity/worker operations, output storage, retention, privacy/compliance and live staging review remain required before enabling any real provider call.

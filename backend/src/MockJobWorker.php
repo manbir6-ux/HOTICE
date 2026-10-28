@@ -207,4 +207,4 @@ final class MockJobWorker
         $db->prepare("UPDATE generation_jobs SET status='failed',actual_credits=0,error_code=?,finished_at=UTC_TIMESTAMP(),lease_token=NULL,lease_until=NULL WHERE id=?")
             ->execute([$error, $id]);
     }
-}\n
+}

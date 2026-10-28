@@ -360,4 +360,4 @@ main().catch((error) => {
   api.close();
   web.close();
   process.exitCode = 1;
-});\n
+});
