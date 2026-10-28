@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'state.dart';
+import 'model_compatibility_page.dart';
 import 'design.dart';
 
 export 'avatar_studio.dart' show AvatarsPage;
@@ -218,6 +219,22 @@ class SettingsPage extends StatelessWidget {
                 'Theme preferences are held in memory. Persistence and cloud synchronisation come later.',
               ),
             ],
+          ),
+        ),
+        const SizedBox(height: 17),
+        StudioPanel(
+          padding: const EdgeInsets.all(12),
+          child: ListTile(
+            key: const ValueKey('model-compatibility-open'),
+            leading: const Icon(Icons.hub_outlined),
+            title: const Text('AI model compatibility'),
+            subtitle: const Text(
+              'Official API model profiles, limits and retired versions.',
+            ),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => Navigator.of(context).push(MaterialPageRoute(
+              builder: (_) => const ModelCompatibilityPage(),
+            )),
           ),
         ),
         const SizedBox(height: 17),

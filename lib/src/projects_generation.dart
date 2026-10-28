@@ -1,6 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:file_picker/file_picker.dart';
+import 'smart_references.dart';
 import 'state.dart';
 import 'video_models.dart';
+import 'model_compatibility_page.dart';
+import 'model_registry.dart';
+import 'api_model_preview_panel.dart';
 import 'avatar_identity.dart';
 import 'design.dart';
 import 'dialogs.dart';
@@ -235,6 +240,9 @@ class _GenerationPageState extends State<GenerationPage> {
   final Map<String, String> _unsavedRatios = {};
   final Map<String, int> _unsavedDurations = {};
   final Map<String, String> _unsavedAvatars = {};
+  final Map<String, bool> _manualReferencesByProject = {};
+  final Map<String, Set<String>> _pinnedReferencesByProject = {};
+  final Map<String, FaceView?> _preferredViewsByProject = {};
   String? project;
   String model = 'cinematic_demo';
 
@@ -314,6 +322,66 @@ class _GenerationPageState extends State<GenerationPage> {
     });
   }
 
+  ReferenceSelection _referenceSelection() {
+    final avatarPack = avatarName == 'None' ||
+            !widget.store.avatars.any((a) => a.name == avatarName)
+        ? null : widget.store.avatarPackFor(avatarName);
+    final projectId = project;
+    return SmartReferencePlanner.plan(
+      avatarPack: avatarPack,
+      sceneAssets: projectId == null
+          ? const <AvatarReference>[]
+          : widget.store.sceneReferencesFor(projectId),
+      model: ReferenceModelCapability.demo(profile),
+      scenePrompt: prompt.text,
+      preferredView: projectId == null ? null : _preferredViewsByProject[projectId],
+      autoSelect: projectId == null ||
+          !(_manualReferencesByProject[projectId] ?? false),
+      lockedIds: projectId == null ? const <String>[] :
+          (_pinnedReferencesByProject[projectId] ?? const <String>{}),
+    );
+  }
+
+  Future<void> importScenePhoto(ReferenceRole role) async {
+    final owner = project;
+    if (owner == null) return;
+    try {
+      final file = await FilePicker.pickFile(type: FileType.image);
+      if (!mounted || file == null) return;
+      final fileBytes = file.lengthSync() ?? await file.length();
+      if (!mounted) return;
+      final ext = (file.extension ?? '').toLowerCase();
+      final mime = switch (ext) {
+        'jpg' || 'jpeg' => 'image/jpeg',
+        'png' => 'image/png',
+        'webp' => 'image/webp',
+        _ => null,
+      };
+      if (mime == null || file.path == null || file.path!.isEmpty ||
+          fileBytes == null || fileBytes <= 0 || fileBytes > 15 * 1024 * 1024) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Choose a JPG/PNG/WebP photo under 15 MB.'),
+        ));
+        return;
+      }
+      final saved = widget.store.addSceneReference(owner, AvatarReference(
+        id: createLocalProjectId(), ownerName: owner, role: role,
+        format: ReferenceFormat.image, mimeType: mime,
+        localPath: file.path!,
+      ));
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(saved
+          ? '${role.name} reference added to this project session.'
+          : 'Reference was not added (project or limit changed).')));
+      setState(() {});
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Image picker was cancelled or failed.'),
+      ));
+    }
+  }
+
   void save() {
     if (prompt.text.trim().isEmpty || project == null) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -334,11 +402,21 @@ class _GenerationPageState extends State<GenerationPage> {
       );
       return;
     }
+    final referencePlan = _referenceSelection();
+    if (referencePlan.errors.isNotEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(referencePlan.errors.first),
+      ));
+      return;
+    }
     final selected = matches.first;
     widget.store.queueDraft(GenerationDraft(
       projectId: selected.id,
       modelId: profile.id,
       avatarName: avatarName,
+      selectedReferenceIds: [for (final a in referencePlan.selected) a.id],
+      requestedAttachments: referencePlan.imageCount > 0
+          ? const [VideoAttachment.image] : const <VideoAttachment>[],
       project: selected.title,
       prompt: AvatarPromptComposer.compose(
         scenePrompt: prompt.text,
@@ -366,6 +444,18 @@ class _GenerationPageState extends State<GenerationPage> {
       for (final item in widget.store.avatars) item.name,
     ];
     if (!avatars.contains(avatarName)) avatarName = 'None';
+    final currentPlan = _referenceSelection();
+    final avatarAssets = avatarName == 'None'
+        ? const <AvatarReference>[]
+        : widget.store.avatarPackFor(avatarName).assets;
+    final sceneAssets = project == null
+        ? const <AvatarReference>[]
+        : widget.store.sceneReferencesFor(project!);
+    final allAssets = [...avatarAssets, ...sceneAssets];
+    final manualMode = project != null &&
+        (_manualReferencesByProject[project!] ?? false);
+    final pinned = project == null ? <String>{} :
+        (_pinnedReferencesByProject[project!] ?? <String>{});
     final editor = StudioPanel(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -389,6 +479,7 @@ class _GenerationPageState extends State<GenerationPage> {
           const SizedBox(height: 13),
           TextField(
             controller: prompt,
+            onChanged: (_) => setState(() {}),
             minLines: 4,
             maxLines: 7,
             decoration: const InputDecoration(
@@ -416,6 +507,25 @@ class _GenerationPageState extends State<GenerationPage> {
             'These are demo capability profiles, not connected AI providers.',
             style: TextStyle(fontSize: 12),
           ),
+          const SizedBox(height: 9),
+          OutlinedButton.icon(
+            onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+              builder: (_) => const ModelCompatibilityPage(),
+            )),
+            icon: const Icon(Icons.hub_outlined),
+            label: Text('Explore ' + HoticeAiCatalog.entries
+              .where((entry) => entry.status != AiStatus.retired)
+              .length.toString() + ' real API model research profiles'),
+          ),
+          ApiVideoPreviewPanel(prompt: prompt.text),
+          const SizedBox(height: 6),
+          const Text(
+            'Production model controls are separate from this offline demo. '
+            'Real provider options, reference roles and duration constraints '
+            'must come from a tested backend model catalog.',
+            style: TextStyle(fontSize: 12),
+          ),
+
           const SizedBox(height: 13),
           Text('Accepted reference attachments',
               style: Theme.of(context).textTheme.titleSmall),
@@ -446,14 +556,129 @@ class _GenerationPageState extends State<GenerationPage> {
             items: avatars.map((name) =>
                 DropdownMenuItem(value: name, child: Text(name))).toList(),
             onChanged: (v) {
-              if (v != null) setState(() => avatarName = v);
+              if (v != null) setState(() {
+                if (v != avatarName && project != null) {
+                  _pinnedReferencesByProject[project!]?.clear();
+                }
+                avatarName = v;
+              });
             },
           ),
           const SizedBox(height: 8),
           const Text(
-            'Selecting a character adds its reusable appearance notes to the saved scene prompt. True face locking requires future image/3D model integrations.',
+            'Character notes remain text-only. Imported face photos can guide reference planning; facial identity is not yet locked.',
             style: TextStyle(fontSize: 12),
           ),
+          const SizedBox(height: 14),
+          Text('Smart reference manager',
+              style: Theme.of(context).textTheme.titleSmall),
+          const SizedBox(height: 5),
+          const Text(
+            'Offline four-image limit is a simulation, not a verified provider capability. No media is uploaded or generated.',
+            style: TextStyle(fontSize: 12),
+          ),
+          SwitchListTile.adaptive(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Manual selection'),
+            subtitle: const Text('Off = automatic camera-angle matching'),
+            value: manualMode,
+            onChanged: project == null ? null : (value) => setState(() {
+              _manualReferencesByProject[project!] = value;
+            }),
+          ),
+          if (!manualMode && avatarName != 'None') ...[
+            DropdownButtonFormField<String>(
+              key: ValueKey('ref-angle-$project-$avatarName'),
+              initialValue: _preferredViewsByProject[project] ?.name ?? 'auto',
+              decoration: const InputDecoration(labelText: 'Reference angle'),
+              items: [
+                const DropdownMenuItem(value: 'auto',
+                    child: Text('Auto — read scene prompt')),
+                for (final view in FaceView.values)
+                  DropdownMenuItem(value: view.name, child: Text(view.label)),
+              ],
+              onChanged: (name) => setState(() {
+                if (project == null) return;
+                _preferredViewsByProject[project!] = name == null || name == 'auto'
+                    ? null : FaceView.values.firstWhere((v) => v.name == name);
+              }),
+            ),
+            const SizedBox(height: 7),
+          ],
+          Wrap(
+            spacing: 8,
+            runSpacing: 5,
+            children: [
+              PopupMenuButton<ReferenceRole>(
+                tooltip: 'Add scene reference',
+                onSelected: importScenePhoto,
+                itemBuilder: (ctx) => const [
+                  PopupMenuItem(value: ReferenceRole.location,
+                      child: Text('Import location photo')),
+                  PopupMenuItem(value: ReferenceRole.object,
+                      child: Text('Import object / vehicle photo')),
+                  PopupMenuItem(value: ReferenceRole.style,
+                      child: Text('Import style reference')),
+                ],
+                child: const Chip(
+                  avatar: Icon(Icons.add_photo_alternate_outlined, size: 18),
+                  label: Text('Add scene image'),
+                ),
+              ),
+              Chip(label: Text('Selected ${currentPlan.imageCount}/4 (demo)')),
+            ],
+          ),
+          if (pinned.isNotEmpty)
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                onPressed: project == null ? null : () => setState(() {
+                  _pinnedReferencesByProject[project!]?.clear();
+                }),
+                icon: const Icon(Icons.restart_alt),
+                label: const Text('Clear locked / manual references'),
+              ),
+            ),
+          if (allAssets.isEmpty)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 8),
+              child: Text('No reference photos yet. Add face views in Avatar Studio or add scene images here.'),
+            ),
+          for (final asset in allAssets)
+            CheckboxListTile(
+              key: ValueKey('reference-pin-${asset.id}'),
+              contentPadding: EdgeInsets.zero,
+              dense: true,
+              title: Text(asset.role == ReferenceRole.avatar
+                  ? 'Avatar · ${asset.view?.label ?? 'Face'}'
+                  : '${asset.role.name} image'),
+              subtitle: Text(manualMode ? 'Include this image' : 'Lock this image'),
+              value: pinned.contains(asset.id),
+              secondary: asset.role == ReferenceRole.avatar ? null : IconButton(
+                tooltip: 'Remove scene reference',
+                icon: const Icon(Icons.delete_outline),
+                onPressed: () => setState(() {
+                  if (project != null) {
+                    widget.store.removeSceneReference(project!, asset.id);
+                    _pinnedReferencesByProject[project!]?.remove(asset.id);
+                  }
+                }),
+              ),
+              onChanged: (checked) => setState(() {
+                final refs = _pinnedReferencesByProject.putIfAbsent(
+                    project!, () => <String>{});
+                if (checked == true) { refs.add(asset.id); }
+                else { refs.remove(asset.id); }
+              }),
+            ),
+          for (final message in currentPlan.errors)
+            Text(message, style: TextStyle(
+              color: Theme.of(context).colorScheme.error, fontSize: 12)),
+          if (currentPlan.selected.isNotEmpty)
+            Text('Planned: ${currentPlan.selected.map((a) => a.role == ReferenceRole.avatar ? a.view?.label ?? 'Face' : a.role.name).join(' + ')}',
+                style: const TextStyle(fontSize: 12)),
+          for (final message in currentPlan.warnings.take(2))
+            Text(message, style: const TextStyle(fontSize: 11)),
           const SizedBox(height: 17),
           Text('Aspect ratio', style: Theme.of(context).textTheme.titleSmall),
           Wrap(spacing: 8, children: [

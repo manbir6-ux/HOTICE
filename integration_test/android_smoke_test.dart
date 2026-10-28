@@ -40,6 +40,23 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Avatar Studio'), findsOneWidget);
     expect(tester.takeException(), isNull);
+
+    // A real Android view can reach the consent-first scanner without opening
+    // the camera until the user explicitly opts in.
+    await tester.tap(find.text('Live face capture'));
+    await tester.pumpAndSettle();
+    expect(find.text('On-device guided capture'), findsOneWidget);
+    final captureStart = find.text('Start live scanner');
+    await tester.ensureVisible(captureStart);
+    await tester.tap(captureStart);
+    await tester.pumpAndSettle();
+    expect(find.text('On-device face capture'), findsOneWidget);
+    expect(find.text('I agree — start camera'), findsOneWidget);
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    expect(find.text('Avatar Studio'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+
     await tester.tap(find.text('Credits').last);
     await tester.pumpAndSettle();
     expect(find.text('HOTICE Credits'), findsWidgets);
@@ -51,6 +68,15 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Appearance & settings'), findsOneWidget);
     expect(tester.takeException(), isNull);
+    final modelCatalog = find.byKey(const ValueKey('model-compatibility-open'));
+    await tester.ensureVisible(modelCatalog);
+    await tester.tap(modelCatalog);
+    await tester.pumpAndSettle();
+    expect(find.text('Provider compatibility'), findsOneWidget);
+    expect(find.text('Search models or providers'), findsOneWidget);
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    expect(find.text('Appearance & settings'), findsOneWidget);
 
     await tester.tap(find.text('More'));
     await tester.pumpAndSettle();
