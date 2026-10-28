@@ -8,14 +8,15 @@ Providers do NOT share a standard schema. The term "4 image references" may mean
 
 **Fail-closed:** unknown, retired, unverified, or unsupported combinations must be rejected before any billable API call. Pricing is never zero by default.
 
-## Official sources and status (checked 28 Oct 2026)
+## Official sources and status (refreshed 29 Oct 2026)
 
 | Provider route / family | Workload | API & critical constraints | HOTICE status |
 |---|---|---|---|
-| Google Gemini API Omni Flash 1.1 | Video | Interactions API, 3–10s, 16:9 or 9:16, 360p/720p/1080p/4K (higher resolutions upscaled); text, first/last frames, and advanced references are distinct tasks | Research profiles built; multi-reference joint limit unverified; no live adapter |
+| Google Gemini API Omni Flash 1.1 (`gemini-omni-1.1-flash`) | Video | Interactions API, 3–10s, 16:9 or 9:16, 360p/720p/1080p/4K; text, image, and video inputs have task-specific shapes | Research profiles built; multi-reference joint limit unverified; no live adapter |
 | Runway Gen-4.5 T2V | Video | Async `POST /v1/text_to_video`, `GET /v1/tasks/{id}`; 2–10s, 1280:720 or 720:1280; 12 provider credits/sec | Research profile built; cost is $0.12/sec before tax at $0.01/provider credit; no live adapter |
 | Runway Gen-4.5 I2V | Video | Async `POST /v1/image_to_video`, `GET /v1/tasks/{id}`; 2–10s, first-frame image input, exact ratio follows documented dimensions; X-Runway-Version: 2024-11-06; 12 provider credits/sec | Research profile built; cost is $0.12/sec before tax at $0.01/provider credit; no live adapter |
-| Kling 4 hosted via Runway | Video | Distinct Runway gateway model; 3–30s, complex resolution/ratio pairs; image/video references have conditional limits | Research only, disabled until detailed pair constraints and provider access verified |
+| Kling 4 hosted via Runway (`kling_4`) | Video | Distinct Runway Dev route; 720p/1080p, 3–30s, text/frames/image/video references and source-video editing; conditional input and cost rules | Research only, disabled until exact input semantics and account access are verified |
+| Gemini Omni Flash 1.1 hosted via Runway (`gemini_omni_flash_1.1`) | Video | Distinct Runway Dev gateway route; 360p/720p/1080p/4K with reference-image and source-video surcharges | Research only; do not reuse Google Gemini API payloads, credentials, rates, or entitlement checks |
 | Luma Ray 2 | Video | Dream Machine /generations/video, model ray-2, generation status/webhooks, keyframes and options | Research only, disabled until duration/resolution combinations verified |
 | Google Nano Banana 2 (gemini-3.1-flash-image) | Image | generateContent; image creation/editing, 0.5K/1K/2K/4K; media role limits vary | Research profile, no live adapter |
 | OpenAI GPT-6.1 Sol | Script | Responses API, text/image understanding; not a video renderer | Research profile, no live adapter |
@@ -31,9 +32,11 @@ Providers do NOT share a standard schema. The term "4 image references" may mean
 Primary official documentation:
 - https://ai.google.dev/gemini-api/docs/omni
 - https://ai.google.dev/gemini-api/docs/video
+- https://ai.google.dev/gemini-api/docs/pricing
 - https://ai.google.dev/gemini-api/docs/models/gemini-3.1-flash-image
 - https://docs.dev.runwayml.com/api/
 - https://docs.dev.runwayml.com/guides/using-the-api/
+- https://docs.dev.runwayml.com/guides/models/
 - https://docs.dev.runwayml.com/guides/pricing/
 - https://docs.dev.runwayml.com/assets/outputs/
 - https://docs.dev.runwayml.com/assets/inputs/
@@ -53,6 +56,16 @@ This list represents known candidate model families, NOT all existing AI models,
 Runway's published Gen-4.5 rate is 12 Runway provider credits per generated second; its pricing guide values a provider credit at US$0.01. That makes a 5-second task US$0.60 and a 10-second task US$1.20 in provider cost before tax. This is **supplier cost**, not a HOTICE customer price, and must be rechecked before quotes or model activation.
 
 Gen-4.5 text-to-video and image-to-video are asynchronous tasks. Runway requires API version header `2024-11-06`; task state is retrieved at `GET /v1/tasks/{id}`, and docs recommend polling no more frequently than every five seconds. Successful task output URLs expire after access (typically 24–48 hours); HOTICE must securely retrieve the result into private storage and must not expose the vendor URL directly. Do not enable this profile until a durable worker, idempotent cost reservation, secure output storage, account/region entitlement checks, and staging evidence exist.
+
+## Current Omni and Kling routes (checked 29 October 2026)
+
+The native Google Gemini API and Runway Dev are separate billing and integration routes even when they expose the same underlying model family. Never share API payload builders, provider credentials, entitlement status, cost tables, or provider operation IDs across those routes.
+
+- **Google Gemini API Omni Flash 1.1** uses `gemini-omni-1.1-flash` through the Interactions API. Google's paid Standard table lists input at US$1.50 per million tokens and video output at US$17.50 per million tokens. Google estimates 5,792 output tokens per second for 720p, or about US$0.10 per second at that resolution. This is supplier cost only; pricing for other resolutions and any account-specific terms must be verified before quoting.
+- **Runway Dev Gemini Omni Flash 1.1** uses the gateway model code `gemini_omni_flash_1.1`, not Google's model code. The current Runway table lists 3.4, 10, 15, and 30 Runway credits per output second for 360p, 720p, 1080p, and 4K; it additionally charges one credit per reference image and one credit per second of source video. Runway values a credit at US$0.01. Recheck the rate and exact task input limits before any quote.
+- **Runway Dev Kling 4.0** uses `kling_4` and is separate from any native Kling provider API. Its model guide describes 720p or 1080p generation, 3–30 seconds, and text, frames, image/video references, or source-video editing. The pricing guide currently shows a time-limited 20% discount through 30 November 2026 UTC. 720p is 12.56 credits/second without input video, or 7.52 credits/second of output plus 7.52 credits/second for the greater of source-video duration or output duration; list rates are 15.7 and 9.4. At 1080p the discounted rates are 18.8 and 11.28, with list rates 23.5 and 14.1. The guide says charges round up to a whole credit and list rates apply from 1 December 2026 UTC. This expiry makes the discounted price unsuitable as a persisted long-term catalog rate.
+
+All figures above were observed in public official documentation; they do not prove HOTICE account entitlement, regional access, commercial suitability, negotiated price, request correctness, successful renders, or invoice reconciliation. Keep the models disabled until those facts are tested on the exact account, route and region. Refresh price evidence immediately before launch and after scheduled pricing changes.
 
 ## Versioned backend catalog (authoritative — NOT yet deployed)
 A real server-delivered catalog record must include:
