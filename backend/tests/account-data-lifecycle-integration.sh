@@ -80,6 +80,7 @@ echo '[account-lifecycle-test] relational and outbox rows removed'
 php backend/bin/purge-private-media.php 10 | jq -e '.retryableFailures == 1 and .purged == 0' >/dev/null
 echo '[account-lifecycle-test] failed purge retained safely for retry'
 rm -r "$storage_path/$storage_name"
+php -r 'require_once "backend/src/App.php"; $c=require "backend/config.php"; $db=(new Hotice\App($c))->database(); $q=$db->prepare("UPDATE private_media_deletion_queue SET locked_at=NULL WHERE storage_name=?"); $q->execute([$argv[1]]);' "$storage_name"
 php backend/bin/purge-private-media.php 10 | jq -e '.purged == 1 and .retryableFailures == 0' >/dev/null
 echo '[account-lifecycle-test] purge retry succeeded'
 test "$(php -r 'require_once "backend/src/App.php"; $c=require "backend/config.php"; $db=(new Hotice\App($c))->database(); echo $db->query("SELECT COUNT(*) FROM private_media_deletion_queue")->fetchColumn();')" = '0'

@@ -22,7 +22,7 @@ try {
         if (!$row) { $db->commit(); break; }
         $name = (string)$row['storage_name'];
         if (!\Hotice\Support::secureFileName($name)) {
-            $db->prepare("UPDATE private_media_deletion_queue SET attempts=attempts+1,locked_at=NULL,last_error_code='invalid_storage_name' WHERE storage_name=?")->execute([$name]);
+            $db->prepare("UPDATE private_media_deletion_queue SET attempts=attempts+1,locked_at=UTC_TIMESTAMP(),last_error_code='invalid_storage_name' WHERE storage_name=?")->execute([$name]);
             $db->commit(); $failed++; continue;
         }
         $db->prepare('UPDATE private_media_deletion_queue SET locked_at=UTC_TIMESTAMP() WHERE storage_name=?')->execute([$name]);
@@ -34,7 +34,7 @@ try {
             $db->prepare('DELETE FROM private_media_deletion_queue WHERE storage_name=?')->execute([$name]);
             $done++;
         } else {
-            $db->prepare("UPDATE private_media_deletion_queue SET attempts=attempts+1,locked_at=NULL,last_error_code='unlink_failed' WHERE storage_name=?")->execute([$name]);
+            $db->prepare("UPDATE private_media_deletion_queue SET attempts=attempts+1,locked_at=UTC_TIMESTAMP(),last_error_code='unlink_failed' WHERE storage_name=?")->execute([$name]);
             $failed++;
         }
     }
