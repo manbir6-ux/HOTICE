@@ -36,12 +36,14 @@ jobs:
           flutter pub get
           flutter pub deps --json > dist/release-inventory/flutter-dependencies.json
       - name: Record source revision and workflow run
+        env:
+          HOTICE_SOURCE_REVISION: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
-          node -e 'const fs=require("node:fs"); fs.writeFileSync("dist/release-inventory/build.json", JSON.stringify({repository:process.env.GITHUB_REPOSITORY, revision:process.env.GITHUB_SHA, workflowRun:process.env.GITHUB_RUN_ID, runAttempt:process.env.GITHUB_RUN_ATTEMPT}, null, 2)+"\n")'
+          node -e 'const fs=require("node:fs"); fs.writeFileSync("dist/release-inventory/build.json", JSON.stringify({repository:process.env.GITHUB_REPOSITORY, sourceRevision:process.env.HOTICE_SOURCE_REVISION, workflowRevision:process.env.GITHUB_SHA, workflowRun:process.env.GITHUB_RUN_ID, runAttempt:process.env.GITHUB_RUN_ATTEMPT}, null, 2)+"\n")'
       - name: Upload release dependency inventory
         uses: actions/upload-artifact@v4
         with:
-          name: HOTICE-release-inventory-${{ github.sha }}
+          name: HOTICE-release-inventory-${{ github.event.pull_request.head.sha || github.sha }}
           path: dist/release-inventory/
           retention-days: 90
           if-no-files-found: error
