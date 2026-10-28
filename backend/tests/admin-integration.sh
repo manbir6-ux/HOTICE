@@ -134,6 +134,21 @@ test "$status" = '200'
 grep -q 'Paid cloud access is controlled by verified billing' "$TMP_DIR/trial-denied"
 php -r 'require "backend/src/App.php"; $c=require "backend/config.php"; $db=(new \Hotice\App($c))->database(); $q=$db->prepare("SELECT source,plan_code,quota_bytes FROM cloud_entitlements WHERE user_id=?"); $q->execute([$argv[1]]); $e=$q->fetch(); if (!$e || $e["source"]!=="verified_billing" || $e["plan_code"]!=="pro" || (int)$e["quota_bytes"]!==67108864) exit(1);' "$user_id"
 
+# Owner account lookup is bounded, searchable, literal and paginated.
+php -r 'require "backend/src/App.php"; $c=require "backend/config.php"; $db=(new \Hotice\App($c))->database(); $hash=\Hotice\Support::passwordHash("TemporaryBulkUserPassword123!"); $q=$db->prepare("INSERT INTO users(id,email,password_hash) VALUES(?,?,?)"); for($i=1;$i<=30;$i++){ $q->execute([\Hotice\Support::uuid(),sprintf("admin-page-%03d@example.com",$i),$hash]); }'
+page=$(curl -fsS -G -H "Cookie: HOTICE_OWNER=$session" --data-urlencode 'user_search=admin-page-' "$BASE/admin.php")
+[[ "$page" == *'30 accounts found'* && "$page" == *'page 1 of 2'* ]]
+test "$(printf '%s' "$page" | grep -oE 'admin-page-[0-9]{3}@example\.com' | wc -l | tr -d ' ')" = '25'
+page=$(curl -fsS -G -H "Cookie: HOTICE_OWNER=$session" --data-urlencode 'user_search=admin-page-' --data-urlencode 'user_page=2' "$BASE/admin.php")
+[[ "$page" == *'30 accounts found'* && "$page" == *'page 2 of 2'* ]]
+test "$(printf '%s' "$page" | grep -oE 'admin-page-[0-9]{3}@example\.com' | wc -l | tr -d ' ')" = '5'
+page=$(curl -fsS -G -H "Cookie: HOTICE_OWNER=$session" --data-urlencode 'user_search=admin-page-030' "$BASE/admin.php")
+[[ "$page" == *'1 account found'* && "$page" == *'admin-page-030@example.com'* ]]
+page=$(curl -fsS -G -H "Cookie: HOTICE_OWNER=$session" --data-urlencode 'user_search=admin-page-%' "$BASE/admin.php")
+[[ "$page" == *'0 accounts found'* && "$page" != *'admin-page-001@example.com'* ]]
+page=$(curl -fsS -G -H "Cookie: HOTICE_OWNER=$session" --data-urlencode 'user_search=<script>' "$BASE/admin.php")
+[[ "$page" != *'<script>'* ]]
+
 test_key='ci-only-provider-secret-never-a-real-key'
 status=$(curl -sS -D "$headers" -o /dev/null -w '%{http_code}' \
   -H "Cookie: HOTICE_OWNER=$session" -H 'Content-Type: application/x-www-form-urlencoded' \
@@ -168,6 +183,6 @@ status=$(curl -sS -o /dev/null -w '%{http_code}' -H "Cookie: HOTICE_OWNER=$sessi
   --data-urlencode 'action=save_provider' --data-urlencode 'provider=google' \
   --data-urlencode 'secret=blocked' "$BASE/admin.php")
 test "$status" = '400'
-echo 'Owner MFA/session, feature-flag master gate, model availability, worker pause, queued-job inspection/cancel/refund, user access, trial/billing protection, encrypted-key secrecy and CSRF checks passed.'
+echo 'Owner MFA/session, feature-flag master gate, model availability, worker pause, queued-job inspection/cancel/refund, searchable paginated user access, trial/billing protection, encrypted-key secrecy and CSRF checks passed.'
 
 

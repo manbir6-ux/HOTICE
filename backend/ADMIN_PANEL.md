@@ -15,6 +15,7 @@ The owner console is served at `https://api.your-domain.example/admin.php`. It i
 - Owner password + TOTP sign-in; no public owner enrollment.
 - Encrypted server-side provider-key configuration for OpenAI, Google, Runway, and ElevenLabs.
 - Owner-only user access disable/reactivate controls; disabling revokes current API sessions and blocks new sign-ins until re-enabled.
+- Literal email-substring search and bounded 25-account pages for owner user access; user actions remain authenticated POSTs protected by CSRF and are audited.
 - Temporary admin test cloud trials can be granted or ended without changing billing-sourced entitlements. Ending a trial begins the existing 30-day read-only export grace.
 - An audited mock-generation feature switch. It can pause dry-run availability and cannot override the private server configuration master gate.
 - Read-only counts for cloud entitlements, projects, and private media records; recent admin audit events.
@@ -22,7 +23,7 @@ The owner console is served at `https://api.your-domain.example/admin.php`. It i
 
 ## Still required before public release
 
-The console does not yet provide role administration, verified subscription or credit controls, uploads/jobs moderation, live model capability/cost editing, general feature-flag management, service telemetry, MFA recovery, multiple-owner governance, or independent monitoring. User access management currently shows the 50 most recently created regular app accounts; add secure search and pagination before large-scale operations. Test trials are manual staging controls, not subscription processing or payment evidence. Provider-key rotation and restore drills, cross-account authorization tests, cPanel staging acceptance, backups and key escrow remain required. Do not enter real production provider credentials until staging controls and a security review are complete.
+The console does not yet provide role administration, verified subscription or credit controls, uploads/jobs moderation, live model capability/cost editing, general feature-flag management, service telemetry, MFA recovery, multiple-owner governance, or independent monitoring. Search and paging keep each user table response bounded, but the owner console still needs operational scale and accessibility review. Test trials are manual staging controls, not subscription processing or payment evidence. Provider-key rotation and restore drills, cross-account authorization tests, cPanel staging acceptance, backups and key escrow remain required. Do not enter real production provider credentials until staging controls and a security review are complete.
 
 After the CLI prints the authenticator setup URI, treat it as a one-time secret. The TOTP seed and provider secrets are encrypted in MySQL, but backups still require restricted access and retention. Do not paste keys into support tickets, issue comments, or app builds.
 

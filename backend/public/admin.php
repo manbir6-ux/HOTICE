@@ -289,11 +289,34 @@ $mockGenerationEnabled = FeatureFlags::mockGenerationEnabled($db, $config);
 <p><button type="submit">Save encrypted key</button></p></form>
 <?php if ($saved): ?><form method="post"><?=csrfInput()?><input type="hidden" name="action" value="delete_provider"><input type="hidden" name="provider" value="<?=h($provider)?>"><button class="danger" type="submit">Remove key</button><p class="muted small">Removal takes effect immediately.</p></form><?php endif; ?></article>
 <?php endforeach; ?></div></section><?php endif; ?>
-<section><h2>User access</h2><p class="muted">Disable an account to block API access and revoke its active sessions. Admin test trials grant temporary cloud storage only; they never represent verified payment. Paid entitlements are controlled by verified billing. Owner-console accounts are managed separately through the CLI.</p><article class="card"><div style="overflow-x:auto"><table><thead><tr><th>Email</th><th>Created</th><th>Access</th><th>Account action</th><th>Cloud entitlement</th><th>Test trial action</th></tr></thead><tbody>
-<?php $q=$db->query('SELECT u.id,u.email,u.created_at,s.disabled_at,e.source,e.plan_code,e.quota_bytes,e.used_bytes,e.expires_at FROM users u LEFT JOIN user_admin_state s ON s.user_id=u.id LEFT JOIN cloud_entitlements e ON e.user_id=u.id ORDER BY u.created_at DESC LIMIT 50'); foreach($q->fetchAll() as $managed): $disabled=$managed['disabled_at']!==null; ?>
+<?php
+$userSearch = substr(trim((string) ($_GET['user_search'] ?? '')), 0, 254);
+$userPageValue = filter_var($_GET['user_page'] ?? 1, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+$userPage = $userPageValue === false ? 1 : $userPageValue;
+$userPageSize = 25;
+$userCountQuery = $db->prepare('SELECT COUNT(*) FROM users WHERE LOCATE(?, email) > 0');
+$userCountQuery->execute([$userSearch]);
+$userTotal = (int) $userCountQuery->fetchColumn();
+$userPageCount = max(1, (int) ceil($userTotal / $userPageSize));
+$userPage = min($userPage, $userPageCount);
+$userOffset = ($userPage - 1) * $userPageSize;
+$userQuery = $db->prepare('SELECT u.id,u.email,u.created_at,s.disabled_at,e.source,e.plan_code,e.quota_bytes,e.used_bytes,e.expires_at FROM users u LEFT JOIN user_admin_state s ON s.user_id=u.id LEFT JOIN cloud_entitlements e ON e.user_id=u.id WHERE LOCATE(?, u.email) > 0 ORDER BY u.created_at DESC,u.id DESC LIMIT ? OFFSET ?');
+$userQuery->bindValue(1, $userSearch, PDO::PARAM_STR);
+$userQuery->bindValue(2, $userPageSize, PDO::PARAM_INT);
+$userQuery->bindValue(3, $userOffset, PDO::PARAM_INT);
+$userQuery->execute();
+?>
+<section id="user-access"><h2>User access</h2><p class="muted">Disable an account to block API access and revoke its active sessions. Admin test trials grant temporary cloud storage only; they never represent verified payment. Paid entitlements are controlled by verified billing. Owner-console accounts are managed separately through the CLI.</p><article class="card">
+<form method="get" action="/admin.php" role="search"><label for="user-search">Find an account by email</label><div class="row"><input id="user-search" name="user_search" type="search" maxlength="254" value="<?=h($userSearch)?>" autocomplete="off" placeholder="Email contains…"><button type="submit">Search users</button><?php if ($userSearch !== ''): ?><a class="muted" href="/admin.php#user-access">Clear search</a><?php endif; ?></div></form>
+<p class="muted small" role="status"><?=h((string) $userTotal)?> account<?=($userTotal===1?'':'s')?> found<?php if ($userTotal > 0): ?> · page <?=h((string)$userPage)?> of <?=h((string)$userPageCount)?><?php endif; ?></p>
+<div style="overflow-x:auto"><table><thead><tr><th>Email</th><th>Created</th><th>Access</th><th>Account action</th><th>Cloud entitlement</th><th>Test trial action</th></tr></thead><tbody>
+<?php foreach($userQuery->fetchAll() as $managed): $disabled=$managed['disabled_at']!==null; ?>
 <?php $hasCloud=$managed['source']!==null; $paidCloud=$managed['source']==='verified_billing'; $cloudActive=$hasCloud && strtotime((string)$managed['expires_at'].' UTC')>time(); ?>
 <tr><td><?=h((string)$managed['email'])?></td><td><?=h((string)$managed['created_at'])?></td><td><span class="status <?=$disabled?'off':''?>"><?=$disabled?'Disabled':'Enabled'?></span></td><td><form method="post"><?=csrfInput()?><input type="hidden" name="user_id" value="<?=h((string)$managed['id'])?>"><input type="hidden" name="action" value="<?=$disabled?'enable_user':'disable_user'?>"><button class="<?=$disabled?'secondary':'danger'?>" type="submit"><?=$disabled?'Enable access':'Disable access'?></button></form></td><td><?php if (!$hasCloud): ?>No cloud access<?php elseif ($paidCloud): ?>Verified billing · <?=h((string)$managed['plan_code'])?><?php else: ?>Admin trial · <?=$cloudActive?'active':'expired'?> · <?=h((string)$managed['used_bytes'])?> / <?=h((string)$managed['quota_bytes'])?> bytes<?php endif; ?></td><td><?php if (!$paidCloud): ?><form method="post"><?=csrfInput()?><input type="hidden" name="user_id" value="<?=h((string)$managed['id'])?>"><input type="hidden" name="action" value="grant_cloud_trial"><label>Quota MiB <input name="quota_mib" type="number" min="1" max="1024" value="100" required></label><label>Duration days <input name="days" type="number" min="1" max="60" value="7" required></label><button type="submit">Grant test trial</button></form><?php if ($managed['source']==='admin_trial'): ?><form method="post"><?=csrfInput()?><input type="hidden" name="user_id" value="<?=h((string)$managed['id'])?>"><input type="hidden" name="action" value="revoke_cloud_trial"><button class="danger" type="submit">End test trial</button></form><?php endif; ?><?php else: ?>Billing controlled<?php endif; ?></td></tr>
-<?php endforeach; ?></tbody></table></div><p class="muted small">Showing the 50 most recently created accounts. Every change is audited.</p></article></section>
+<?php endforeach; ?></tbody></table></div>
+<?php if ($userTotal === 0): ?><p class="muted">No accounts match this search.</p><?php endif; ?>
+<?php if ($userPageCount > 1): ?><nav class="row" aria-label="User account pages"><?php if ($userPage > 1): ?><a class="muted" href="?<?=h(http_build_query(['user_search'=>$userSearch,'user_page'=>$userPage-1]))?>#user-access">Previous page</a><?php endif; ?><span class="muted small">Page <?=h((string)$userPage)?> of <?=h((string)$userPageCount)?></span><?php if ($userPage < $userPageCount): ?><a class="muted" href="?<?=h(http_build_query(['user_search'=>$userSearch,'user_page'=>$userPage+1]))?>#user-access">Next page</a><?php endif; ?></nav><?php endif; ?>
+<p class="muted small">Showing up to <?=$userPageSize?> accounts per page. Every change is audited.</p></article></section>
 <section><h2>Service health</h2><div class="grid">
 <?php try { $counts=[]; foreach (['users'=>'users','cloud accounts'=>'cloud_entitlements','cloud projects'=>'cloud_projects','private media objects'=>'cloud_files'] as $label=>$table) {$counts[$label]=(int)$db->query('SELECT COUNT(*) FROM '.$table)->fetchColumn();} ?>
 <article class="card"><span class="status">Database connected</span><table><tbody><?php foreach($counts as $label=>$count): ?><tr><th><?=h($label)?></th><td><?=h((string)$count)?></td></tr><?php endforeach; ?></tbody></table><p class="muted small">Counts only; no personal project content or credentials are displayed.</p></article>
