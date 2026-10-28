@@ -152,7 +152,7 @@ async function main() {
     const verificationBody = deliverMail();
     const verificationToken = verificationBody.match(/#token=([a-f0-9]{64})/i)?.[1];
     assert(verificationToken, 'CI mail capture must contain the one-time verification URL.');
-    await page.goto(`http://127.0.0.1:${port}/#token=${verificationToken}`, {waitUntil: 'networkidle'});
+    await page.goto(`http://127.0.0.1:${port}/?ciFlow=verify#token=${verificationToken}`, {waitUntil: 'networkidle'});
     const verificationResponse = apiResponses.filter((response) => response.method === 'POST' && response.path === '/v1/auth/verify-email').at(-1);
     assert.equal(verificationResponse?.status, 200,
       `Browser email verification API response must succeed: ${JSON.stringify(verificationResponse)}`);
@@ -172,7 +172,7 @@ async function main() {
     const resetBody = deliverMail();
     const resetToken = resetBody.match(/#reset=([a-f0-9]{64})/i)?.[1];
     assert(resetToken, 'CI mail capture must contain the one-time password reset URL.');
-    await page.goto(`http://127.0.0.1:${port}/#reset=${resetToken}`, {waitUntil: 'networkidle'});
+    await page.goto(`http://127.0.0.1:${port}/?ciFlow=reset#reset=${resetToken}`, {waitUntil: 'networkidle'});
     const rotatedPassword = registerPassword + 'Rotate1';
     await page.locator('#resetNewPassword').fill(rotatedPassword);
     await page.locator('#resetConfirmPassword').fill(rotatedPassword);
