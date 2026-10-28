@@ -50,7 +50,7 @@ test -n "$csrf"
 
 managed_email='managed-user@example.com'
 managed_password='TemporaryManagedPassword123!'
-curl -fsS -H 'Content-Type: application/json' -d "{\"email\":\"$managed_email\",\"password\":\"$managed_password\"}" "$BASE/v1/auth/register" >/dev/null
+printf '%s\n' "$managed_password" | php backend/bin/create-user.php "$managed_email" >/dev/null 2>&1
 user_id=$(php -r 'require "backend/src/App.php"; $c=require "backend/config.php"; $db=(new \Hotice\App($c))->database(); $q=$db->prepare("SELECT id FROM users WHERE email=?"); $q->execute([$argv[1]]); echo $q->fetchColumn();' "$managed_email")
 test -n "$user_id"
 user_login=$(curl -fsS -H 'Content-Type: application/json' -d "{\"email\":\"$managed_email\",\"password\":\"$managed_password\"}" "$BASE/v1/auth/login")
