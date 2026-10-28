@@ -30,6 +30,7 @@ class AiCapability {
     this.aspects = const [], this.resolutions = const [],
     this.minSeconds, this.maxSeconds, this.exactSeconds = const [],
     this.roles = const [], this.imageLimit, this.videoLimit,
+    this.controlsDuration = true,
     this.audioLimit, this.meshLimit = 0, this.firstFrameRequired = false,
     this.notes = '',
   });
@@ -41,7 +42,7 @@ class AiCapability {
   final int? minSeconds, maxSeconds, imageLimit, videoLimit, audioLimit, meshLimit;
   final List<int> exactSeconds;
   final List<AiMediaRole> roles;
-  final bool firstFrameRequired;
+  final bool firstFrameRequired, controlsDuration;
 
   List<String> validate(AiRequest request) {
     final errors = <String>[];
@@ -50,11 +51,12 @@ class AiCapability {
     if (request.prompt.trim().isEmpty) errors.add('Prompt cannot be empty.');
     if (task == AiTask.video) {
       final length = request.seconds;
-      if (length == null ||
-          (exactSeconds.isNotEmpty && !exactSeconds.contains(length)) ||
-          (exactSeconds.isEmpty &&
-              (minSeconds == null || maxSeconds == null ||
-               length < minSeconds! || length > maxSeconds!))) {
+      if ((!controlsDuration && length != null) ||
+          (controlsDuration && (length == null ||
+            (exactSeconds.isNotEmpty && !exactSeconds.contains(length)) ||
+            (exactSeconds.isEmpty &&
+                (minSeconds == null || maxSeconds == null ||
+                 length < minSeconds! || length > maxSeconds!))))) {
         errors.add('Video duration is not supported or unverified.');
       }
       if (!aspects.contains(request.aspect)) errors.add('Unsupported aspect ratio.');
@@ -135,7 +137,7 @@ class HoticeAiCatalog {
       docsUrl: 'https://ai.google.dev/gemini-api/docs/omni',
       aspects: ['16:9','9:16'],
       resolutions: ['360p','720p','1080p','4k'],
-      minSeconds: 3, maxSeconds: 10,
+      minSeconds: 3, maxSeconds: 10, controlsDuration: false,
       notes: '1080p and 4K are upscaled. No native 3D mesh input.',
     ),
     AiCapability(
@@ -146,7 +148,7 @@ class HoticeAiCatalog {
       docsUrl: 'https://ai.google.dev/gemini-api/docs/omni',
       aspects: ['16:9','9:16'],
       resolutions: ['360p','720p','1080p','4k'],
-      minSeconds: 3, maxSeconds: 10,
+      minSeconds: 3, maxSeconds: 10, controlsDuration: false,
       roles: [AiMediaRole.firstFrame,AiMediaRole.lastFrame],
       firstFrameRequired: true, imageLimit: 2,
       notes: 'Two keyframes are NOT interchangeable with two identity references.',
@@ -159,7 +161,7 @@ class HoticeAiCatalog {
       docsUrl: 'https://ai.google.dev/gemini-api/docs/omni',
       aspects: ['16:9','9:16'],
       resolutions: ['360p','720p','1080p','4k'],
-      minSeconds: 3, maxSeconds: 10,
+      minSeconds: 3, maxSeconds: 10, controlsDuration: false,
       roles: [AiMediaRole.imageReference,AiMediaRole.videoReference],
       notes: 'Joint reference counts unknown; block until server validates model and asset semantics.',
     ),
