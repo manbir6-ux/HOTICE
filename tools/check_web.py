@@ -102,7 +102,9 @@ def main():
     assert "actorStorageKey" in script
     assert "Assign your Actors to this prompt" in script
     assert "prompt.replaceAll('{{' + role + '}}', actors[index])" in script
-    assert (PUBLIC / ".htaccess").is_file()
+    apache = (PUBLIC / ".htaccess").read_text(encoding="utf-8")
+    assert "connect-src 'self' https://api.your-hotice-domain.example" in apache
+    assert "connect-src 'self' https:" not in apache, "CSP must pin the exact API host"
     print(f"HOTICE static web verification successful: {len(ids)} templates, "
           f"{len(scanner.assets)} assets, no uncleared remote media.")
 

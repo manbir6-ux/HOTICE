@@ -44,6 +44,13 @@ jobs:
         with:
           php-version: '8.2'
           extensions: pdo_mysql, fileinfo
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install browser dry-run dependency
+        run: npm ci --prefix web
+      - name: Install Chromium for real API browser integration
+        run: npx --prefix web playwright install --with-deps chromium
       - name: Write CI-only settings (NOT deployment secrets)
         run: |
           cat > backend/config.php <<'PHP'
@@ -57,6 +64,7 @@ jobs:
             'app_key' => str_repeat('a', 64),
             'storage_path' => __DIR__ . '/private-media',
             'require_https' => false, // ONLY CI HTTP localhost
+            'web_allowed_origins' => ['http://127.0.0.1:4173'], // ONLY CI browser client
             'allow_registration' => true, // ONLY CI test user creation
             'token_ttl_hours' => 1,
             'max_file_bytes' => 1048576,
@@ -77,3 +85,16 @@ jobs:
         run: bash backend/tests/admin-integration.sh
       - name: Mock generation quotes, idempotency, retries and refunds
         run: bash backend/tests/jobs-integration.sh
+      - name: Real browser to PHP/MySQL authenticated mock-job dry run
+        env:
+          HOTICE_E2E_EMAIL: browser-api-dry-run@example.test
+          HOTICE_E2E_PASSWORD: BrowserDryRunOnlyPassword123!
+          HOTICE_TEST_API_ORIGIN: http://127.0.0.1:18887
+        run: |
+          printf '%s\\n' "$HOTICE_E2E_PASSWORD" | php backend/bin/create-user.php "$HOTICE_E2E_EMAIL"
+          php backend/bin/grant-mock-credits.php "$HOTICE_E2E_EMAIL" 20 browser-api-dry-run-credit-0001
+          php -S 127.0.0.1:18887 -t backend/public backend/public/router.php >/tmp/hotice-browser-api.log 2>&1 &
+          api_pid=$!
+          trap 'kill "$api_pid" 2>/dev/null || true' EXIT
+          for _ in $(seq 1 40); do if curl -fsS "$HOTICE_TEST_API_ORIGIN/health" >/dev/null; then break; fi; sleep 0.25; done
+          HOTICE_E2E_WEB_PORT=4173 node tools/e2e_web_real_api.cjs

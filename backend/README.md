@@ -32,7 +32,7 @@ The browser mock-job panel is enabled only when `mock_jobs_enabled` is true on t
 
 Browser job API sequence: `GET /v1/me` for the server flag; `POST /v1/jobs/quote` with `{ "request": { "modelId": "hotice.mock.video.v1", "prompt": "..." } }`; `POST /v1/jobs` with the returned `quoteToken`, identical request and an `Idempotency-Key`; then `GET /v1/jobs` or `GET /v1/jobs/{uuid}` for status. `POST /v1/jobs/{uuid}/cancel` cancels a queued job and refunds simulated credits. Ambiguous provider outcomes are held for reconciliation and are never automatically resubmitted/refunded. This is a dry-run contract, not video generation.
 
-Run the browser contract dry run using `npm ci --prefix web`, `npx --prefix web playwright install chromium` and `node tools/e2e_web_project_sync.cjs`. It uses an isolated synthetic API for browser behavior. Backend job and CORS behavior is exercised separately by the MySQL-backed CI integration suite; passing the browser mock alone does not prove server interoperability.
+Run the browser contract dry run using `npm ci --prefix web`, `npx --prefix web playwright install chromium` and `node tools/e2e_web_project_sync.cjs`. It uses an isolated synthetic API for browser behavior. The MySQL-backed CI suite also drives a real Chromium browser through the actual PHP API's sign-in, CORS preflight, quote, job submission and status refresh using synthetic accounts and simulated credits; no provider calls are possible.
 
 ### Endpoint contract
 
