@@ -39,3 +39,18 @@ The mock worker is CLI-only and uses a singleton database lock. Run it once per 
 ## Production gates still open
 
 Real model catalogs and account/region entitlement checks, provider adapters, signed quotes from a maintained pricing catalog, real currency conversion, payment webhooks, charge reservation/settlement/reconciliation, audit and fraud policy, attachment uploads, moderation, capacity/worker operations, output storage, retention, privacy/compliance and live staging review remain required before enabling any real provider call.
+# Server model availability manifest
+
+Authenticated clients can call `GET /v1/models` to learn which generation
+flows this backend currently exposes. The response is built from server-side
+feature configuration, not client-supplied provider claims. When mock jobs
+are disabled it returns an empty model list. When enabled, it reports only
+`hotice.mock.video.v1` with `availability: dry_run`, zero monetary value, and
+no output media. `liveGenerationEnabled` remains false regardless of provider
+keys saved in the owner console. Provider research or stored keys do not enable
+submission; live adapters require their own reviewed release gate.
+
+The endpoint requires an authenticated user session like the other `/v1`
+routes. The API globally sends `Cache-Control: no-store`, so changes to a
+server feature flag are not hidden by intermediary caches.
+
