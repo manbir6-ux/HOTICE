@@ -38,6 +38,8 @@ The worker now routes its deterministic mock outcomes through the server-only `P
 
 This contract is not evidence of a live provider integration. Live calls remain disabled. Production adapters still require a protected transient prompt/attachment path, persistent remote-operation identifiers, official model/region capability evidence, provider-key lifecycle, cost reservation/settlement, and provider-specific lifecycle/reconciliation tests. Do not register a live adapter from user-controlled settings.
 
+See [PROVIDER_DISPATCH_SAFETY.md](PROVIDER_DISPATCH_SAFETY.md) for the required durable dispatch states, ambiguous-submission policy, and release evidence before any paid provider adapter can be enabled.
+
 ## Verification
 
 `backend/tests/jobs-integration.sh` covers quote binding/tampering, duplicate submissions, idempotency conflicts, per-user isolation, success, simulated permanent failure and refund, timeout/rate-limit/malformed retries, cancellation and balance consistency against MySQL. GitHub Actions uses throwaway users, credentials, database and a local-only five-credit tariff. No real provider keys are configured or used.
