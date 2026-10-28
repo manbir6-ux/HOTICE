@@ -21,27 +21,19 @@ AUTH="Authorization: Bearer $token"
 OTHER_AUTH="Authorization: Bearer $other_token"
 
 php backend/bin/grant-mock-credits.php "$EMAIL" 100 'initial-test-credit-grant-01'
-echo 'checkpoint: initial credits granted'
 php backend/bin/grant-mock-credits.php "$EMAIL" 100 'initial-test-credit-grant-01' | grep -q 'already applied'
-echo 'checkpoint: credit grant replay is idempotent'
 test "$(curl -fsS -H "$AUTH" "$BASE/v1/me" | jq -er '.mockGeneration.credits')" = '100'
-echo 'checkpoint: account reports simulated credits'
 
 request=$(jq -cn --arg p 'A blue sailboat at sunrise' '{modelId:"hotice.mock.video.v1",prompt:$p,simulate:"success"}')
-echo "checkpoint: request=$request"
 quote_body=$(jq -cn --argjson r "$request" '{request:$r}')
-echo "checkpoint: quote body=$quote_body"
 quote_response=$(curl -sS -H "$AUTH" -H 'Content-Type: application/json' -d "$quote_body" "$BASE/v1/jobs/quote")
-echo "checkpoint: quote response=$quote_response"
 quote=$(echo "$quote_response" | jq -er '.quoteToken') || { echo "Quote response: $quote_response"; cat /tmp/hotice-job-test.log; exit 1; }
 body=$(jq -cn --arg q "$quote" --argjson r "$request" '{quoteToken:$q,request:$r}')
 key='mock-job-success-00000001'
 first=$(curl -sS -X POST -H "$AUTH" -H 'Content-Type: application/json' -H "Idempotency-Key: $key" -d "$body" "$BASE/v1/jobs")
-echo "checkpoint: create response=$first"
 job=$(echo "$first" | jq -er '.job.id')
 test "$(echo "$first" | jq -er '.job.status')" = 'queued'
 replay=$(curl -sS -X POST -H "$AUTH" -H 'Content-Type: application/json' -H "Idempotency-Key: $key" -d "$body" "$BASE/v1/jobs")
-echo "checkpoint: replay response=$replay"
 test "$(echo "$replay" | jq -er '.idempotentReplay')" = 'true'
 changed=$(jq -cn --arg q "$quote" '{quoteToken:$q,request:{modelId:"hotice.mock.video.v1",prompt:"Different prompt",simulate:"success"}}')
 test "$(curl -sS -o /dev/null -w '%{http_code}' -X POST -H "$AUTH" -H 'Content-Type: application/json' -H "Idempotency-Key: $key" -d "$changed" "$BASE/v1/jobs")" = '409'
