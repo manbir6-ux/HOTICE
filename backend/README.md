@@ -1,12 +1,12 @@
 # HOTICE Cloud API — Namecheap cPanel MVP v0.1
 
-This is a **working PHP 8.2+ and MySQL/MariaDB service implementation**, intended for cPanel shared hosting, **NOT an already deployed service or a paid production release**. It provides independent accounts/sessions, server-gated cloud entitlements, optimistic-revision project snapshots, and private media uploads/downloads with quota enforcement. **The Flutter app is not yet wired to these endpoints.** Real AI providers, payments and production registration are intentionally disabled; secrets belong on the server.
+This is a **working PHP 8.2+ and MySQL/MariaDB service implementation**, intended for cPanel shared hosting, **NOT an already deployed service or a paid production release**. It provides independent accounts/sessions, server-gated cloud entitlements, optimistic-revision project snapshots, private media uploads/downloads with quota enforcement, and an opt-in mock generation queue. The browser studio supports local projects, explicit consent-based cloud sync, and a mock-only job flow; Flutter production authentication and project sync remain incomplete. Real AI providers, payments and production registration are intentionally disabled; secrets belong on the server.
 
 ## Local first, cloud only with a verified entitlement
 
 - Default: free users keep their projects/media **on device** once the Flutter local-persistence implementation is connected; the current Flutter UI demo still stores most project data **in memory**. This backend never uploads a user's device files automatically.
 - Paid subscribers: the server decides if cloud access is active based on `cloud_entitlements` in its database. Free user cannot turn on cloud from the client. A trial can be granted **manually by a server administrator** for testing; it is not a paid subscription, a credit balance, or a webhook.
-- Credits (1 credit = $0.01) are **separate** from subscription storage quotas. This code does not charge, issue or count HOTICE credits.
+- Mock job credits are **simulated** and have `moneyValue: 0`; they are separate from storage quotas and are not money or proof of a payment integration.
 - Media files are max 20 MiB **per request** in this shared-host MVP. Server-side default caps also limit each entitled account to 100 cloud projects and each cloud project to 200 files (configurable by operator); the test environment checks that small-file/account quotas cannot be bypassed. Large AI video results must use future direct-to-object-storage transfers, not giant PHP uploads. Actual hosting disk and quota limits are additional constraints.
 - Storage metadata and bytes stay private: both require Bearer authentication, ownership lookup and an active entitlement; a subscriber has 30 days of read-only restoration after expiration. Deletion remains available after expiration. This 30-day grace period is an MVP design assumption, **not a commercial retention promise**. No automatic media purge is implemented.
 - Optimistic project revisions reject stale writes (409); client should keep its local version, offer user conflict resolution and never overwrite silently.
@@ -24,6 +24,16 @@ This is a **working PHP 8.2+ and MySQL/MariaDB service implementation**, intende
 9. Optionally run `php backend/bin/cleanup.php` via cPanel Cron no more often than **once per 5 minutes** (daily is sufficient for expired session cleanup). Background AI job rendering **must not run long GPU workloads on shared hosting**; use external async provider jobs and periodic polling with budget limits in later phases.
 10. Set cPanel/database backups and recovery plan before allowing real user uploads, plus TLS renewal, monitoring, user deletion/export policies, email verification, privacy notices and quota/cost controls. This is an MVP, not a certified GDPR or payment deployment.
 
+### Browser client and mock generation
+
+Set `web_allowed_origins` to exact HTTPS studio origins in the private server config. Wildcards, credentials and paths are rejected. HTTP is accepted only for loopback development. The browser uses bearer authorization without cookies, keeps its token in memory, stores projects locally in IndexedDB and sends a selected project only after unchecked-by-default consent. Imported media and Actor photos are not synced by the browser client.
+
+The browser mock-job panel is enabled only when `mock_jobs_enabled` is true on the server. It requests a signed simulated-credit quote, requires separate user confirmation before submitting, sends an `Idempotency-Key`, and refreshes job state only on user action. It submits the prompt to the mock queue only; preview model choices and media are excluded. The mock adapter creates no video and never contacts a live provider. Leave the flag off outside controlled dry runs.
+
+Browser job API sequence: `GET /v1/me` for the server flag; `POST /v1/jobs/quote` with `{ "request": { "modelId": "hotice.mock.video.v1", "prompt": "..." } }`; `POST /v1/jobs` with the returned `quoteToken`, identical request and an `Idempotency-Key`; then `GET /v1/jobs` or `GET /v1/jobs/{uuid}` for status. `POST /v1/jobs/{uuid}/cancel` cancels a queued job and refunds simulated credits. Ambiguous provider outcomes are held for reconciliation and are never automatically resubmitted/refunded. This is a dry-run contract, not video generation.
+
+Run the browser contract dry run using `npm ci --prefix web`, `npx --prefix web playwright install chromium` and `node tools/e2e_web_project_sync.cjs`. It uses an isolated synthetic API for browser behavior. Backend job and CORS behavior is exercised separately by the MySQL-backed CI integration suite; passing the browser mock alone does not prove server interoperability.
+
 ### Endpoint contract
 
 | Method/path | Function |
@@ -32,7 +42,7 @@ This is a **working PHP 8.2+ and MySQL/MariaDB service implementation**, intende
 | `POST /v1/auth/register` | Disabled in production defaults; prereq email verification + anti-abuse |
 | `POST /v1/auth/login` | Password -> random short-lived bearer token, SHA-256 stored server-side |
 | `POST /v1/auth/logout` | Revoke active session |
-| `GET /v1/me` | User identity and **server-calculated** cloud status/quota |
+| `GET /v1/me` | User identity, **server-calculated** cloud status/quota and mock-generation availability/credit balance |
 | `GET /v1/projects` | Cloud project metadata list (active or 30-day read-only grace) |
 | `GET /v1/projects/{uuid}` | Snapshot and file metadata |
 | `PUT /v1/projects/{uuid}` | JSON `{ "title": "Film", "expectedRevision": 0, "document": { ... } }` -> revision 1, returns 409 if stale |
@@ -40,8 +50,12 @@ This is a **working PHP 8.2+ and MySQL/MariaDB service implementation**, intende
 | `PUT /v1/projects/{uuid}/files/{uuid}` | Raw binary bytes; private upload with quota and MIME validation (max 20MiB) |
 | `GET /v1/files/{uuid}` | Authenticated private download |
 | `DELETE /v1/files/{uuid}` | Remove own media and reclaim quota |
+| `POST /v1/jobs/quote` | Signed, expiring simulated-credit quote for the mock model |
+| `POST /v1/jobs` | Create an authenticated, idempotent mock job |
+| `GET /v1/jobs` / `GET /v1/jobs/{uuid}` | List or inspect only the current user's mock jobs |
+| `POST /v1/jobs/{uuid}/cancel` | Cancel a queued mock job and refund its simulated reservation |
 
-**Security rules:** HTTPS required by default, JSON body size limits, `password_hash`, per-email+IP login attempt throttle, sessions store token hashes only, constant-type errors avoid sensitive SQL leakage, PDO prepared statements, real owner ID in every query, UUIDv4 IDs, revision conflict checks, per-user transactional cloud quotas, media type inspection using `finfo`, random file names, files outside web root, no permissive CORS and no hardcoded provider keys. The app must store access tokens using OS secure storage when integration starts.
+**Security rules:** HTTPS required by default, JSON body size limits, `password_hash`, per-email+IP login attempt throttle, sessions store token hashes only, constant-type errors avoid sensitive SQL leakage, PDO prepared statements, real owner ID in every query, UUIDv4 IDs, revision conflict checks, per-user transactional cloud quotas, media type inspection using `finfo`, random file names, files outside web root, exact-origin allowlisted CORS without cookies or wildcards, and no hardcoded provider keys. The app must store access tokens using OS secure storage when integration starts.
 
 ### Test locally / in CI
 

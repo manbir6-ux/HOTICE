@@ -2,10 +2,24 @@
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 BASE='http://127.0.0.1:18886'
+WEB_ORIGIN='http://127.0.0.1:4173'
 php -S 127.0.0.1:18886 -t backend/public backend/public/router.php >/tmp/hotice-job-test.log 2>&1 &
 server_pid=$!
 trap 'kill "$server_pid" 2>/dev/null || true' EXIT
 for _ in $(seq 1 40); do if curl -fsS "$BASE/health" >/dev/null; then break; fi; sleep 0.25; done
+
+preflight=$(curl -sS -D - -o /dev/null -X OPTIONS \
+  -H "Origin: $WEB_ORIGIN" \
+  -H 'Access-Control-Request-Method: POST' \
+  -H 'Access-Control-Request-Headers: authorization,content-type,idempotency-key' \
+  "$BASE/v1/jobs")
+grep -Fqi "Access-Control-Allow-Origin: $WEB_ORIGIN" <<<"$preflight"
+grep -Fqi 'Access-Control-Allow-Headers: Authorization, Content-Type, Idempotency-Key' <<<"$preflight"
+test "$(curl -sS -o /dev/null -w '%{http_code}' -X OPTIONS \
+  -H 'Origin: https://evil.example' \
+  -H 'Access-Control-Request-Method: POST' \
+  "$BASE/v1/jobs")" = '403'
+
 
 EMAIL='mock-jobs@example.com'
 PASS='TemporaryMockPassword123!'
@@ -22,6 +36,8 @@ OTHER_AUTH="Authorization: Bearer $other_token"
 
 php backend/bin/grant-mock-credits.php "$EMAIL" 100 'initial-test-credit-grant-01'
 php backend/bin/grant-mock-credits.php "$EMAIL" 100 'initial-test-credit-grant-01' | grep -q 'already applied'
+profile_headers=$(curl -sS -D - -o /dev/null -H "$AUTH" -H "Origin: $WEB_ORIGIN" "$BASE/v1/me")
+grep -Fqi "Access-Control-Allow-Origin: $WEB_ORIGIN" <<<"$profile_headers"
 test "$(curl -fsS -H "$AUTH" "$BASE/v1/me" | jq -er '.mockGeneration.credits')" = '100'
 
 request=$(jq -cn --arg p 'A blue sailboat at sunrise' '{modelId:"hotice.mock.video.v1",prompt:$p,simulate:"success"}')

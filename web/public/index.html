@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>HOTICE — Direct the impossible</title>
+<meta name="description" content="HOTICE cinematic AI creation studio. Discover models, cast named actors, design scenes and edit your footage in one workspace.">
+<meta name="theme-color" content="#090c18">
+<!-- Public API origin only. Use exact HTTPS in deployment; loopback HTTP is accepted only for local web development. Never put a provider key here. -->
+<meta name="hotice-api-origin" content="">
+<link rel="stylesheet" href="assets/site.css">
+</head>
+<body>
+<div class="ambient" aria-hidden="true"></div>
+<header class="topbar"><a class="brand" href="#home" aria-label="HOTICE home"><span class="brandmark">H</span><span>HOTICE</span></a>
+<nav aria-label="Main navigation"><a href="#showcase">Showcase</a><a href="#studio">Studio</a><a href="#account">Account</a><a href="#workflow">How it works</a><a href="#faq">FAQ</a></nav>
+<a class="button tiny" href="#studio">Launch studio <span aria-hidden="true">↗</span></a></header>
+<main>
+<section class="hero section" id="home"><div class="hero-text">
+<div class="eyebrow">✦ THE CREATOR'S UNIVERSE · EARLY ACCESS PREVIEW</div>
+<h1>Your imagination.<br><span class="gradient">Now in motion.</span></h1>
+<p>Cast recurring actors, direct impossible scenes, explore leading AI video models, then arrange your footage on a timeline—all from one unified creative studio.</p>
+<div class="actions"><a class="button" href="#studio">Open creator studio <span aria-hidden="true">↗</span></a><a class="ghost" href="#showcase">Explore video examples <span>▶</span></a></div>
+<div class="hero-stats"><span><b>One</b> studio</span><span><b>Many</b> model paths</span><span><b>You</b> direct</span></div>
+</div><div class="hero-art" aria-label="Decorative animated three-dimensional cinematic camera visualization"><div class="orb orb-one"></div><div class="orb orb-two"></div><div class="rings"><div class="ring one"></div><div class="ring two"></div><div class="ring three"></div></div><div class="holo"><span class="holo-light"></span><div class="glass-camera"><span>◉</span></div><small>SCENE ENGINE · DEMO</small><strong>CREATE THE NEXT FRAME</strong></div><div class="float-badge">✧ DIRECTOR MODE</div></div></section>
+<section class="section showcase" id="showcase">
+<div class="section-heading"><div><span class="eyebrow">HOTICE CREATIVE POSSIBILITIES</span><h2>What's Possible with HOTICE</h2><p>From cinematic worlds and memorable characters to music videos and imaginative storytelling—explore the creative possibilities in one workspace.</p></div><span class="disclosure">VISUAL CONCEPT GALLERY</span></div>
+<div class="demo-grid" id="demoGrid">
+<article class="demo-card"><div class="demo-cover runway"><div class="poster-icon">◈</div></div><div class="demo-body"><div class="mini">CINEMATIC SCENES</div><h3>Build your visual world</h3><p>Set your scene, camera movement, lighting and mood.</p></div></article>
+<article class="demo-card"><div class="demo-cover kling"><div class="poster-icon">✦</div></div><div class="demo-body"><div class="mini">ACTOR CONTINUITY</div><h3>Keep your cast in focus</h3><p>Plan recurring characters with distinct names and roles.</p></div></article>
+<article class="demo-card"><div class="demo-cover veo"><div class="poster-icon">◎</div></div><div class="demo-body"><div class="mini">MUSIC VIDEOS</div><h3>Tell stories through sound</h3><p>Storyboard beats, emotions and transitions for your next visual release.</p></div></article>
+<article class="demo-card"><div class="demo-cover luma"><div class="poster-icon">⬡</div></div><div class="demo-body"><div class="mini">CREATIVE EDITING</div><h3>Shape every frame</h3><p>Import clips, arrange scenes and refine your sequence.</p></div></article>
+</div>
+<p class="fine">Concept visuals only. The testing version does not render AI video. Future video examples will be published only when cleared for use and configured through the admin content library.</p>
+</section>
+<section class="section inspiration" id="inspiration">
+<div class="section-heading"><div><span class="eyebrow">HOTICE INSPIRATION LIBRARY</span><h2>Find your next scene.</h2><p>Explore original editable prompt ideas, then bring one into your own creative workspace.</p></div><span class="disclosure">ORIGINAL PROMPTS · DEMO MODELS</span></div>
+<div class="library-controls"><label>Find inspiration <input id="librarySearch" type="search" placeholder="Try music, cinematic, fantasy..." autocomplete="off"></label><label>Category <select id="libraryCategory"><option value="All">All</option></select></label></div>
+<div id="libraryCards" class="library-grid" aria-live="polite"><p class="editor-note">Loading the inspiration catalog...</p></div>
+<p class="fine">These prompts were written for HOTICE. They are examples, not claimed exact prompts for any third-party showcase video. AI rendering is not connected.</p>
+</section>
+<section class="section account" id="account">
+<div class="section-heading"><div><span class="eyebrow">YOUR HOTICE ACCOUNT</span><h2>One account. Your work stays yours.</h2><p>Sign in to verify your account against the shared HOTICE server. Project data stays on this device unless you choose a cloud action and confirm consent.</p></div><span class="disclosure">SECURE SERVER SESSION</span></div>
+<div class="account-card">
+<p id="accountStatus" class="account-status" role="status" aria-live="polite">Checking the account service configuration…</p>
+<form id="accountLogin" autocomplete="on">
+<label for="accountEmail">Email address</label><input id="accountEmail" name="email" type="email" autocomplete="username" maxlength="254" required>
+<label for="accountPassword">Password</label><input id="accountPassword" name="password" type="password" autocomplete="current-password" required>
+<button id="accountSignIn" class="button tiny" type="submit">Sign in securely</button>
+<p class="editor-note">Account access is provisioned by HOTICE; self-registration is not available from this preview. Your bearer session stays in memory and is cleared when you reload or close this page.</p>
+</form>
+<div id="accountSignedIn" hidden><p>Signed in as <strong id="accountIdentity"></strong></p><p id="accountCloudStatus" class="editor-note"></p><button id="accountSignOut" class="tool" type="button">Sign out</button></div>
+<p class="editor-note">The browser never syncs in the background. You choose each cloud action from the Projects area.</p>
+</div>
+</section>
+<section class="section" id="workflow"><span class="eyebrow">ONE CREATIVE PIPELINE</span><h2>From an idea to your cut.</h2><div class="features"><article><span>01</span><h3>Cast your actors</h3><p>Create named reusable actor profiles on your phone. Guided camera capture and advanced identity matching are under development.</p></article><article><span>02</span><h3>Build your scene</h3><p>Write a prompt, choose compatible reference media and refine model-specific advanced options when integrations are ready.</p></article><article><span>03</span><h3>Edit the story</h3><p>Import your own clips, trim and rearrange them directly in your browser. Browser support varies; all media remains local in this preview.</p></article></div></section>
+<section class="section studio" id="studio"><div class="section-heading"><div><span class="eyebrow">HOTICE CREATOR DESK</span><h2>Browser video editor <span class="gradient">preview.</span></h2><p>Local video editing starter—no uploads or paid AI calls. Use short clips in Chrome or Edge for best results.</p></div><span class="disclosure">LOCAL-FIRST · BETA</span></div>
+<div class="browser-composer"><div class="composer-intro"><span class="eyebrow">SCENE COMPOSER · DEMO</span><h3>Direct your next scene</h3><p>Start with an Inspiration template, name your cast and choose a model preview. No AI request is sent.</p></div>
+<label>Scene prompt<textarea id="scenePrompt" rows="4" placeholder="Describe camera, action, mood and environment..."></textarea></label>
+<div class="composer-options"><label>Model preview <select id="sceneModel"><option value="cinematic_demo">Cinematic Draft · Demo</option><option value="character_demo">Character Focus · Demo</option><option value="storyboard_demo">Storyboard Mode · Demo</option><option value="multimodal_demo">Multimodal Studio · Demo</option></select></label><div class="actor-library"><label for="actorNameInput">Add a named Actor <span class="editor-note">Saved on this device only</span></label><div class="actor-add"><input id="actorNameInput" placeholder="e.g. Hero" maxlength="60" autocomplete="off"><button type="button" id="addActor" class="tool">Add Actor</button></div><div id="actorList" class="actor-list" aria-live="polite"></div></div></div>
+<div id="actorAssignments" class="actor-assignments" aria-live="polite"></div>
+<div class="composer-bottom"><button type="button" id="saveSceneDraft" class="button tiny">Save scene idea</button><span id="sceneStatus" role="status" class="editor-note">Local preview only</span></div>
+<section class="mock-generation" aria-labelledby="mockGenerationHeading">
+<div><span class="eyebrow">SERVER QUEUE · DRY RUN ONLY</span><h4 id="mockGenerationHeading">Try the authenticated mock workflow</h4><p>This submits only the scene prompt to HOTICE’s mock queue. It does not create video, upload media or call a paid AI provider. Actor names, reference media and model-preview settings are not sent.</p></div>
+<div class="mock-generation-actions"><button type="button" class="tool" id="quoteMockJob" disabled>Check simulated credit quote</button><button type="button" class="button tiny" id="submitMockJob" disabled>Start mock dry run</button><button type="button" class="tool" id="refreshMockJobs" disabled>Refresh my jobs</button></div>
+<p id="mockGenerationStatus" class="editor-note" role="status" aria-live="polite">Sign in and use an API server with mock generation enabled. No request is sent until you choose an action.</p>
+<div id="mockJobs" class="mock-jobs" aria-live="polite"></div>
+</section></div>
+<section class="project-manager" aria-labelledby="projectHeading">
+<div class="project-heading"><div><span class="eyebrow">YOUR PROJECTS</span><h3 id="projectHeading">Keep your work on this device</h3><p>Projects save prompts and Actor names locally. Imported video clips and Actor photos stay out of project sync.</p></div></div>
+<div class="project-create"><label for="projectTitle">Project name</label><input id="projectTitle" maxlength="120" placeholder="e.g. Midnight train sequence" autocomplete="off"><button id="saveLocalProject" class="button tiny" type="button">Save project to this device</button></div>
+<p id="projectStatus" class="editor-note" role="status" aria-live="polite">Scene ideas are kept for this page session until you save a project locally.</p>
+<div id="localProjects" class="project-list" aria-live="polite"><p class="editor-note">Loading projects stored on this device…</p></div>
+<div class="cloud-projects">
+<div class="cloud-project-heading"><div><h3>Optional HOTICE cloud copy</h3><p>Cloud sync requires an active entitlement and your explicit consent. The selected project title and JSON are sent. Browser media files, local file paths and Actor photos are excluded.</p></div></div>
+<label class="consent-row"><input id="cloudSyncConsent" type="checkbox"><span>I agree to sync the saved project I choose with my HOTICE cloud account. I can uncheck this at any time.</span></label>
+<button id="loadCloudProjects" class="tool" type="button" disabled>Load my cloud project list</button>
+<p id="cloudProjectStatus" class="editor-note" role="status" aria-live="polite">Sign in and confirm consent to load or sync cloud projects.</p>
+<div id="cloudProjects" class="project-list" aria-live="polite"></div>
+</div>
+</section>
+<div class="editor"><div class="editor-tools"><label class="button tiny upload">+ Import video clips<input type="file" id="clipsInput" accept="video/*" multiple></label><button type="button" class="tool" id="addSample" title="Adds a placeholder clip (no video file)">+ Scene placeholder</button><button type="button" class="tool" id="clearTimeline">Clear</button><span class="editor-note" id="editorStatus" role="status">Import a clip to start.</span></div>
+<div class="editor-main"><div class="stage"><video id="previewVideo" playsinline controls preload="metadata"></video><div class="stage-empty" id="stageEmpty"><div>◈</div><p>Your next frame starts here</p><small>Import your own video files to preview and trim</small></div></div>
+<div class="inspector"><div class="inspector-title">CLIP INSPECTOR</div><div class="inspector-empty" id="inspectorEmpty">Select a clip in the timeline</div><div id="inspectorFields" hidden><label>Selected clip <strong id="clipName"></strong></label><label>Trim start <input id="trimStart" type="number" min="0" step=".1" value="0"></label><label>Trim end <input id="trimEnd" type="number" min="0" step=".1" value="0"></label><label>Playback speed <select id="clipSpeed"><option value="0.5">0.5×</option><option value="1" selected>1×</option><option value="1.5">1.5×</option><option value="2">2×</option></select></label><button class="button tiny" type="button" id="applyTrim">Apply trim</button><button class="tool" type="button" id="deleteClip">Remove clip</button></div></div></div>
+<div class="timeline"><div class="timeline-head"><b>TIMELINE</b><span>Tap a clip · reorder with arrows · trim in inspector</span></div><div class="clips" id="clipTimeline"><div class="empty-timeline">No clips yet · Imports are not uploaded</div></div></div>
+<div class="editor-bottom"><button type="button" class="tool" id="playSequence">▶ Play sequence</button><button type="button" class="button tiny" id="exportVideo" disabled aria-disabled="true" title="Coming after a verified local encoding pipeline">Export (coming soon)</button><span class="editor-note">Export uses browser MediaRecorder and may be unsupported on some devices. No server rendering.</span></div></div>
+</section>
+<section class="section faq" id="faq"><span class="eyebrow">FREQUENTLY ASKED QUESTIONS</span><h2>One studio. More creative control.</h2><div class="faq-items">
+<details><summary>What is HOTICE?</summary><p>HOTICE is a planned all-in-one studio for preparing AI video scenes, selecting compatible models, casting named actors and editing footage. The current build is a testing preview.</p></details>
+<details><summary>How does HOTICE help me choose a model?</summary><p>HOTICE aims to compare supported input formats, reference limits, output durations and verified prices, then help you choose settings suited to your scene. Actual model support and cost depend on provider availability.</p></details>
+<details><summary>Will I get the best price and output quality?</summary><p>Our goal is transparent pricing and practical tools for better results. A cheaper price or particular quality cannot be guaranteed; exact rates and capabilities will be displayed when providers are integrated.</p></details>
+<details><summary>Can I use multiple actors in one scene?</summary><p>You will be able to assign multiple named roles where the selected model supports them. Actor creation on mobile will use guided capture, subject to camera permissions and verified quality checks.</p></details>
+<details><summary>Is video generation live now?</summary><p>Not yet. Model selection and scene planning are currently previews. Media importing and playback may work locally in supported browsers.</p></details>
+<details><summary>Where are AI provider keys stored?</summary><p>In the planned production system, providers will be configured through an authenticated server-side admin panel, never directly in mobile or web client code.</p></details>
+</div></section>
+<section class="section endcta"><div><span class="eyebrow">THE FUTURE OF STORYTELLING</span><h2>Make every frame matter.</h2><p>HOTICE is being designed for creators who want powerful tools without a complicated workflow.</p><a class="button" href="#home">Explore HOTICE ↑</a></div></section>
+</main><footer><span>HOTICE © 2026 · ParmTech</span><span>Creative tools preview · AI integrations and live generation not yet connected</span></footer>
+<script src="assets/site.js" defer></script></body></html>
+
+

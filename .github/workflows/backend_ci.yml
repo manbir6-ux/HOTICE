@@ -63,6 +63,7 @@ jobs:
             'max_project_bytes' => 131072,
             'max_cloud_projects' => 1,
             'max_files_per_project' => 1,
+            'web_allowed_origins' => ['http://127.0.0.1:4173'], // ONLY local browser integration test
             'mock_jobs_enabled' => true,
             'mock_job_cost_credits' => 5,
             'mock_job_quote_ttl_seconds' => 300,
