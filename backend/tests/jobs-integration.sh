@@ -79,5 +79,16 @@ tampered="${quote%?}x"
 body=$(jq -cn --arg q "$tampered" --argjson r "$request" '{quoteToken:$q,request:$r}')
 test "$(curl -sS -o /dev/null -w '%{http_code}' -X POST -H "$AUTH" -H 'Content-Type: application/json' -H 'Idempotency-Key: mock-job-tamper-00000001' -d "$body" "$BASE/v1/jobs")" = '422'
 
+request=$(jq -cn --arg p 'Expired worker lease simulation' '{modelId:"hotice.mock.video.v1",prompt:$p,simulate:"success"}')
+quote=$(curl -fsS -H "$AUTH" -H 'Content-Type: application/json' -d "$(jq -cn --argjson r "$request" '{request:$r}')" "$BASE/v1/jobs/quote" | jq -er '.quoteToken')
+body=$(jq -cn --arg q "$quote" --argjson r "$request" '{quoteToken:$q,request:$r}')
+job=$(curl -fsS -X POST -H "$AUTH" -H 'Content-Type: application/json' -H 'Idempotency-Key: mock-job-expired-lease-001' -d "$body" "$BASE/v1/jobs" | jq -er '.job.id')
+php -r 'require "backend/src/App.php"; $c=require "backend/config.php"; $db=(new Hotice\App($c))->database(); $db->prepare("UPDATE generation_jobs SET status=\x27processing\x27,attempt_count=max_attempts,lease_token=REPEAT(\x27a\x27,32),lease_until=DATE_SUB(UTC_TIMESTAMP(),INTERVAL 1 SECOND) WHERE id=?")->execute([$argv[1]]);' "$job"
+php backend/bin/jobs-worker.php --once | jq -e '.status == "idle"' >/dev/null
+test "$(curl -fsS -H "$AUTH" "$BASE/v1/jobs/$job" | jq -er '.job.status')" = 'failed'
+test "$(curl -fsS -H "$AUTH" "$BASE/v1/me" | jq -er '.mockGeneration.credits')" = '80'
+php backend/bin/jobs-worker.php --once | jq -e '.status == "idle"' >/dev/null
+test "$(curl -fsS -H "$AUTH" "$BASE/v1/me" | jq -er '.mockGeneration.credits')" = '80'
+
 echo 'Mock job quote, idempotency, ownership, retries, cancellation, simulated credits and refund checks passed. No provider call or video output was created.'
 
