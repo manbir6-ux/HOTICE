@@ -48,6 +48,10 @@ def main():
     assert 'name="hotice-api-origin"' in html, "Configure the shared HTTPS API origin at deployment"
     for element_id in ("accountLogin", "accountEmail", "accountPassword", "accountStatus", "accountSignOut"):
         assert 'id="' + element_id + '"' in html, "Missing shared-account workflow control: " + element_id
+    for element_id in ("projectTitle", "saveLocalProject", "localProjects", "cloudSyncConsent",
+                       "loadCloudProjects", "cloudProjects", "cloudProjectStatus"):
+        assert 'id="' + element_id + '"' in html, "Missing local/cloud project control: " + element_id
+    assert 'type="checkbox"' in html and "I agree to sync the saved project I choose" in html
 
     raw = json.loads((PUBLIC / "assets" / "inspiration.json").read_text(encoding="utf-8"))
     assert raw["schemaVersion"] == 1
@@ -86,8 +90,15 @@ def main():
     assert "accountApi('/v1/auth/login'" in script and "accountApi('/v1/me'" in script
     assert "accountApi('/v1/auth/logout'" in script
     assert "credentials: 'omit'" in script and "redirect: 'error'" in script
+    assert "parsed.protocol === 'http:' && localPage" in script, "Insecure API origins must be limited to local development"
     assert "localStorage.setItem('hotice.accessToken'" not in script
     assert "sessionStorage.setItem('hotice.accessToken'" not in script
+    assert "indexedDB.open(projectDbName, 1)" in script, "Browser projects must persist locally"
+    assert "accountApi('/v1/projects'" in script, "Cloud listing must use the shared project API"
+    assert "method: 'PUT', token: accountToken, body" in script, "Cloud writes must be authenticated"
+    assert "projectConsent?.checked" in script, "Cloud actions must require explicit consent"
+    assert "Upload as separate cloud copy" in script, "Revision conflicts must keep local work recoverable"
+    assert "'/v1/projects/' + encodeURIComponent(id)" in script
     assert "actorStorageKey" in script
     assert "Assign your Actors to this prompt" in script
     assert "prompt.replaceAll('{{' + role + '}}', actors[index])" in script

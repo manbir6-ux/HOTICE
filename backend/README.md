@@ -26,7 +26,9 @@ This is a **working PHP 8.2+ and MySQL/MariaDB service implementation**, intende
 
 ### Browser client origin and sign-in
 
-For the static HOTICE web app, set its public `meta[name="hotice-api-origin"]` to the HTTPS API origin and configure the same website origin in private `web_allowed_origins`, for example `['https://studio.example.com']`. Origins must be exact HTTPS origins with no path or trailing slash. Wildcards and credentialed CORS are unsupported; local HTTP origins are accepted only for localhost development. Keep the allowlist empty until the web domain is chosen. The browser preview keeps its short-lived bearer token in memory only and signs out on page exit where the browser permits; it does not persist the token or synchronize project data.
+For the static HOTICE web app, set its public `meta[name="hotice-api-origin"]` to the HTTPS API origin and configure the same website origin in private `web_allowed_origins`, for example `['https://studio.example.com']`. Origins must be exact HTTPS origins with no path or trailing slash. Wildcards and credentialed CORS are unsupported; local HTTP origins are accepted only for localhost development. Keep the allowlist empty until the web domain is chosen. The browser also accepts an HTTP API origin only when the web page and API are both on localhost or 127.0.0.1 for local development. The browser preview keeps its short-lived bearer token in memory only and signs out on page exit where the browser permits; it does not persist the token. Browser projects are saved in IndexedDB on the device and can be manually synced only after explicit consent. A sync sends the selected project JSON; browser media files and Actor photos are excluded, and no background sync runs. Device copies use browser-managed IndexedDB without HOTICE-level at-rest encryption.
+
+Run the browser project-sync end-to-end dry run with `npm ci --prefix web`, `npx --prefix web playwright install chromium`, then `node tools/e2e_web_project_sync.cjs`. It starts loopback-only web and mock API servers and uses synthetic account data in memory; it makes no real account or provider calls.
 
 ### Endpoint contract
 

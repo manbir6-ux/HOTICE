@@ -19,7 +19,7 @@ Endpoints: GET /health; POST /v1/auth/login, /register (disabled by default), /l
 
 Implementation principles: password_hash and verification; random bearer tokens stored only as SHA-256 digests; per-IP/email throttled login; prepared PDO queries, owner-scoped authorization; server-side cloud entitlement; transactional quotas; optimistic project revision conflict 409; MIME inspection; 20MiB upload guard; random filenames; private media outside web root; sanitised errors; exact HTTPS-origin CORS allowlist for the browser client, with no wildcards or cookies.
 
-The static web preview now has an account sign-in/profile/sign-out workflow against the same `/v1/auth/login`, `/v1/me`, and `/v1/auth/logout` API used by native clients. Configure its public `meta[name="hotice-api-origin"]` with the HTTPS API origin and set that website origin in the private `web_allowed_origins` list. The browser bearer token stays in memory only; no projects or media are synced by this page. CORS defaults to an empty allowlist and blocks unlisted browser origins. This connection has not been deployed or tested against a public cPanel service.
+The static web preview now has an account sign-in/profile/sign-out workflow against the same `/v1/auth/login`, `/v1/me`, and `/v1/auth/logout` API used by native clients. Configure its public `meta[name="hotice-api-origin"]` with the HTTPS API origin and set that website origin in the private `web_allowed_origins` list. The browser bearer token stays in memory only. Browser projects are saved locally in IndexedDB and can be manually synced only after explicit consent. Sync sends the selected project JSON; browser media files, local paths and Actor photos are excluded. No background sync runs. Device copies use browser-managed IndexedDB without HOTICE-level at-rest encryption. CORS defaults to an empty allowlist and blocks unlisted browser origins. This connection has not been deployed or tested against a public cPanel service.
 
 ## Verification truth
 - Local PHP 8.4 syntax checks: nine PHP files passed.
@@ -38,4 +38,5 @@ The static web preview now has an account sign-in/profile/sign-out workflow agai
 6. Complete integration QA on real devices and hosting, security review, email verification, deletion/privacy policy and quotas before release.
 
 This plan reflects the user's requirement: **projects default to the device; cloud only for entitled subscribers; all provider secrets on server.**
+
 

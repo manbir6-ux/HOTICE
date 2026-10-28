@@ -103,10 +103,19 @@ jobs:
   web-validate:
     name: Static Namecheap web and Inspiration catalog
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
       - name: Check browser JavaScript syntax
         run: node --check web/public/assets/site.js
       - name: Verify public-site assets, prompts and rights metadata
         run: python3 tools/check_web.py
+      - name: Install browser dry-run dependency
+        run: npm ci --prefix web
+      - name: Install Chromium for the local mock workflow
+        run: npx --prefix web playwright install --with-deps chromium
+      - name: Exercise local-first and consent-based cloud project workflow
+        run: node tools/e2e_web_project_sync.cjs
