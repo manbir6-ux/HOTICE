@@ -33,6 +33,7 @@ This is a **working PHP 8.2+ and MySQL/MariaDB service implementation**, intende
 | `POST /v1/auth/login` | Password -> random short-lived bearer token, SHA-256 stored server-side |
 | `POST /v1/auth/logout` | Revoke active session |
 | `GET /v1/me` | User identity and **server-calculated** cloud status/quota |
+| `GET /v1/models` | Authenticated server-authoritative availability manifest; currently dry-run only |
 | `GET /v1/projects` | Cloud project metadata list (active or 30-day read-only grace) |
 | `GET /v1/projects/{uuid}` | Snapshot and file metadata |
 | `PUT /v1/projects/{uuid}` | JSON `{ "title": "Film", "expectedRevision": 0, "document": { ... } }` -> revision 1, returns 409 if stale |
@@ -42,6 +43,8 @@ This is a **working PHP 8.2+ and MySQL/MariaDB service implementation**, intende
 | `DELETE /v1/files/{uuid}` | Remove own media and reclaim quota |
 
 **Security rules:** HTTPS required by default, JSON body size limits, `password_hash`, per-email+IP login attempt throttle, sessions store token hashes only, constant-type errors avoid sensitive SQL leakage, PDO prepared statements, real owner ID in every query, UUIDv4 IDs, revision conflict checks, per-user transactional cloud quotas, media type inspection using `finfo`, random file names, files outside web root, no permissive CORS and no hardcoded provider keys. The app must store access tokens using OS secure storage when integration starts.
+
+The `/v1/models` response is authenticated and is the server authority for enabled generation modes. The current release only advertises `hotice.mock.video.v1` when mock jobs are explicitly enabled. It reports no output media and always states that live provider generation is disabled. Stored API keys and research catalogs never enable a model by themselves.
 
 ### Test locally / in CI
 
@@ -65,3 +68,4 @@ GitHub Actions `HOTICE PHP Backend Security & API` also spins up an ephemeral My
 - Login and registration failure throttling now tracks **separate HMAC-hashed email and REMOTE_ADDR budgets** (12/email, 50/IP per rolling 15 minutes). Successful login clears its own email failure counter only, **not** the IP counter. Use scheduled `bin/cleanup.php` to expire records. For distributed abuse, add a trusted edge/WAF; this in-database throttle is only one layer and may treat multiple clients sharing NAT as one IP.
 - Media storage is validated using canonical `realpath` and checked against the actual PHP `DOCUMENT_ROOT`, configured cPanel `public_webroot_path`, and the app's `backend/public` directory. Both nested webroots and parent directories are rejected. **Never choose `public_html`, a subdirectory of it, or its parent as media storage.** Installer checks before running SQL migrations.
 - Application keys and personal media still require protected cPanel backups, file permissions, proper SSL, and a real deployment security review. Existing paid cloud entitlement is not real subscription billing.
+
