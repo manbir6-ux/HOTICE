@@ -453,6 +453,8 @@
   const apiOriginMeta = document.querySelector('meta[name="hotice-api-origin"]');
   let accountToken = null;
   let accountApiOrigin = null;
+  let accountCanWriteCloud = false;
+  let accountCanReadCloud = false;
   try {
     const configured = (apiOriginMeta?.content || '').trim();
     const parsed = new URL(configured);
@@ -498,6 +500,343 @@
     return result;
   }
 
+  // Browser projects are persisted in IndexedDB on this device. Cloud writes
+  // are separate, explicit actions and include project text only, never media.
+  const projectDbName = 'hotice.browser-projects.v1';
+  const projectConsent = get('cloudSyncConsent');
+  let selectedProjectId = null;
+  let localProjectCache = [];
+  let cloudProjectCache = [];
+
+  function projectStatus(message) { status('projectStatus', message); }
+  function cloudProjectStatus(message) { status('cloudProjectStatus', message); }
+
+  function openProjectDb() {
+    return new Promise((resolve, reject) => {
+      if (!('indexedDB' in window)) return reject(new Error('IndexedDB is unavailable.'));
+      const request = indexedDB.open(projectDbName, 1);
+      request.onupgradeneeded = () => {
+        if (!request.result.objectStoreNames.contains('projects')) {
+          request.result.createObjectStore('projects', {keyPath: 'id'});
+        }
+      };
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error || new Error('Local project storage failed.'));
+      request.onblocked = () => reject(new Error('Local project storage is busy in another tab.'));
+    });
+  }
+
+  async function projectStore(mode, method, value = null) {
+    const db = await openProjectDb();
+    return new Promise((resolve, reject) => {
+      const transaction = db.transaction('projects', mode);
+      const store = transaction.objectStore('projects');
+      const request = method === 'all' ? store.getAll()
+        : method === 'get' ? store.get(value)
+          : method === 'put' ? store.put(value) : store.delete(value);
+      let result;
+      request.onsuccess = () => { result = request.result; };
+      transaction.oncomplete = () => { db.close(); resolve(result); };
+      transaction.onerror = () => { db.close(); reject(transaction.error || request.error); };
+      transaction.onabort = () => { db.close(); reject(transaction.error || new Error('Local project update was cancelled.')); };
+    });
+  }
+
+  function makeProjectId() {
+    if (crypto.randomUUID) return crypto.randomUUID();
+    const bytes = crypto.getRandomValues(new Uint8Array(16));
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+    const hex = [...bytes].map((byte) => byte.toString(16).padStart(2, '0')).join('');
+    return hex.slice(0, 8) + '-' + hex.slice(8, 12) + '-' + hex.slice(12, 16) + '-' +
+      hex.slice(16, 20) + '-' + hex.slice(20);
+  }
+
+  function safeProjectDocument(document) {
+    if (!document || typeof document !== 'object' || Array.isArray(document)) {
+      throw new Error('Project data could not be read.');
+    }
+    let encoded;
+    let clone;
+    try {
+      encoded = JSON.stringify(document);
+      if (!encoded || new Blob([encoded]).size > 110000) {
+        throw new Error('Project is too large for this browser sync flow.');
+      }
+      clone = JSON.parse(encoded);
+    } catch (error) {
+      throw new Error(error.message || 'Project data is not valid JSON.');
+    }
+    const inspect = (value, key = '') => {
+      if (/(?:file|media|image|photo|video|audio).*(?:path|uri|url|data|bytes|base64)|(?:base64|bytes|rawdata)$/i.test(key)) {
+        return true;
+      }
+      if (typeof value === 'string') {
+        const text = value.trim();
+        return /^(?:data:(?:image|video|audio)\/|blob:|file:|filesystem:)/i.test(text) ||
+          /^[A-Za-z]:\\/.test(text) || /^\/(?:tmp|home|Users|private|var)\//.test(text);
+      }
+      if (Array.isArray(value)) return value.some((item) => inspect(item));
+      if (value && typeof value === 'object') {
+        return Object.entries(value).some(([name, item]) => inspect(item, name));
+      }
+      return false;
+    };
+    if (inspect(clone)) throw new Error('Inline media is not included in browser project sync.');
+    return clone;
+  }
+
+  function editorScenes(document) {
+    return Array.isArray(document?.scenes) ? document.scenes.filter((scene) =>
+      scene && typeof scene === 'object' && typeof scene.prompt === 'string' &&
+      typeof scene.model === 'string' && scene.prompt.length <= 30000)
+      .slice(0, 100) : [];
+  }
+
+  function editorActors(document) {
+    return Array.isArray(document?.actors) ? document.actors
+      .filter((name) => typeof name === 'string' && name.trim() && name.trim().length <= 60)
+      .slice(0, 100) : [];
+  }
+
+  async function refreshLocalProjects() {
+    const root = get('localProjects');
+    if (!root) return;
+    try {
+      localProjectCache = (await projectStore('readonly', 'all'))
+        .filter((item) => item && typeof item.id === 'string' && typeof item.title === 'string')
+        .sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')));
+      root.replaceChildren();
+      if (!localProjectCache.length) {
+        root.append(make('p', 'editor-note', 'No saved projects on this device yet.'));
+        return;
+      }
+      for (const project of localProjectCache) {
+        const card = make('article', 'project-card');
+        const heading = make('strong', '', project.title);
+        const detail = make('small', 'editor-note',
+          (Array.isArray(project.document?.scenes) ? project.document.scenes.length : 0) +
+          ' saved scene ideas · ' + (project.cloudId ? 'linked to a cloud copy' : 'device only'));
+        const actions = make('div', 'project-actions');
+        const open = make('button', 'tool', 'Open');
+        open.type = 'button';
+        open.addEventListener('click', () => openLocalProject(project.id));
+        const sync = make('button', 'tool', project.cloudId ? 'Sync updates' : 'Sync to cloud');
+        sync.type = 'button';
+        sync.disabled = !cloudActionAllowed(true);
+        sync.addEventListener('click', () => syncLocalProject(project.id));
+        const remove = make('button', 'tool', 'Delete on this device');
+        remove.type = 'button';
+        remove.addEventListener('click', () => deleteLocalProject(project.id));
+        actions.append(open, sync, remove);
+        if (project.cloudConflict) {
+          const copy = make('button', 'tool', 'Upload as separate cloud copy');
+          copy.type = 'button';
+          copy.disabled = !cloudActionAllowed(true);
+          copy.addEventListener('click', () => syncLocalProject(project.id, {asNewCopy: true}));
+          actions.append(copy);
+        }
+        card.append(heading, detail, actions);
+        root.append(card);
+      }
+    } catch (_) {
+      root.replaceChildren(make('p', 'editor-note',
+        'This browser could not open local project storage. Your current scene remains available in this page.'));
+    }
+  }
+
+  async function openLocalProject(id) {
+    try {
+      const project = await projectStore('readonly', 'get', id);
+      if (!project) throw new Error('Project not found on this device.');
+      selectedProjectId = project.id;
+      get('projectTitle').value = project.title;
+      const document = safeProjectDocument(project.document);
+      sceneDrafts = editorScenes(document);
+      actorNames = editorActors(document);
+      saveActorNames();
+      renderActors();
+      renderActorAssignments();
+      if (sceneDrafts[0]) {
+        get('scenePrompt').value = sceneDrafts[0].prompt;
+        if (Object.hasOwn(modelLimits, sceneDrafts[0].model)) get('sceneModel').value = sceneDrafts[0].model;
+      }
+      projectStatus('Opened locally. Changes remain on this device until you save again.');
+    } catch (error) {
+      projectStatus(error.message || 'Could not open this local project.');
+    }
+  }
+
+  async function saveLocalProject() {
+    const title = get('projectTitle').value.trim();
+    if (!title || title.length > 120) return projectStatus('Enter a project name of 1–120 characters.');
+    try {
+      const existing = selectedProjectId ? await projectStore('readonly', 'get', selectedProjectId) : null;
+      const document = safeProjectDocument({
+        ...(existing?.document || {}), version: 1, scenes: sceneDrafts, actors: actorNames,
+      });
+      if (!document.scenes.length) return projectStatus('Save at least one scene idea before saving this project.');
+      const project = {
+        ...(existing || {}), id: existing?.id || makeProjectId(), title,
+        document, updatedAt: new Date().toISOString(),
+      };
+      await projectStore('readwrite', 'put', project);
+      selectedProjectId = project.id;
+      await refreshLocalProjects();
+      projectStatus('Project saved on this device. Cloud sync remains off until you consent and choose Sync.');
+    } catch (error) {
+      projectStatus(error.message || 'Could not save this project on this device.');
+    }
+  }
+
+  async function deleteLocalProject(id) {
+    const project = localProjectCache.find((item) => item.id === id);
+    if (!project || !window.confirm('Delete “' + project.title + '” from this device? Its cloud copy will not be deleted.')) return;
+    try {
+      await projectStore('readwrite', 'delete', id);
+      if (selectedProjectId === id) selectedProjectId = null;
+      await refreshLocalProjects();
+      projectStatus('Local project deleted. Any cloud copy remains in your HOTICE account.');
+    } catch (_) {
+      projectStatus('Could not delete this local project.');
+    }
+  }
+
+  function cloudActionAllowed(write) {
+    return Boolean(accountToken && projectConsent?.checked &&
+      (write ? accountCanWriteCloud : accountCanReadCloud));
+  }
+
+  function refreshCloudControls() {
+    const canRead = cloudActionAllowed(false);
+    const canWrite = cloudActionAllowed(true);
+    const load = get('loadCloudProjects');
+    if (load) load.disabled = !canRead;
+    get('localProjects')?.querySelectorAll('button').forEach((button) => {
+      if (button.textContent === 'Sync to cloud' || button.textContent === 'Sync updates' ||
+          button.textContent === 'Upload as separate cloud copy') button.disabled = !canWrite;
+    });
+    if (!accountToken) cloudProjectStatus('Sign in and confirm consent to load or sync cloud projects.');
+    else if (!projectConsent?.checked) cloudProjectStatus('Check the consent box before loading or syncing project data.');
+    else if (!accountCanReadCloud) cloudProjectStatus('This account has no readable cloud entitlement. Local projects remain available.');
+    else if (!accountCanWriteCloud) cloudProjectStatus('Cloud projects are read-only for this account. You can load copies but cannot sync changes.');
+    else cloudProjectStatus('Cloud sync is available. Choose a specific project action; no background sync runs.');
+  }
+
+  async function syncLocalProject(id, {asNewCopy = false} = {}) {
+    if (!cloudActionAllowed(true)) return cloudProjectStatus('Sign in, confirm consent and check that cloud access is active.');
+    let project = localProjectCache.find((item) => item.id === id);
+    if (!project) return cloudProjectStatus('Save this project on the device before syncing it.');
+    try {
+      project = {...project, document: safeProjectDocument(project.document)};
+      if (asNewCopy) {
+        project.id = makeProjectId();
+        project.cloudId = null;
+        project.cloudRevision = null;
+        project.cloudConflict = false;
+        project.title = project.title.slice(0, 110) + ' (copy)';
+        await projectStore('readwrite', 'put', project);
+        selectedProjectId = project.id;
+      }
+      const cloudId = project.cloudId || project.id;
+      const expectedRevision = Number.isInteger(project.cloudRevision) ? project.cloudRevision : 0;
+      const body = {title: project.title, expectedRevision, document: project.document};
+      if (new Blob([JSON.stringify(body)]).size > 120000) {
+        return cloudProjectStatus('Project is larger than the server limit. Shorten prompts before syncing.');
+      }
+      const response = await accountApi('/v1/projects/' + encodeURIComponent(cloudId), {
+        method: 'PUT', token: accountToken, body,
+      });
+      if (!Number.isInteger(response.revision) || typeof response.id !== 'string') {
+        throw new Error('The HOTICE server returned an invalid project revision.');
+      }
+      project.cloudId = cloudId;
+      project.cloudRevision = response.revision;
+      project.cloudConflict = false;
+      project.updatedAt = new Date().toISOString();
+      await projectStore('readwrite', 'put', project);
+      await refreshLocalProjects();
+      cloudProjectStatus('Cloud copy saved at revision ' + response.revision + '. Your local copy remains available on this device.');
+    } catch (error) {
+      if (error.status === 409) {
+        project.cloudConflict = true;
+        await projectStore('readwrite', 'put', project).catch(() => {});
+        await refreshLocalProjects();
+        cloudProjectStatus('The cloud copy changed elsewhere. Your local project was kept; use “Upload as separate cloud copy” to preserve both versions.');
+      } else if (error.status === 403) {
+        cloudProjectStatus('Cloud writing is unavailable or the entitlement expired. Your local project is unchanged.');
+      } else if (error.status === 413 || error.status === 422) {
+        cloudProjectStatus('The server rejected this project size or format. Your local project is unchanged.');
+      } else {
+        cloudProjectStatus('Cloud sync could not be confirmed. Your local project remains on this device; check the cloud list before retrying.');
+      }
+    }
+  }
+
+  async function loadCloudProjectList() {
+    if (!cloudActionAllowed(false)) return cloudProjectStatus('Sign in, confirm consent and check cloud access before loading projects.');
+    const root = get('cloudProjects');
+    root.replaceChildren(make('p', 'editor-note', 'Loading your HOTICE cloud project list…'));
+    try {
+      const response = await accountApi('/v1/projects', {token: accountToken});
+      cloudProjectCache = Array.isArray(response.projects) ? response.projects : [];
+      root.replaceChildren();
+      if (!cloudProjectCache.length) root.append(make('p', 'editor-note', 'No cloud projects are saved to this account yet.'));
+      for (const remote of cloudProjectCache) {
+        if (!remote || typeof remote.id !== 'string' || typeof remote.title !== 'string') continue;
+        const linked = localProjectCache.find((item) => item.cloudId === remote.id);
+        const card = make('article', 'project-card');
+        card.append(make('strong', '', remote.title));
+        card.append(make('small', 'editor-note', 'Cloud revision ' + Number(remote.revision || 0) + ' · project data only'));
+        const action = make('button', 'tool', linked ? 'Open saved local copy' : 'Save cloud copy on this device');
+        action.type = 'button';
+        action.addEventListener('click', () => linked
+          ? openLocalProject(linked.id)
+          : downloadCloudProject(remote.id));
+        card.append(action);
+        root.append(card);
+      }
+      cloudProjectStatus('Cloud project list loaded. Media and Actor photos were not downloaded.');
+    } catch (error) {
+      cloudProjectStatus(error.status === 403
+        ? 'Cloud project list is not available for this account.'
+        : 'Could not load the cloud project list. Local projects are unchanged.');
+    }
+  }
+
+  async function downloadCloudProject(id) {
+    if (!cloudActionAllowed(false)) return cloudProjectStatus('Confirm consent before downloading cloud project data.');
+    try {
+      const response = await accountApi('/v1/projects/' + encodeURIComponent(id), {token: accountToken});
+      const remote = response.project;
+      if (!remote || remote.id !== id || !Number.isInteger(remote.revision)) {
+        throw new Error('Invalid cloud project response.');
+      }
+      if (localProjectCache.some((item) => item.cloudId === id)) {
+        return cloudProjectStatus('A local copy of this cloud project already exists. Open it from the device list.');
+      }
+      const project = {
+        id: makeProjectId(), cloudId: remote.id, cloudRevision: remote.revision,
+        title: String(remote.title || 'Untitled project').slice(0, 120),
+        document: safeProjectDocument(remote.document), updatedAt: new Date().toISOString(),
+      };
+      await projectStore('readwrite', 'put', project);
+      await refreshLocalProjects();
+      cloudProjectStatus('Cloud project copied to this device. Media and Actor photos were not downloaded.');
+    } catch (_) {
+      cloudProjectStatus('Could not save this cloud project to the device. Existing local projects were kept.');
+    }
+  }
+
+  get('saveLocalProject')?.addEventListener('click', saveLocalProject);
+  projectConsent?.addEventListener('change', () => {
+    refreshCloudControls();
+    refreshLocalProjects();
+  });
+  get('loadCloudProjects')?.addEventListener('click', loadCloudProjectList);
+  refreshLocalProjects();
+  refreshCloudControls();
+
   function showAccountForm(message) {
     accountToken = null;
     accountSignedIn.hidden = true;
@@ -530,14 +869,19 @@
         throw new Error('HOTICE account identity could not be verified.');
       }
       accountToken = issuedToken;
+      accountCanWriteCloud = profile.cloud?.active === true;
+      accountCanReadCloud = profile.cloud?.readable === true;
       get('accountIdentity').textContent = returnedEmail;
-      const cloudActive = profile.cloud?.active === true;
-      get('accountCloudStatus').textContent = cloudActive
-        ? 'Cloud entitlement is active. This preview does not upload or sync browser projects.'
-        : 'Cloud entitlement is inactive. This preview does not upload or sync browser projects.';
+      get('accountCloudStatus').textContent = accountCanWriteCloud
+        ? 'Cloud access is active. Project sync still requires your consent and a project-specific action.'
+        : accountCanReadCloud
+          ? 'Cloud projects are readable, but this account cannot currently upload changes.'
+          : 'Cloud access is inactive. Device-only projects remain available.';
       accountForm.hidden = true;
       accountSignedIn.hidden = false;
       status('accountStatus', 'Signed in and verified with the HOTICE server.');
+      refreshCloudControls();
+      await refreshLocalProjects();
     } catch (error) {
       if (issuedToken && accountApiOrigin) {
         accountApi('/v1/auth/logout', {method: 'POST', token: issuedToken}).catch(() => {});
@@ -557,8 +901,15 @@
   get('accountSignOut')?.addEventListener('click', async () => {
     const token = accountToken;
     accountToken = null;
+    accountCanWriteCloud = false;
+    accountCanReadCloud = false;
     accountSignedIn.hidden = true;
     accountForm.hidden = false;
+    if (projectConsent) projectConsent.checked = false;
+    cloudProjectCache = [];
+    get('cloudProjects')?.replaceChildren();
+    refreshCloudControls();
+    refreshLocalProjects();
     status('accountStatus', 'Signing out and revoking this server session…');
     try {
       if (token) await accountApi('/v1/auth/logout', {method: 'POST', token});
@@ -572,6 +923,14 @@
   window.addEventListener('pagehide', () => {
     const token = accountToken;
     accountToken = null;
+    accountCanWriteCloud = false;
+    accountCanReadCloud = false;
+    if (projectConsent) projectConsent.checked = false;
+    accountSignedIn.hidden = true;
+    accountForm.hidden = false;
+    cloudProjectCache = [];
+    get('cloudProjects')?.replaceChildren();
+    refreshCloudControls();
     if (token && accountApiOrigin) {
       fetch(accountApiOrigin + '/v1/auth/logout', {
         method: 'POST', mode: 'cors', credentials: 'omit', cache: 'no-store',
@@ -581,4 +940,5 @@
     }
   });
 })();
+
 

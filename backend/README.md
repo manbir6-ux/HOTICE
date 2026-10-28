@@ -26,7 +26,7 @@ This is a **working PHP 8.2+ and MySQL/MariaDB service implementation**, intende
 
 ### Browser client origin and sign-in
 
-For the static HOTICE web app, set its public `meta[name="hotice-api-origin"]` to the HTTPS API origin and configure the same website origin in private `web_allowed_origins`, for example `['https://studio.example.com']`. Origins must be exact HTTPS origins with no path or trailing slash. Wildcards and credentialed CORS are unsupported; local HTTP origins are accepted only for localhost development. Keep the allowlist empty until the web domain is chosen. The browser preview keeps its short-lived bearer token in memory only and signs out on page exit where the browser permits; it does not persist the token or synchronize project data.
+For the static HOTICE web app, set its public `meta[name="hotice-api-origin"]` to the HTTPS API origin and configure the same website origin in private `web_allowed_origins`, for example `['https://studio.example.com']`. Origins must be exact HTTPS origins with no path or trailing slash. Wildcards and credentialed CORS are unsupported; local HTTP origins are accepted only for localhost development. Keep the allowlist empty until the web domain is chosen. The browser preview keeps its short-lived bearer token in memory only and signs out on page exit where the browser permits; it does not persist the token. Browser projects are saved in IndexedDB on the device and can be manually synced only after explicit consent. A sync sends the selected project JSON; browser media files and Actor photos are excluded, and no background sync runs. Device copies use browser-managed IndexedDB without HOTICE-level at-rest encryption.
 
 ### Endpoint contract
 
@@ -69,4 +69,5 @@ GitHub Actions `HOTICE PHP Backend Security & API` also spins up an ephemeral My
 - Login and registration failure throttling now tracks **separate HMAC-hashed email and REMOTE_ADDR budgets** (12/email, 50/IP per rolling 15 minutes). Successful login clears its own email failure counter only, **not** the IP counter. Use scheduled `bin/cleanup.php` to expire records. For distributed abuse, add a trusted edge/WAF; this in-database throttle is only one layer and may treat multiple clients sharing NAT as one IP.
 - Media storage is validated using canonical `realpath` and checked against the actual PHP `DOCUMENT_ROOT`, configured cPanel `public_webroot_path`, and the app's `backend/public` directory. Both nested webroots and parent directories are rejected. **Never choose `public_html`, a subdirectory of it, or its parent as media storage.** Installer checks before running SQL migrations.
 - Application keys and personal media still require protected cPanel backups, file permissions, proper SSL, and a real deployment security review. Existing paid cloud entitlement is not real subscription billing.
+
 
