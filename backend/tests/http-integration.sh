@@ -77,12 +77,40 @@ SECOND_AUTH="Authorization: Bearer $second_token"
 curl -fsS -H "$SECOND_AUTH" "$BASE/v1/auth/sessions" | jq -e --arg current "$second_session_id" --arg old "$session_id" '.sessions | length == 2 and any(.[]; .id == $current and .current == true) and any(.[]; .id == $old and .current == false)' >/dev/null
 status=$(curl -sS -o /dev/null -w '%{http_code}' -X DELETE -H "$OTHER_AUTH" "$BASE/v1/auth/sessions/$second_session_id")
 test "$status" = '404'
+status=$(curl -sS -o /dev/null -w '%{http_code}' -X POST -H "$SECOND_AUTH" -H 'Content-Type: application/json' \
+  -d '{"currentPassword":"WrongCurrentPassword!","newPassword":"NewTemporaryPassword456!"}' "$BASE/v1/auth/password")
+test "$status" = '401'
+status=$(curl -sS -o /dev/null -w '%{http_code}' -X POST -H "$SECOND_AUTH" -H 'Content-Type: application/json' \
+  -d "{\"currentPassword\":\"$PASS\",\"newPassword\":\"$PASS\"}" "$BASE/v1/auth/password")
+test "$status" = '422'
 curl -fsS -X DELETE -H "$SECOND_AUTH" "$BASE/v1/auth/sessions/$session_id" | jq -e '.revoked == true' >/dev/null
 status=$(curl -sS -o /dev/null -w '%{http_code}' -H "$AUTH" "$BASE/v1/me")
 test "$status" = '401'
 curl -fsS -H "$SECOND_AUTH" "$BASE/v1/me" | jq -e '.user.email == "cloud-integration@example.com"' >/dev/null
-curl -fsS -X POST -H "$SECOND_AUTH" "$BASE/v1/auth/logout" | jq -e '.ok == true' >/dev/null
+NEW_PASS='ChangedTestPassword456!'
+rotated=$(curl -fsS -X POST -H "$SECOND_AUTH" -H 'Content-Type: application/json' \
+  -d "{\"currentPassword\":\"$PASS\",\"newPassword\":\"$NEW_PASS\"}" "$BASE/v1/auth/password")
+echo "$rotated" | jq -e '.passwordChanged == true and .tokenType == "Bearer"' >/dev/null
+rotated_token=$(echo "$rotated" | jq -er '.accessToken')
+rotated_session_id=$(echo "$rotated" | jq -er '.sessionId')
+test "$rotated_session_id" != "$second_session_id"
+ROTATED_AUTH="Authorization: Bearer $rotated_token"
 status=$(curl -sS -o /dev/null -w '%{http_code}' -H "$SECOND_AUTH" "$BASE/v1/me")
+test "$status" = '401'
+curl -fsS -H "$ROTATED_AUTH" "$BASE/v1/me" | jq -e '.user.email == "cloud-integration@example.com"' >/dev/null
+status=$(curl -sS -o /dev/null -w '%{http_code}' -H 'Content-Type: application/json' \
+  -d "{\"email\":\"$EMAIL\",\"password\":\"$PASS\"}" "$BASE/v1/auth/login")
+test "$status" = '401'
+updated_login=$(curl -fsS -H 'Content-Type: application/json' \
+  -d "{\"email\":\"$EMAIL\",\"password\":\"$NEW_PASS\"}" "$BASE/v1/auth/login")
+updated_token=$(echo "$updated_login" | jq -er '.accessToken')
+UPDATED_AUTH="Authorization: Bearer $updated_token"
+curl -fsS -X POST -H "$ROTATED_AUTH" "$BASE/v1/auth/logout" | jq -e '.ok == true' >/dev/null
+status=$(curl -sS -o /dev/null -w '%{http_code}' -H "$ROTATED_AUTH" "$BASE/v1/me")
+test "$status" = '401'
+curl -fsS -H "$UPDATED_AUTH" "$BASE/v1/me" | jq -e '.user.email == "cloud-integration@example.com"' >/dev/null
+curl -fsS -X POST -H "$UPDATED_AUTH" "$BASE/v1/auth/logout" | jq -e '.ok == true' >/dev/null
+status=$(curl -sS -o /dev/null -w '%{http_code}' -H "$UPDATED_AUTH" "$BASE/v1/me")
 test "$status" = '401'
 # Failed-login budgets use both a user-address HMAC and a client-IP HMAC.
 # An attacker cannot reset the global IP budget by a valid login.
@@ -96,4 +124,4 @@ status=$(curl -sS -o /dev/null -w '%{http_code}' -H 'Content-Type: application/j
   -d "{\"email\":\"$spray_email\",\"password\":\"InvalidPassword13\"}" "$BASE/v1/auth/login")
 test "$status" = '429'
 
-echo 'HOTICE MySQL + HTTP API integration: passed (auth, session inventory/revocation, entitlement, project conflict, media, delete, logout).'
+echo 'HOTICE MySQL + HTTP API integration: passed (auth, password rotation, session inventory/revocation, entitlement, project conflict, media, delete, logout).'
