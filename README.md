@@ -16,6 +16,7 @@ This development branch adds:
 - **Two generator modes**: Normal Video and a separate offline Music Video Studio with eight visual directions.
 - **Editable offline storyboard outlines** (no song analysis, real lyrics, or AI scene planning yet).
 - **Avatar Studio** with named character profiles, edit/delete, reusable identity notes, multi-angle face-capture preparation, and text-only identity guidance passed to each demo video model.
+- **Inspiration Library** with searchable HOTICE-written prompts, visible provenance/reuse credit, and a “Use this prompt” path into the scene composer. Web Actors are stored in that browser only; mobile uses local named Actor profiles. All model choices remain illustrative and no video generation is connected.
 - Improved small-screen navigation, typography options and visible demo/payment limitations.
 - An Android debug APK build workflow with a generated HOTICE-branded preview launcher icon.
 
@@ -26,6 +27,7 @@ See [Avatar 3D capture and identity design contract](docs/AVATAR_IDENTITY_AND_SC
 - Sign in and register UI (explicitly demo-only; never enter a real password).
 - Projects grid and create-project dialog.
 - Project editor / generation composer (prompt, workflow presets, aspect ratio, duration and avatar picker).
+- Inspiration Library (search, category filters, scene prompt/model prefill and Actor role assignment).
 - Avatar Lab (local character presets).
 - HOTICE Credits purchase preview: Stripe, PayPal and credit/debit card.
 - Settings: light, dark, system + five colour themes.
@@ -56,6 +58,8 @@ The platform scaffolds (Android/iOS) are intentionally not committed at this UI-
 - lib/src/projects_generation.dart — projects and generation UI
 - lib/src/account_credits.dart — avatars, credits, themes and accounts
 - lib/src/video_models.dart — demo-only model capability rules, dynamic duration/aspect controls and attachment/quote validation
+- lib/src/inspiration_catalog.dart — approved local prompt catalog, rights metadata and Actor-role mapping
+- web/public — Namecheap/cPanel-compatible static site, local Actor list and browser scene-editor preview
 - docs/BLUEPRINT.md — product phases and integration contracts
 - docs/PROGRESS.md — completion vs pending work
 - docs/CONTINUE_HERE.md — durable next-model handoff and verified limitations
@@ -66,10 +70,10 @@ The platform scaffolds (Android/iOS) are intentionally not committed at this UI-
 See docs/BLUEPRINT.md and docs/PROGRESS.md.
 
 ## Current verification (26 Oct 2026)
-- Flutter static analysis and widget tests passed on the development branch. See [verified CI run 40201075329](https://github.com/parmtech/HOTICE/actions/runs/40201075329).
-- An **Android debug APK** was successfully compiled and uploaded as the GitHub Actions artifact `HOTICE-Android-Preview-APK` in that run. It is a testing build, not a signed Play Store release.
-- Additional avatar editing changes landed after that first build; consult [Actions](https://github.com/parmtech/HOTICE/actions) for the latest complete validation and APK artifact.
-- No on-device usability test has been reported yet. No real camera/depth scan, face matching, AI generation, audio sync, checkout, live authentication, or cloud persistence is connected.
+- Flutter static analysis, unit/widget tests, web validation, Android emulator smoke test, and debug APK build passed on [CI run 40246311392](https://github.com/parmtech/HOTICE/actions/runs/40246311392).
+- The **Android debug APK** artifact `HOTICE-Android-v0.2.0-run85` was uploaded in that run. It is a testing build, not a signed Play Store release.
+- Emulator smoke test passed for the tested journey; manual Android portrait/landscape and accessibility QA remain outstanding.
+- No manual on-device usability QA has been reported yet. No real camera/depth scan, face matching, AI generation, audio sync, checkout, live authentication, or cloud persistence is connected.
 - The Android and iOS native scaffolds are generated in CI/on demand; they are not committed to this repository.
 
 For continuation, see [docs/CONTINUE_HERE.md](docs/CONTINUE_HERE.md).

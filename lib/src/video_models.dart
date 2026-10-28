@@ -19,6 +19,12 @@ class VideoModelProfile {
     required this.formatsBySeconds,
     this.attachments = const <VideoAttachment>[],
     this.creditsByFormat = const <String, int>{},
+    this.maxInputs = const <VideoAttachment, int>{},
+    this.maxActors = 1,
+    this.priceBand = 'Unpriced preview',
+    this.supportsSeed = false,
+    this.supportsNegativePrompt = false,
+    this.supportsSound = false,
   });
 
   final String id;
@@ -27,6 +33,26 @@ class VideoModelProfile {
   /// Valid combinations: duration -> supported aspect ratios.
   final Map<int, List<String>> formatsBySeconds;
   final List<VideoAttachment> attachments;
+  /// UI test limits only; do not treat these as live provider contracts.
+  final Map<VideoAttachment, int> maxInputs;
+  final int maxActors;
+  final String priceBand;
+  final bool supportsSeed;
+  final bool supportsNegativePrompt;
+  final bool supportsSound;
+
+  int maximumFor(VideoAttachment type) =>
+      maxInputs[type] ?? (attachments.contains(type) ? 1 : 0);
+
+  String? validateInputs(Iterable<VideoAttachment> requested) {
+    for (final type in VideoAttachment.values) {
+      final count = requested.where((input) => input == type).length;
+      if (count > maximumFor(type)) {
+        return 'Selected model supports up to ${maximumFor(type)} ${type.label.toLowerCase()} file(s).';
+      }
+    }
+    return null;
+  }
 
   /// Key format: "seconds|ratio", value: HOTICE Credits.
   /// Empty means pricing is not confirmed and checkout MUST be disabled.
@@ -44,7 +70,7 @@ class VideoModelProfile {
       ratiosFor(seconds).contains(ratio);
 
   bool supportsAttachments(Iterable<VideoAttachment> requested) =>
-      requested.every(attachments.contains);
+      validateInputs(requested) == null;
 
   int? quoteCredits(int seconds, String ratio) {
     if (!supportsOutput(seconds, ratio)) return null;
@@ -73,6 +99,9 @@ const List<VideoModelProfile> demoVideoModels = [
       10: ['16:9', '9:16'],
     },
     attachments: [VideoAttachment.image],
+    maxInputs: {VideoAttachment.image: 1},
+    priceBand: 'Budget · illustrative',
+    maxActors: 2,
   ),
   VideoModelProfile(
     id: 'character_demo',
@@ -82,6 +111,11 @@ const List<VideoModelProfile> demoVideoModels = [
       8: ['16:9', '9:16'],
     },
     attachments: [VideoAttachment.image, VideoAttachment.video],
+    maxInputs: {VideoAttachment.image: 4, VideoAttachment.video: 1},
+    priceBand: 'Balanced · illustrative',
+    maxActors: 4,
+    supportsSeed: true,
+    supportsNegativePrompt: true,
   ),
   VideoModelProfile(
     id: 'storyboard_demo',
@@ -91,6 +125,24 @@ const List<VideoModelProfile> demoVideoModels = [
       8: ['16:9', '1:1'],
       10: ['16:9'],
     },
+    priceBand: 'Premium · illustrative',
+    maxActors: 1,
+  ),
+  VideoModelProfile(
+    id: 'multimodal_demo',
+    label: 'Multimodal Studio · Demo',
+    formatsBySeconds: {
+      4: ['16:9', '9:16', '1:1'],
+      8: ['16:9', '9:16', '1:1'],
+      12: ['16:9', '9:16'],
+    },
+    attachments: [VideoAttachment.image, VideoAttachment.video, VideoAttachment.audio],
+    maxInputs: {VideoAttachment.image: 7, VideoAttachment.video: 2, VideoAttachment.audio: 1},
+    maxActors: 6,
+    supportsSeed: true,
+    supportsNegativePrompt: true,
+    supportsSound: true,
+    priceBand: 'Premium+ · illustrative',
   ),
 ];
 

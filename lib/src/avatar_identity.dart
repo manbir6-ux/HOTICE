@@ -14,6 +14,36 @@ class AvatarPromptComposer {
         '. Consistent appearance notes: ' + details;
   }
 
+  /// Named roles remain distinct even when the same saved actor is cast
+  /// as different roles in separate scenes. This only prepares text.
+  static String composeActors({
+    required String scenePrompt,
+    required List<SceneActor> cast,
+    required List<StudioAvatar> library,
+    required VideoModelProfile model,
+  }) {
+    final prompt = scenePrompt.trim();
+    if (cast.isEmpty) return prompt;
+    if (cast.length > model.maxActors) {
+      throw StateError('This model preview supports at most ${model.maxActors} scene actors.');
+    }
+    final names = <String>{};
+    final descriptions = <String>[];
+    for (final actor in cast) {
+      final displayName = actor.sceneName.trim();
+      if (displayName.isEmpty || !names.add(displayName.toLowerCase())) {
+        throw StateError('Each scene actor needs a unique display name.');
+      }
+      final matches = library.where((a) => a.name == actor.avatarName);
+      if (matches.isEmpty) throw StateError('Actor not in the current library.');
+      descriptions.add('Role "$displayName": ${identityCard(matches.first)}');
+    }
+    return '$prompt\\n\\n[HOTICE CAST — TEXT PREVIEW ONLY]\\n'
+        '${descriptions.join('\\n')}\\n'
+        'Use the assigned names consistently. Exact visual identity requires '
+        'provider-supported references.';
+  }
+
   /// Keep one user-written scene prompt; append a separately reusable identity
   /// card for demo model handoff. Real adapters must use validated model-specific
   /// reference mechanisms. Text alone cannot promise face consistency.

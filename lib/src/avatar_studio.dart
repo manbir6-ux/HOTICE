@@ -147,8 +147,8 @@ class _AvatarsPageState extends State<AvatarsPage> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const PageTitle(
-            eyebrow: 'Character identity',
-            title: 'Avatar Studio',
+            eyebrow: 'Actor identity',
+            title: 'Actors Studio',
             subtitle: 'Create once. Reuse the same character description across your shots.',
           ),
           const DemoNotice(
@@ -161,7 +161,7 @@ class _AvatarsPageState extends State<AvatarsPage> {
             children: [
               ChoiceChip(
                 avatar: const Icon(Icons.edit_note_rounded, size: 18),
-                label: const Text('Quick character'),
+                label: const Text('Quick actor'),
                 selected: !showScanGuide,
                 onSelected: (_) => setState(() => showScanGuide = false),
               ),
@@ -264,7 +264,7 @@ class _AvatarsPageState extends State<AvatarsPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(editingName == null ? 'New character' : 'Edit ' + editingName!,
+                Text(editingName == null ? 'New actor' : 'Edit ' + editingName!,
                     style: Theme.of(context).textTheme.titleLarge),
                 const SizedBox(height: 7),
                 const Text('A few details now make it easier to describe the same person in every scene.'),
@@ -274,7 +274,7 @@ class _AvatarsPageState extends State<AvatarsPage> {
                   maxLength: 60,
                   textCapitalization: TextCapitalization.words,
                   decoration: const InputDecoration(
-                    labelText: 'Character name',
+                    labelText: 'Actor name',
                     hintText: 'e.g. The Explorer',
                     prefixIcon: Icon(Icons.person_outline),
                   ),
@@ -312,7 +312,7 @@ class _AvatarsPageState extends State<AvatarsPage> {
                 ),
                 const SizedBox(height: 13),
                 PrimaryButton(
-                  label: editingName == null ? 'Save character' : 'Save changes',
+                  label: editingName == null ? 'Save actor' : 'Save changes',
                   icon: Icons.person_add_alt_1_rounded,
                   onPressed: saveAvatar,
                 ),
@@ -335,7 +335,7 @@ class _AvatarsPageState extends State<AvatarsPage> {
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  'Character library',
+                  'Actors library',
                   maxLines: 2,
                   softWrap: true,
                   overflow: TextOverflow.ellipsis,
@@ -376,8 +376,8 @@ class _AvatarsPageState extends State<AvatarsPage> {
                       }
                     },
                     itemBuilder: (ctx) => const [
-                      PopupMenuItem(value: 'edit', child: Text('Edit character')),
-                      PopupMenuItem(value: 'delete', child: Text('Delete character')),
+                      PopupMenuItem(value: 'edit', child: Text('Edit actor')),
+                      PopupMenuItem(value: 'delete', child: Text('Delete actor')),
                     ],
                   ),
                   onTap: () => openProfile(avatar),

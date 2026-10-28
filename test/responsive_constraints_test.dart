@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:hotice/main.dart' show StudioShell;
 import 'package:hotice/src/welcome.dart';
 import 'package:hotice/src/projects_generation.dart';
 import 'package:hotice/src/generation_hub.dart';
@@ -8,6 +9,24 @@ import 'package:hotice/src/music_audio.dart';
 import 'package:hotice/src/state.dart';
 
 void main() {
+  testWidgets('Studio shell header fits common Android phone widths',
+      (tester) async {
+    final store = HotIceStore();
+    addTearDown(store.dispose);
+    store.signInDemo('creator@hotice.demo');
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
+    for (final width in <double>[360, 393, 411, 432, 480, 600, 640, 849]) {
+      tester.view.physicalSize = Size(width, 820);
+      await tester.pumpWidget(MaterialApp(home: StudioShell(store: store)));
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull,
+          reason: 'Studio shell overflowed at $width logical pixels');
+    }
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
   testWidgets('Welcome layout never creates negative-width constraints',
       (tester) async {
     // Reproduces the real Android FIRST exception:

@@ -4,6 +4,8 @@ import 'video_models.dart';
 import 'avatar_identity.dart';
 import 'design.dart';
 import 'dialogs.dart';
+import 'inspiration_catalog.dart';
+import 'scene_controls.dart';
 
 class ProjectsPage extends StatelessWidget {
   final HotIceStore store;
@@ -42,28 +44,17 @@ class ProjectsPage extends StatelessWidget {
   }
 
   Future<void> delete(BuildContext context, HotProject project) async {
-    final draftCount =
-        store.drafts.where((draft) => draft.projectId == project.id).length;
-    final planCount =
-        store.musicPlans.where((plan) => plan.projectId == project.id).length;
+    final draftCount = store.drafts.where((draft) => draft.projectId == project.id).length;
+    final planCount = store.musicPlans.where((plan) => plan.projectId == project.id).length;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: const Text('Delete project?'),
-        content: Text(
-          'Delete "${project.title}" and its $draftCount saved scene drafts '
-          'and $planCount storyboards from this demo session? '
-          'This cannot be undone.',
-        ),
+        content: Text('Delete "${project.title}" and its $draftCount saved scene drafts '
+            'and $planCount storyboards from this demo session? This cannot be undone.'),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(dialogContext, true),
-            child: const Text('Delete project'),
-          ),
+          TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('Delete project')),
         ],
       ),
     );
@@ -99,20 +90,18 @@ class ProjectsPage extends StatelessWidget {
           ),
           const SizedBox(height: 22),
           if (store.projects.isEmpty)
-            StudioPanel(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Icon(Icons.movie_creation_outlined,
-                      size: 36, color: Theme.of(context).colorScheme.primary),
-                  const SizedBox(height: 12),
-                  Text('Your next film starts here',
-                      style: Theme.of(context).textTheme.titleMedium),
-                  const SizedBox(height: 6),
-                  const Text('Create a project to plan scenes or a music video.'),
-                ],
-              ),
-            ),
+            StudioPanel(child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(Icons.movie_creation_outlined, size: 36,
+                    color: Theme.of(context).colorScheme.primary),
+                const SizedBox(height: 12),
+                Text('Your next film starts here',
+                    style: Theme.of(context).textTheme.titleMedium),
+                const SizedBox(height: 6),
+                const Text('Create a project to plan scenes or a music video.'),
+              ],
+            )),
           LayoutBuilder(builder: (context, box) {
             final columns = box.maxWidth > 810
                 ? 3
@@ -142,61 +131,34 @@ class ProjectsPage extends StatelessWidget {
                           children: [
                             FilmPreview(title: project.title),
                             const SizedBox(height: 12),
-                            LayoutBuilder(
-                              builder: (context, constraints) {
-                                final title = Text(
-                                  project.title,
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: Theme.of(context).textTheme.titleMedium,
-                                );
-                                final menu = PopupMenuButton<String>(
-                                  key: ValueKey('project-options-${project.id}'),
-                                  tooltip: 'Project options',
-                                  icon: const Icon(Icons.more_vert_rounded),
-                                  onSelected: (action) async {
-                                    if (action == 'rename') {
-                                      await rename(context, project);
-                                    } else if (action == 'delete') {
-                                      await delete(context, project);
-                                    }
-                                  },
-                                  itemBuilder: (_) => const [
-                                    PopupMenuItem(
-                                      value: 'rename',
-                                      child: Text('Rename'),
-                                    ),
-                                    PopupMenuItem(
-                                      value: 'delete',
-                                      child: Text('Delete'),
-                                    ),
-                                  ],
-                                );
-                                // The tiny-width regression test gives this
-                                // tile as little as 16 logical px to use.
-                                // A 48px IconButton next to a title overflows
-                                // in a Row even with an Expanded title.
-                                if (constraints.maxWidth < 64) {
-                                  return Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [title, menu],
-                                  );
-                                }
-                                return Row(
-                                  children: [Expanded(child: title), menu],
-                                );
-                              },
-                            ),
+                            LayoutBuilder(builder: (context, constraints) {
+                              final title = Text(project.title, maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: Theme.of(context).textTheme.titleMedium);
+                              final menu = PopupMenuButton<String>(
+                                key: ValueKey('project-options-${project.id}'),
+                                tooltip: 'Project options',
+                                icon: const Icon(Icons.more_vert_rounded),
+                                onSelected: (action) async {
+                                  if (action == 'rename') await rename(context, project);
+                                  if (action == 'delete') await delete(context, project);
+                                },
+                                itemBuilder: (_) => const [
+                                  PopupMenuItem(value: 'rename', child: Text('Rename')),
+                                  PopupMenuItem(value: 'delete', child: Text('Delete')),
+                                ],
+                              );
+                              if (constraints.maxWidth < 64) {
+                                return Column(crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [title, menu]);
+                              }
+                              return Row(children: [Expanded(child: title), menu]);
+                            }),
                             const SizedBox(height: 6),
-                            Text(
-                              '${store.drafts.where((item) => item.projectId == project.id).length} '
-                              'scene drafts · '
-                              '${store.musicPlans.where((item) => item.projectId == project.id).length} '
-                              'storyboards',
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              style: Theme.of(context).textTheme.bodySmall,
-                            ),
+                            Text('${store.drafts.where((item) => item.projectId == project.id).length} '
+                                'scene drafts · ${store.musicPlans.where((item) => item.projectId == project.id).length} '
+                                'storyboards', maxLines: 2, overflow: TextOverflow.ellipsis,
+                                style: Theme.of(context).textTheme.bodySmall),
                             const SizedBox(height: 6),
                             const Text('Open project →',
                                 style: TextStyle(fontSize: 12)),
@@ -218,10 +180,14 @@ class ProjectsPage extends StatelessWidget {
 class GenerationPage extends StatefulWidget {
   final HotIceStore store;
   final String? initialProjectId;
+  final InspirationTemplate? initialTemplate;
+  final int templateRevision;
   const GenerationPage({
     super.key,
     required this.store,
     this.initialProjectId,
+    this.initialTemplate,
+    this.templateRevision = 0,
   });
   @override
   State<GenerationPage> createState() => _GenerationPageState();
@@ -235,29 +201,69 @@ class _GenerationPageState extends State<GenerationPage> {
   final Map<String, String> _unsavedRatios = {};
   final Map<String, int> _unsavedDurations = {};
   final Map<String, String> _unsavedAvatars = {};
+  final Map<String, List<SceneActor>> _unsavedActors = {};
+  final Map<String, List<SceneReference>> _unsavedReferences = {};
+  final Map<String, String> _unsavedNegativePrompts = {};
+  final Map<String, String> _unsavedSeeds = {};
+  final Map<String, bool> _unsavedSounds = {};
   String? project;
   String model = 'cinematic_demo';
+  String avatarName = 'None';
 
   VideoModelProfile get profile => demoModelById(model);
   String ratio = '16:9';
   int seconds = 8;
-  String avatarName = 'None';
+  final List<SceneActor> sceneActors = [];
+  final List<SceneReference> references = [];
+  final negativePrompt = TextEditingController();
+  final seedText = TextEditingController();
+  bool soundEnabled = false;
+  bool advancedOpen = false;
+  InspirationTemplate? selectedTemplate;
 
   @override
   void initState() {
     super.initState();
     project = widget.initialProjectId ??
         (widget.store.projects.isEmpty ? null : widget.store.projects.first.id);
+    if (widget.initialTemplate != null) _applyTemplate(widget.initialTemplate!);
+  }
+
+  void _applyTemplate(InspirationTemplate entry) {
+    selectedTemplate = entry;
+    prompt.text = entry.prompt;
+    model = entry.modelId;
+    // Switching template replaces the previous cast/settings rather than
+    // silently carrying unsupported references to the next model.
+    sceneActors.clear();
+    references.clear();
+    avatarName = 'None';
+    negativePrompt.clear();
+    seedText.clear();
+    soundEnabled = false;
+    final capabilities = demoModelById(model);
+    if (!capabilities.durations.contains(seconds)) {
+      seconds = capabilities.durations.first;
+    }
+    if (!capabilities.ratiosFor(seconds).contains(ratio)) {
+      ratio = capabilities.ratiosFor(seconds).first;
+    }
   }
 
   void _selectProject(String? next) {
     if (project == next) return;
     if (project != null) {
-      _unsavedPrompts[project!] = prompt.text;
-      _unsavedModels[project!] = model;
-      _unsavedRatios[project!] = ratio;
-      _unsavedDurations[project!] = seconds;
-      _unsavedAvatars[project!] = avatarName;
+      final current = project!;
+      _unsavedPrompts[current] = prompt.text;
+      _unsavedModels[current] = model;
+      _unsavedRatios[current] = ratio;
+      _unsavedDurations[current] = seconds;
+      _unsavedAvatars[current] = avatarName;
+      _unsavedActors[current] = List<SceneActor>.of(sceneActors);
+      _unsavedReferences[current] = List<SceneReference>.of(references);
+      _unsavedNegativePrompts[current] = negativePrompt.text;
+      _unsavedSeeds[current] = seedText.text;
+      _unsavedSounds[current] = soundEnabled;
     }
     project = next;
     prompt.text = next == null ? '' : (_unsavedPrompts[next] ?? '');
@@ -269,14 +275,29 @@ class _GenerationPageState extends State<GenerationPage> {
     final savedDuration = next == null ? null : _unsavedDurations[next];
     seconds = savedDuration != null && chosen.durations.contains(savedDuration)
         ? savedDuration
-        : 8;
-    if (!chosen.durations.contains(seconds)) seconds = chosen.durations.first;
+        : (chosen.durations.contains(8) ? 8 : chosen.durations.first);
     final savedRatio = next == null ? null : _unsavedRatios[next];
     ratio = savedRatio != null && chosen.ratiosFor(seconds).contains(savedRatio)
         ? savedRatio
         : chosen.ratiosFor(seconds).first;
     avatarName = next == null ? 'None' : (_unsavedAvatars[next] ?? 'None');
-    // Avatar membership is re-validated at build and at save time.
+    if (avatarName != 'None' &&
+        !widget.store.avatars.any((actor) => actor.name == avatarName)) {
+      avatarName = 'None';
+    }
+    sceneActors
+      ..clear()
+      ..addAll(next == null ? const <SceneActor>[] : (_unsavedActors[next] ?? const <SceneActor>[]));
+    references
+      ..clear()
+      ..addAll(next == null ? const <SceneReference>[] : (_unsavedReferences[next] ?? const <SceneReference>[]));
+    sceneActors.removeWhere((cast) =>
+        !widget.store.avatars.any((actor) => actor.name == cast.avatarName));
+    references.removeWhere((reference) => chosen.maximumFor(reference.type) == 0);
+    negativePrompt.text = next == null ? '' : (_unsavedNegativePrompts[next] ?? '');
+    seedText.text = next == null ? '' : (_unsavedSeeds[next] ?? '');
+    soundEnabled = next == null ? false : (_unsavedSounds[next] ?? false);
+    selectedTemplate = null;
   }
 
   @override
@@ -286,11 +307,17 @@ class _GenerationPageState extends State<GenerationPage> {
         widget.initialProjectId != oldWidget.initialProjectId) {
       _selectProject(widget.initialProjectId);
     }
+    if (widget.initialTemplate != null &&
+        widget.templateRevision != oldWidget.templateRevision) {
+      _applyTemplate(widget.initialTemplate!);
+    }
   }
 
   @override
   void dispose() {
     prompt.dispose();
+    negativePrompt.dispose();
+    seedText.dispose();
     super.dispose();
   }
 
@@ -302,6 +329,22 @@ class _GenerationPageState extends State<GenerationPage> {
       if (!next.ratiosFor(seconds).contains(ratio)) {
         ratio = next.ratiosFor(seconds).first;
       }
+      sceneActors.removeRange(
+        sceneActors.length > next.maxActors ? next.maxActors : sceneActors.length,
+        sceneActors.length,
+      );
+      references.removeWhere((ref) => next.maximumFor(ref.type) == 0);
+      for (final type in VideoAttachment.values) {
+        var used = 0;
+        references.removeWhere((ref) {
+          if (ref.type != type) return false;
+          used++;
+          return used > next.maximumFor(type);
+        });
+      }
+      if (!next.supportsNegativePrompt) negativePrompt.clear();
+      if (!next.supportsSeed) seedText.clear();
+      if (!next.supportsSound) soundEnabled = false;
     });
   }
 
@@ -317,42 +360,110 @@ class _GenerationPageState extends State<GenerationPage> {
   void save() {
     if (prompt.text.trim().isEmpty || project == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Choose a project and enter a prompt.')),
+        const SnackBar(content: Text('Choose a project and describe your scene.')),
       );
       return;
     }
     final matches = widget.store.projects.where((p) => p.id == project);
     if (matches.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Project no longer exists. Choose another.')),
+        const SnackBar(content: Text('Project not found. Choose another.')),
       );
       return;
     }
-    if (!profile.accepts(seconds: seconds, ratio: ratio)) {
+    final types = references.map((f) => f.type);
+    if (!profile.accepts(seconds: seconds, ratio: ratio, inputs: types) ||
+        sceneActors.length > profile.maxActors) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Unsupported output for this model.')),
+        const SnackBar(content: Text('Your actors or reference files exceed this model limit.')),
       );
       return;
     }
-    final selected = matches.first;
-    widget.store.queueDraft(GenerationDraft(
-      projectId: selected.id,
-      modelId: profile.id,
-      avatarName: avatarName,
-      project: selected.title,
-      prompt: AvatarPromptComposer.compose(
-        scenePrompt: prompt.text,
-        avatar: widget.store.avatars.where((a) => a.name == avatarName).firstOrNull,
-        model: profile,
-      ),
-      model: profile.label,
-      aspectRatio: ratio,
-      durationSeconds: seconds,
-      createdAt: DateTime.now(),
-    ));
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Scene draft saved. No AI request sent.')),
-    );
+    int? seed;
+    if (seedText.text.trim().isNotEmpty) {
+      seed = int.tryParse(seedText.text.trim());
+      if (seed == null || seed < 0 || !profile.supportsSeed) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Enter a valid non-negative seed for this model.')),
+        );
+        return;
+      }
+    }
+    if (negativePrompt.text.trim().isNotEmpty && !profile.supportsNegativePrompt) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Negative prompting is unavailable for this model.')),
+      );
+      return;
+    }
+    if (selectedTemplate != null &&
+        selectedTemplate!.prompt == prompt.text &&
+        sceneActors.length < selectedTemplate!.actorSlots.length) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(
+          'Assign ${selectedTemplate!.actorSlots.length} named actors to use this template.',
+        )),
+      );
+      return;
+    }
+    try {
+      var source = prompt.text.trim();
+      if (selectedTemplate != null && selectedTemplate!.prompt == source) {
+        source = InspirationPromptBuilder.compile(selectedTemplate!, sceneActors);
+      }
+      // Detect unresolved placeholders even when the user has edited the text.
+      final roleTokens = RegExp(r'\{\{Actor[0-9]+\}\}').allMatches(source).toList();
+      if (roleTokens.isNotEmpty) {
+        if (sceneActors.length < roleTokens.length) {
+          throw StateError('Assign the named actors before saving.');
+        }
+        final seen = <String>{};
+        source = source.replaceAllMapped(RegExp(r'\{\{Actor[0-9]+\}\}'), (match) {
+          final token = match.group(0)!;
+          if (!seen.contains(token)) {
+            seen.add(token);
+          }
+          final index = seen.toList().indexOf(token);
+          return sceneActors[index].sceneName;
+        });
+      }
+      final selected = matches.first;
+      final primaryActor = widget.store.avatars.where((actor) => actor.name == avatarName);
+      final preparedPrompt = sceneActors.isNotEmpty
+          ? AvatarPromptComposer.composeActors(
+              scenePrompt: source,
+              cast: List<SceneActor>.unmodifiable(sceneActors),
+              library: widget.store.avatars,
+              model: profile,
+            )
+          : AvatarPromptComposer.compose(
+              scenePrompt: source,
+              avatar: primaryActor.isEmpty ? null : primaryActor.first,
+              model: profile,
+            );
+      widget.store.queueDraft(GenerationDraft(
+        projectId: selected.id,
+        modelId: profile.id,
+        project: selected.title,
+        prompt: preparedPrompt,
+        model: profile.label,
+        aspectRatio: ratio,
+        durationSeconds: seconds,
+        avatarName: avatarName,
+        actors: List<SceneActor>.unmodifiable(sceneActors),
+        referenceFiles: List<SceneReference>.unmodifiable(references),
+        negativePrompt: negativePrompt.text.trim(),
+        seed: seed,
+        soundEnabled: soundEnabled,
+        createdAt: DateTime.now(),
+      ));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Scene draft saved. No AI request sent.')),
+      );
+    } on StateError catch (error) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error.message)),
+      );
+    }
   }
 
   @override
@@ -361,11 +472,9 @@ class _GenerationPageState extends State<GenerationPage> {
     if (!validProjects.any((item) => item.id == project)) {
       _selectProject(validProjects.isEmpty ? null : validProjects.first.id);
     }
-    final avatars = [
-      'None',
-      for (final item in widget.store.avatars) item.name,
-    ];
-    if (!avatars.contains(avatarName)) avatarName = 'None';
+    // Remove stale cast entries if an actor preset was deleted.
+    sceneActors.removeWhere((cast) =>
+        !widget.store.avatars.any((actor) => actor.name == cast.avatarName));
     final editor = StudioPanel(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -417,42 +526,45 @@ class _GenerationPageState extends State<GenerationPage> {
             style: TextStyle(fontSize: 12),
           ),
           const SizedBox(height: 13),
-          Text('Accepted reference attachments',
-              style: Theme.of(context).textTheme.titleSmall),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              if (profile.attachments.isEmpty)
-                const Chip(label: Text('Prompt only')),
-              for (final input in profile.attachments)
-                Chip(
-                  avatar: const Icon(Icons.attach_file, size: 17),
-                  label: Text(input.label),
-                ),
-            ],
-          ),
-          const SizedBox(height: 7),
-          const Text(
-            'Capability preview only. No attachment picker or upload is connected.',
-            style: TextStyle(fontSize: 12),
-          ),
-          const SizedBox(height: 13),
           DropdownButtonFormField<String>(
             key: ValueKey('normal-avatar-$project'),
             initialValue: avatarName,
             decoration: const InputDecoration(labelText: 'Avatar'),
-            items: avatars.map((name) =>
-                DropdownMenuItem(value: name, child: Text(name))).toList(),
-            onChanged: (v) {
-              if (v != null) setState(() => avatarName = v);
+            items: [
+              const DropdownMenuItem(value: 'None', child: Text('None')),
+              for (final actor in widget.store.avatars)
+                DropdownMenuItem(value: actor.name, child: Text(actor.name)),
+            ],
+            onChanged: (value) {
+              if (value != null) setState(() => avatarName = value);
             },
           ),
-          const SizedBox(height: 8),
-          const Text(
-            'Selecting a character adds its reusable appearance notes to the saved scene prompt. True face locking requires future image/3D model integrations.',
-            style: TextStyle(fontSize: 12),
+          const SizedBox(height: 13),
+          if (selectedTemplate != null) ...[
+            const SizedBox(height: 9),
+            Text('Template selected: ${selectedTemplate!.title}',
+                style: Theme.of(context).textTheme.bodySmall),
+            if (selectedTemplate!.actorSlots.isNotEmpty)
+              Text('Add ${selectedTemplate!.actorSlots.length} named actors in order '
+                  'to replace template role placeholders.',
+                  style: Theme.of(context).textTheme.bodySmall),
+          ],
+          const SizedBox(height: 16),
+          SceneCastAndReferences(
+            profile: profile,
+            actors: widget.store.avatars,
+            cast: sceneActors,
+            references: references,
+            onCastChanged: (items) => setState(() {
+              sceneActors
+                ..clear()
+                ..addAll(items);
+            }),
+            onReferencesChanged: (items) => setState(() {
+              references
+                ..clear()
+                ..addAll(items);
+            }),
           ),
           const SizedBox(height: 17),
           Text('Aspect ratio', style: Theme.of(context).textTheme.titleSmall),
@@ -474,6 +586,45 @@ class _GenerationPageState extends State<GenerationPage> {
                 onSelected: (_) => changeDuration(item),
               ),
           ]),
+          const SizedBox(height: 15),
+          ExpansionTile(
+            initiallyExpanded: false,
+            title: const Text('Advanced settings'),
+            subtitle: Text('${profile.label} · ${profile.priceBand}'),
+            childrenPadding: const EdgeInsets.only(bottom: 15),
+            children: [
+              Text('Model selection is currently illustrative. Real provider '
+                  'capabilities and actual prices will come from the secure admin catalog.',
+                  style: Theme.of(context).textTheme.bodySmall),
+              const SizedBox(height: 11),
+              if (profile.supportsNegativePrompt)
+                TextField(
+                  controller: negativePrompt,
+                  maxLength: 350,
+                  maxLines: 2,
+                  decoration: const InputDecoration(
+                    labelText: 'Negative prompt (optional)',
+                  ),
+                ),
+              if (profile.supportsSeed)
+                TextField(
+                  controller: seedText,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(labelText: 'Seed (optional)'),
+                ),
+              if (profile.supportsSound)
+                SwitchListTile(
+                  title: const Text('Sound generation preview'),
+                  subtitle: const Text('No audio will be generated yet.'),
+                  value: soundEnabled,
+                  onChanged: (value) => setState(() => soundEnabled = value),
+                ),
+              const SizedBox(height: 9),
+              Text('Supports ${profile.maxActors} actors; '
+                  '${profile.attachments.length} reference media types.',
+                  style: Theme.of(context).textTheme.bodySmall),
+            ],
+          ),
           const SizedBox(height: 14),
           Builder(builder: (context) {
             final quote = profile.quoteCredits(seconds, ratio);

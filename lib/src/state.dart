@@ -66,6 +66,23 @@ class MusicVideoPlan {
   });
 }
 
+class SceneActor {
+  final String avatarName;
+  final String sceneName;
+  const SceneActor({required this.avatarName, required this.sceneName});
+}
+
+class SceneReference {
+  final VideoAttachment type;
+  final String fileName;
+  final int bytes;
+  const SceneReference({
+    required this.type,
+    required this.fileName,
+    required this.bytes,
+  });
+}
+
 class GenerationDraft {
   final String project;
   final String prompt;
@@ -77,6 +94,11 @@ class GenerationDraft {
   final String avatarName;
   final String modelId;
   final List<VideoAttachment> requestedAttachments;
+  final List<SceneActor> actors;
+  final List<SceneReference> referenceFiles;
+  final String negativePrompt;
+  final int? seed;
+  final bool soundEnabled;
 
   const GenerationDraft({
     required this.project,
@@ -89,6 +111,11 @@ class GenerationDraft {
     this.avatarName = 'None',
     this.modelId = '',
     this.requestedAttachments = const <VideoAttachment>[],
+    this.actors = const <SceneActor>[],
+    this.referenceFiles = const <SceneReference>[],
+    this.negativePrompt = '',
+    this.seed,
+    this.soundEnabled = false,
   });
 }
 
@@ -223,6 +250,11 @@ class HotIceStore extends ChangeNotifier {
         avatarName: old.avatarName,
         modelId: old.modelId,
         requestedAttachments: old.requestedAttachments,
+        actors: old.actors,
+        referenceFiles: old.referenceFiles,
+        negativePrompt: old.negativePrompt,
+        seed: old.seed,
+        soundEnabled: old.soundEnabled,
       );
     }
     notifyListeners();
@@ -284,25 +316,42 @@ class HotIceStore extends ChangeNotifier {
         !projects.any((p) => p.id == draft.projectId)) {
       throw StateError('The selected project is not in this demo workspace.');
     }
-    // Prevent synthetic scene drafts from referring to an Actor belonging
-    // to another demo workspace. This is data integrity, NOT authentication.
+    if (draft.actors.map((a) => a.sceneName.trim().toLowerCase()).toSet().length != draft.actors.length ||
+        draft.actors.any((a) => a.sceneName.trim().isEmpty ||
+            !avatars.any((av) => av.name == a.avatarName))) {
+      throw StateError('Scene actor names must be unique and refer to an existing actor.');
+    }
     if (draft.avatarName != 'None' &&
         !avatars.any((avatar) => avatar.name == draft.avatarName)) {
       throw StateError('Selected Actor is not in this demo workspace.');
     }
+    if (draft.referenceFiles.any((file) =>
+        file.fileName.trim().isEmpty || file.bytes < 0)) {
+      throw StateError('Invalid reference file metadata.');
+    }
     if (draft.modelId.isNotEmpty) {
       final matches = demoVideoModels.where((m) => m.id == draft.modelId);
-      if (matches.isEmpty ||
-          !matches.single.accepts(
+      if (matches.isEmpty) {
+        throw StateError('Unknown model preview.');
+      }
+      final model = matches.single;
+      final attachments = [
+        ...draft.requestedAttachments,
+        ...draft.referenceFiles.map((f) => f.type),
+      ];
+      if (!model.accepts(
             seconds: draft.durationSeconds,
             ratio: draft.aspectRatio,
-            inputs: draft.requestedAttachments,
-          )) {
-        throw StateError('Unsupported output or attachment for this model.');
+            inputs: attachments,
+          ) ||
+          draft.actors.length > model.maxActors ||
+          (draft.seed != null && !model.supportsSeed) ||
+          (draft.negativePrompt.trim().isNotEmpty && !model.supportsNegativePrompt) ||
+          (draft.soundEnabled && !model.supportsSound)) {
+        throw StateError('Unsupported model settings, actors, or attachments.');
       }
     }
-    // Capture a stable job snapshot. The caller must not be able to mutate
-    // validated attachment settings after this draft is stored.
+    // Capture a stable, detached job snapshot after validation.
     final canonicalProject = projects.where((p) => p.id == draft.projectId);
     drafts.insert(0, GenerationDraft(
       project: canonicalProject.isEmpty ? draft.project : canonicalProject.first.title,
@@ -314,8 +363,12 @@ class HotIceStore extends ChangeNotifier {
       projectId: draft.projectId,
       avatarName: draft.avatarName,
       modelId: draft.modelId,
-      requestedAttachments:
-          List<VideoAttachment>.unmodifiable(draft.requestedAttachments),
+      requestedAttachments: List<VideoAttachment>.unmodifiable(draft.requestedAttachments),
+      actors: List<SceneActor>.unmodifiable(draft.actors),
+      referenceFiles: List<SceneReference>.unmodifiable(draft.referenceFiles),
+      negativePrompt: draft.negativePrompt,
+      seed: draft.seed,
+      soundEnabled: draft.soundEnabled,
     ));
     notifyListeners();
   }
@@ -332,12 +385,9 @@ class HotIceStore extends ChangeNotifier {
       throw StateError('Avatar belongs to a different workspace.');
     }
     if (plan.shots.any((shot) => shot.estimatedSeconds <= 0 ||
-        shot.estimatedSeconds > 600 ||
-        shot.description.trim().isEmpty)) {
+        shot.estimatedSeconds > 600 || shot.description.trim().isEmpty)) {
       throw StateError('Storyboard shots require a description and a valid duration.');
     }
-    // Store a detached immutable snapshot, not a caller-owned mutable List.
-    // Otherwise editing an unsaved storyboard can silently rewrite history.
     musicPlans.insert(0, MusicVideoPlan(
       projectId: plan.projectId,
       storyBrief: plan.storyBrief.trim(),

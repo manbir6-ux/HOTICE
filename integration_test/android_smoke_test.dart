@@ -36,9 +36,9 @@ void main() {
     await tester.pumpAndSettle();
 
     // Navigate across the same tabs as an ordinary phone user.
-    await tester.tap(find.text('Avatars').last);
+    await tester.tap(find.text('Actors').last);
     await tester.pumpAndSettle();
-    expect(find.text('Avatar Studio'), findsOneWidget);
+    expect(find.text('Actors Studio'), findsOneWidget);
     expect(tester.takeException(), isNull);
     await tester.tap(find.text('Credits').last);
     await tester.pumpAndSettle();

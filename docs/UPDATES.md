@@ -1,7 +1,7 @@
 # HOTICE — UPDATES & DEVELOPMENT PROGRESS
 
-**Last updated:** 27 October 2026 (Australia/Sydney)  
-**Canonical repo:** https://github.com/parmtech/HOTICE  
+**Last updated:** 27 October 2026 (Australia/Sydney)
+**Canonical repo:** https://github.com/parmtech/HOTICE
 **Purpose:** Durable, factual change log, latest tested build, outstanding product decisions, security requirements and handoff for the next development iteration. **Update this file after each meaningful implementation and CI verification.**
 
 > **Do not confuse requirements, prototypes and production features.** "Implemented" means source code exists; "CI verified" means GitHub Actions passed for a specified commit; "production ready" additionally requires security, deployment and real-device tests. This document is not a claim that video AI, a real 3D face scanner, live payments or an administrator backend are active.
@@ -55,7 +55,7 @@
 - **Code written:** real Android/iOS front-camera preview after explicit consent; throttled Google ML Kit on-device face detection; one-face/position/size/yaw/roll guidance; four stable green checks with system click/haptic signal; manual front-left-right 3-photo capture with still-image angle recheck; named Actor session profile and thumbnails; cancellation/deletion/next-launch temporary-file cleanup.
 - **Platform setup:** idempotent camera permission / Android API 24 / iOS 15.5 script for generated Flutter scaffolds, and `path_provider` app-private temporary storage.
 - **Tests:** added unit tests for face-count/framing/yaw safety rules and a widget test for camera consent. [Feature CI run 40260796253](https://github.com/parmtech/HOTICE/actions/runs/40260796253) passed Flutter analysis/widget tests and web validation as checked during development; Android emulator/build completion must be verified separately.
-- **Documentation:** [Actor Guided Camera QA](https://github.com/parmtech/HOTICE/blob/feat/real-guided-actor-camera-v1/docs/ACTOR_GUIDED_CAMERA_V1.md). 
+- **Documentation:** [Actor Guided Camera QA](https://github.com/parmtech/HOTICE/blob/feat/real-guided-actor-camera-v1/docs/ACTOR_GUIDED_CAMERA_V1.md).
 - **NOT COMPLETE:** real-device camera QA, mirrored left/right validation, 3D reconstruction/rig, focus/lighting/liveness quality, encrypted persistent Actor vault, provider identity adapters, cloud sync or secure backend. No phone camera hardware was operated in automated widget tests.
 - **Privacy limitation:** photos are short-lived application-private **unencrypted temporary files**, and Actor records are session-only; next launch cleans abandoned files. This is not secure permanent biometric storage.
 - **Tracking:** [Issue #13](https://github.com/parmtech/HOTICE/issues/13) remains open for real-device validation and production safeguards.
