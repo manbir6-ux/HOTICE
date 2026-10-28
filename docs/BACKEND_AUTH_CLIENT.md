@@ -26,3 +26,12 @@ Create a staging-only account on the server with `php backend/bin/create-user.ph
 ## Verification limits
 
 Automated HTTP tests use mock responses to verify request paths, HTTPS, redirects, token handling, account identity, revocation and failure behavior. They do not prove a deployed cPanel API, real user provisioning, email verification, account recovery, MFA, production rate-limiting, or cloud sync. Validate against a private staging server before enabling sign-in in a public build.
+
+
+## Authenticated job dry run (staging only)
+
+The Generate workspace has a separate **Server dry run** tab. It requires both a configured API origin and a server-verified sign-in. It posts a mock-only request to `POST /v1/jobs/quote`, then `POST /v1/jobs` with an idempotency key. The user can refresh or cancel a queued job. Polling/status access uses the same short-lived bearer token held in OS secure storage; tokens and prompts are never written to device project archives or diagnostic logs.
+
+The only model accepted is `hotice.mock.video.v1`. The backend must have `mock_jobs_enabled=true`, which is intended only for controlled dry-run environments. This path creates no media, contacts no model provider, does not use real paid credits, and does not send project/avatar files. A disabled server rejects the operation. Do not enable the mock flag on a public production service.
+
+CI tests validate request paths, bearer headers, idempotency header, job parsing, poll and cancel calls with mocked HTTP. The backend MySQL integration separately validates the real API and worker lifecycle. This does not prove cPanel deployment or live provider generation.
