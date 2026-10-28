@@ -347,4 +347,3 @@ const _nav = <_Destination>[
   _Destination(4, 'Settings', Icons.tune_rounded),
   _Destination(5, 'Accounts', Icons.people_outline_rounded),
 ];
-
