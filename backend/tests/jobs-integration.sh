@@ -45,6 +45,7 @@ test "$(echo "$job_state" | jq -er '.job.status')" = 'succeeded'
 test "$(echo "$job_state" | jq -er '.job.chargedCredits')" = '5'
 [[ "$(echo "$job_state" | jq -er '.job.result.message')" == *'No video or provider output'* ]]
 test "$(echo "$job_state" | jq -r '.job.result | has("requestSha256")')" = 'false'
+php -r 'require "backend/src/App.php"; $c=require "backend/config.php"; $db=(new Hotice\App($c))->database(); $q=$db->prepare("SELECT provider_id,model_id,status,request_sha256,remote_operation_id FROM provider_attempts WHERE job_id=? ORDER BY attempt_number"); $q->execute([$argv[1]]); $rows=$q->fetchAll(); if (count($rows)!==1 || $rows[0]["provider_id"]!=="mock" || $rows[0]["model_id"]!=="hotice.mock.video.v1" || $rows[0]["status"]!=="succeeded" || !preg_match("/^[a-f0-9]{64}$/",$rows[0]["request_sha256"]) || !Hotice\Support::isUuid($rows[0]["remote_operation_id"])) exit(1);' "$job"
 test "$(curl -sS -o /dev/null -w '%{http_code}' -H "$OTHER_AUTH" "$BASE/v1/jobs/$job")" = '404'
 
 request=$(jq -cn --arg p 'Permanent provider rejection simulation' '{modelId:"hotice.mock.video.v1",prompt:$p,simulate:"permanent_failure"}')
@@ -64,6 +65,7 @@ for scenario in timeout_once rate_limit_once malformed_once; do
   sleep 2
   php backend/bin/jobs-worker.php --once | jq -e '.status == "succeeded"' >/dev/null
   test "$(curl -fsS -H "$AUTH" "$BASE/v1/jobs/$job" | jq -er '.job.attempts')" = '2'
+  php -r 'require "backend/src/App.php"; $c=require "backend/config.php"; $db=(new Hotice\App($c))->database(); $q=$db->prepare("SELECT status FROM provider_attempts WHERE job_id=? ORDER BY attempt_number"); $q->execute([$argv[1]]); if ($q->fetchAll(PDO::FETCH_COLUMN)!==["retryable_rejected","succeeded"]) exit(1);' "$job"
 done
 test "$(curl -fsS -H "$AUTH" "$BASE/v1/me" | jq -er '.mockGeneration.credits')" = '80'
 
@@ -86,12 +88,14 @@ quote=$(curl -fsS -H "$AUTH" -H 'Content-Type: application/json' -d "$(jq -cn --
 body=$(jq -cn --arg q "$quote" --argjson r "$request" '{quoteToken:$q,request:$r}')
 job=$(curl -fsS -X POST -H "$AUTH" -H 'Content-Type: application/json' -H 'Idempotency-Key: mock-job-expired-lease-001' -d "$body" "$BASE/v1/jobs" | jq -er '.job.id')
 php -r 'require "backend/src/App.php"; $c=require "backend/config.php"; $db=(new Hotice\App($c))->database(); $db->prepare("UPDATE generation_jobs SET status=\x27processing\x27,attempt_count=max_attempts,lease_token=REPEAT(\x27a\x27,32),lease_until=DATE_SUB(UTC_TIMESTAMP(),INTERVAL 1 SECOND) WHERE id=?")->execute([$argv[1]]);' "$job"
+php -r 'require "backend/src/App.php"; $c=require "backend/config.php"; $db=(new Hotice\App($c))->database(); $q=$db->prepare("SELECT request_sha256,model_id FROM generation_jobs WHERE id=?"); $q->execute([$argv[1]]); $row=$q->fetch(); $lease=str_repeat("a",32); $id=Hotice\Support::uuid(); $remote=Hotice\Support::uuid(); $db->prepare("INSERT INTO provider_attempts(id,job_id,attempt_number,provider_id,model_id,operation_key,request_sha256,status,remote_operation_id,lease_token) VALUES(?,?,3,\x27mock\x27,?,?,?,\x27dispatching\x27,?,?)")->execute([$id,$argv[1],$row["model_id"],hash("sha256","ambiguous:".$argv[1]),$row["request_sha256"],$remote,$lease]);' "$job"
 php backend/bin/jobs-worker.php --once | jq -e '.status == "idle"' >/dev/null
-test "$(curl -fsS -H "$AUTH" "$BASE/v1/jobs/$job" | jq -er '.job.status')" = 'failed'
-test "$(curl -fsS -H "$AUTH" "$BASE/v1/me" | jq -er '.mockGeneration.credits')" = '80'
+test "$(curl -fsS -H "$AUTH" "$BASE/v1/jobs/$job" | jq -er '.job.status')" = 'processing'
+php -r 'require "backend/src/App.php"; $c=require "backend/config.php"; $db=(new Hotice\App($c))->database(); $q=$db->prepare("SELECT status,error_code FROM generation_jobs WHERE id=?"); $q->execute([$argv[1]]); $j=$q->fetch(); $q=$db->prepare("SELECT status,error_code FROM provider_attempts WHERE job_id=? ORDER BY attempt_number DESC LIMIT 1"); $q->execute([$argv[1]]); $a=$q->fetch(); if ($j["status"]!=="processing" || $j["error_code"]!=="provider_outcome_unknown" || $a["status"]!=="unknown" || $a["error_code"]!=="provider_outcome_unknown") exit(1);' "$job"
+test "$(curl -fsS -H "$AUTH" "$BASE/v1/me" | jq -er '.mockGeneration.credits')" = '75'
 php backend/bin/jobs-worker.php --once | jq -e '.status == "idle"' >/dev/null
-test "$(curl -fsS -H "$AUTH" "$BASE/v1/me" | jq -er '.mockGeneration.credits')" = '80'
+test "$(curl -fsS -H "$AUTH" "$BASE/v1/me" | jq -er '.mockGeneration.credits')" = '75'
 
-echo 'Mock job quote, idempotency, ownership, retries, cancellation, simulated credits and refund checks passed. No provider call or video output was created.'
+echo 'Mock job quote, idempotency, ownership, durable provider-attempt states, ambiguous-outcome hold, retries, cancellation, simulated credits and refund checks passed. No provider call or video output was created.'
 
 
