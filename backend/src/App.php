@@ -7,6 +7,7 @@ use PDO;
 use Throwable;
 
 require_once __DIR__ . '/Support.php';
+require_once __DIR__ . '/EmailOutbox.php';
 
 final class App
 {
@@ -16,8 +17,8 @@ final class App
 
     public function __construct(private readonly array $config)
     {
-        if (!extension_loaded('pdo_mysql') || !extension_loaded('fileinfo')) {
-            throw new \RuntimeException('Required PHP extensions are unavailable.');
+        if (!extension_loaded('pdo_mysql') || !extension_loaded('fileinfo') || !extension_loaded('openssl')) {
+            throw new \RuntimeException('Required PHP extensions (pdo_mysql, fileinfo, openssl) are unavailable.');
         }
         if (!preg_match('/^[a-f0-9]{64}$/iD', (string) ($config['app_key'] ?? ''))) {
             throw new \RuntimeException('Server app_key must be a unique 64-character hex secret.');
@@ -264,16 +265,22 @@ final class App
         $this->recordFailedLogin($f); // shared bounded signup and login-attempt budget
         // Registration never creates a usable account until the mailbox owner
         // proves control using the one-time, short-lived verification token.
-        $q = $this->db->prepare('INSERT INTO users (id,email,password_hash) VALUES (?,?,?)');
+        $this->db->beginTransaction();
         try {
             $userId = Support::uuid();
-            $q->execute([$userId, $email, Support::passwordHash($password)]);
+            $this->db->prepare('INSERT INTO users (id,email,password_hash) VALUES (?,?,?)')
+                ->execute([$userId, $email, Support::passwordHash($password)]);
+            $this->issueVerification($userId, $email);
+            $this->db->commit();
         } catch (\PDOException $e) {
+            if ($this->db->inTransaction()) $this->db->rollBack();
             if ($e->getCode() !== '23000') throw $e;
             $this->send(202, ['registered' => true, 'verificationRequired' => true]);
             return;
+        } catch (Throwable $e) {
+            if ($this->db->inTransaction()) $this->db->rollBack();
+            throw $e;
         }
-        $this->issueVerification($userId, $email);
         $this->send(202, ['registered' => true, 'verificationRequired' => true]);
     }
 
@@ -294,18 +301,7 @@ final class App
         $url = rtrim($base, '/') . '#token=' . rawurlencode($token);
         $subject = 'Verify your HOTICE account';
         $body = "Verify your email address within 30 minutes by opening this link:\n\n$url\n\nIf you did not create this account, ignore this message.";
-        $this->sendAccountEmail($email, $subject, $body);
-    }
-
-    private function sendAccountEmail(string $email, string $subject, string $body): bool
-    {
-        $testTransport = $this->config['mail_transport'] ?? null;
-        if (is_callable($testTransport)) {
-            return (bool)$testTransport($email, $subject, $body);
-        }
-        $from = (string) ($this->config['mail_from'] ?? '');
-        return filter_var($from, FILTER_VALIDATE_EMAIL) !== false && mail($email, $subject, $body,
-            "From: HOTICE <$from>\r\nContent-Type: text/plain; charset=UTF-8");
+        EmailOutbox::enqueue($this->db, $this->config, $email, $subject, $body, $expires);
     }
 
     private function resendVerification(): void
@@ -314,13 +310,20 @@ final class App
         $email = Support::email((string) ($b['email'] ?? ''));
         $f = $this->throttle($email);
         $this->recordFailedLogin($f);
-        $q = $this->db->prepare('SELECT id,email_verified_at FROM users WHERE email=? LIMIT 1');
-        $q->execute([$email]);
-        $user = $q->fetch();
-        if ($user && $user['email_verified_at'] === null) {
-            $this->db->prepare('UPDATE email_verification_tokens SET used_at=UTC_TIMESTAMP() WHERE user_id=? AND used_at IS NULL')
-                ->execute([$user['id']]);
-            $this->issueVerification((string) $user['id'], $email);
+        $this->db->beginTransaction();
+        try {
+            $q = $this->db->prepare('SELECT id,email_verified_at FROM users WHERE email=? LIMIT 1 FOR UPDATE');
+            $q->execute([$email]);
+            $user = $q->fetch();
+            if ($user && $user['email_verified_at'] === null) {
+                $this->db->prepare('UPDATE email_verification_tokens SET used_at=UTC_TIMESTAMP() WHERE user_id=? AND used_at IS NULL')
+                    ->execute([$user['id']]);
+                $this->issueVerification((string) $user['id'], $email);
+            }
+            $this->db->commit();
+        } catch (Throwable $e) {
+            if ($this->db->inTransaction()) $this->db->rollBack();
+            throw $e;
         }
         $this->send(202, ['accepted' => true]);
     }
@@ -369,17 +372,15 @@ final class App
                     $expires = gmdate('Y-m-d H:i:s', time() + 30 * 60);
                     $this->db->prepare('INSERT INTO password_reset_tokens (id,user_id,token_sha256,expires_at) VALUES (?,?,?,?)')
                         ->execute([Support::uuid(), $userId, hash('sha256', $token), $expires]);
+                    $url = rtrim((string)$this->config['verification_url'], '/') . '#reset=' . rawurlencode($token);
+                    EmailOutbox::enqueue($this->db, $this->config, $email, 'Reset your HOTICE password',
+                        "Reset your password within 30 minutes by opening this link:\n\n$url\n\nIf you did not request this, ignore this message.", $expires);
                 }
             }
             $this->db->commit();
         } catch (Throwable $e) {
             if ($this->db->inTransaction()) $this->db->rollBack();
             throw $e;
-        }
-        if ($userId && isset($token)) {
-            $url = rtrim((string)$this->config['verification_url'], '/') . '#reset=' . rawurlencode($token);
-            $this->sendAccountEmail($email, 'Reset your HOTICE password',
-                "Reset your password within 30 minutes by opening this link:\n\n$url\n\nIf you did not request this, ignore this message.");
         }
         // Same status and response for existing, unknown, and unverified users.
         $this->send(202, ['accepted' => true]);

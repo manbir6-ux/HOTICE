@@ -4,6 +4,7 @@ register_and_verify() {
     -d "{\"email\":\"$email\",\"password\":\"$password\"}" "$BASE/v1/auth/register")
   test "${response##*$'\n'}" = '202'
   echo "${response%$'\n'*}" | jq -e '.registered == true and .verificationRequired == true' >/dev/null
+  php backend/bin/send-email-outbox.php 10 >/dev/null
   local unverified_status
   unverified_status=$(curl -sS -o /dev/null -w '%{http_code}' -H 'Content-Type: application/json' \
     -d "{\"email\":\"$email\",\"password\":\"$password\"}" "$BASE/v1/auth/login")
@@ -20,6 +21,7 @@ register_and_verify() {
   local stale_token="$token"
   curl -fsS -H 'Content-Type: application/json' -d "{\"email\":\"$email\"}" \
     "$BASE/v1/auth/verification/resend" | jq -e '.accepted == true' >/dev/null
+  php backend/bin/send-email-outbox.php 10 >/dev/null
   token=$(php -r '
     $file = getenv("HOTICE_TEST_MAIL_CAPTURE"); $email = $argv[1];
     foreach (array_reverse(file($file, FILE_IGNORE_NEW_LINES)) as $line) {
@@ -46,6 +48,7 @@ reset_password() {
     -d "{\"email\":\"$email\"}" "$BASE/v1/auth/password-reset/request")
   test "${response##*$'\n'}" = '202'
   echo "${response%$'\n'*}" | jq -e '.accepted == true' >/dev/null
+  php backend/bin/send-email-outbox.php 10 >/dev/null
   token=$(php -r '
     $file = getenv("HOTICE_TEST_MAIL_CAPTURE"); $email = $argv[1];
     foreach (array_reverse(file($file, FILE_IGNORE_NEW_LINES)) as $line) {

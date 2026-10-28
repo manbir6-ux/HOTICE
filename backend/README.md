@@ -15,13 +15,13 @@ This is a **working PHP 8.2+ and MySQL/MariaDB service implementation**, intende
 
 1. Create an SSL-enabled subdomain such as `api.your-hotice-domain.example` through **cPanel > Domains** and ensure HTTPS. Do **not** deploy to an HTTP-only domain.
 2. Set the **document root specifically to** the uploaded `backend/public/` directory. Keep `backend/config.php`, `backend/src`, `backend/bin`, `backend/private-media` **outside any publicly reachable directory**. **Never upload the entire `backend/` directory into `public_html/` and leave it web-browsable.** If cPanel does not permit an isolated document root, use a secure symlink/alternate hosting arrangement or stop deployment until isolation is verified.
-3. In cPanel **Select PHP Version**, choose **PHP 8.2+** and enable `pdo_mysql`, `fileinfo`, `openssl` (if available). `json`, `filter`, and `hash` are standard PHP functionality. Set the subdomain version independently if applicable.
+3. In cPanel **Select PHP Version**, choose **PHP 8.2+** and enable `pdo_mysql`, `fileinfo`, and `openssl` (all required). `json`, `filter`, and `hash` are standard PHP functionality. Set the subdomain version independently if applicable.
 4. In cPanel **MySQL Databases**, create a database and a **dedicated least-privilege SQL user**, grant it needed privileges; don't put DB passwords in Git.
 5. Set `public_webroot_path` in your private `backend/config.php` to the **real cPanel document root** (normally `/home/ACCOUNT/public_html`) in addition to the API's own `backend/public`. Install and HTTP runtime now reject storage directories inside **or enclosing** either public directory (including symlinks). If the configured root cannot be verified, installation fails safely. Copy `backend/config.example.php` to `backend/config.php`, fill DB settings and generate a **different cryptographically random app key** via `php -r "echo bin2hex(random_bytes(32)), PHP_EOL;"`. File permission 0600 if possible. Leave `allow_registration=false`, `require_https=true`. Provider API keys (when needed) go **only in this private config / server-only environment**, not the Android APK or responses.
 6. With cPanel Terminal/SSH, run `php backend/bin/install.php` from your app parent directory (set paths appropriately). Or import `backend/schema.sql` through **phpMyAdmin**, then separately create a private storage directory **outside public/** with permissions for PHP. All scripts under `backend/bin/` are CLI-only.
 7. For a first testing account, from Terminal run `php backend/bin/create-user.php you@example.com`; the password is prompted via stdin, **never entered in a shell argument**. Use `php backend/bin/grant-trial.php you@example.com 100 7` to grant a **100 MiB, seven-day ADMIN TEST TRIAL**, not purchased storage. Real paid entitlements must later be granted only from verified billing webhooks.
 8. Check `https://api.your-hotice-domain.example/health`; it should return JSON service/status without secret values. Test login with `POST /v1/auth/login` only over HTTPS. Check wrong/expired tokens and inactive cloud entitlement respond with 401/403. Check that direct requests for `config.php`, `schema.sql`, private media and secret keys are **not publicly accessible**, including via URL encoding and alternate hostnames.
-9. Optionally run `php backend/bin/cleanup.php` via cPanel Cron no more often than **once per 5 minutes** (daily is sufficient for expired session cleanup). Background AI job rendering **must not run long GPU workloads on shared hosting**; use external async provider jobs and periodic polling with budget limits in later phases.
+9. Configure the domain mailbox, SPF and DKIM, then run `php backend/bin/send-email-outbox.php 20` from cPanel Cron every minute. Run `php backend/bin/cleanup.php` no more often than **once per 5 minutes** (daily is sufficient for expired session cleanup). Background AI job rendering **must not run long GPU workloads on shared hosting**; use external async provider jobs and periodic polling with budget limits in later phases.
 10. Set cPanel/database backups and recovery plan before allowing real user uploads, plus TLS renewal, monitoring, user deletion/export policies, email verification, privacy notices and quota/cost controls. This is an MVP, not a certified GDPR or payment deployment.
 
 ### Browser client origin and sign-in
@@ -33,10 +33,10 @@ For the static HOTICE web app, set its public `meta[name="hotice-api-origin"]` t
 | Method/path | Function |
 | --- | --- |
 | `GET /health` | Service check (no secrets) |
-| `POST /v1/auth/register` | Disabled by default; creates a pending account and sends a single-use 30-minute verification link when explicitly enabled |
+| `POST /v1/auth/register` | Disabled by default; creates a pending account and queues an encrypted, single-use 30-minute verification message when enabled |
 | `POST /v1/auth/verify-email` | Validates a one-time email token; pending accounts cannot sign in |
-| `POST /v1/auth/verification/resend` | Rate-limited, enumeration-resistant request for a fresh verification message |
-| `POST /v1/auth/password-reset/request` | Enumeration-resistant password reset request for verified accounts |
+| `POST /v1/auth/verification/resend` | Rate-limited request for a fresh verification message; response is uniform for existing and unknown accounts |
+| `POST /v1/auth/password-reset/request` | Password reset request for verified accounts; response is uniform for known and unknown addresses |
 | `POST /v1/auth/password-reset/complete` | Single-use reset; rotates the password and revokes all sessions |
 | `POST /v1/auth/login` | Password -> random short-lived bearer token, SHA-256 stored server-side |
 | `POST /v1/auth/logout` | Revoke active session |

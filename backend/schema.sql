@@ -34,6 +34,24 @@ CREATE TABLE IF NOT EXISTS password_reset_tokens (
   CONSTRAINT fk_password_reset_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE IF NOT EXISTS email_outbox (
+  id CHAR(36) CHARACTER SET ascii COLLATE ascii_bin NOT NULL PRIMARY KEY,
+  recipient VARCHAR(254) NOT NULL,
+  subject VARCHAR(120) NOT NULL,
+  ciphertext LONGBLOB NULL,
+  nonce VARBINARY(12) NULL,
+  tag VARBINARY(16) NULL,
+  attempts TINYINT UNSIGNED NOT NULL DEFAULT 0,
+  available_at DATETIME NOT NULL,
+  locked_until DATETIME NULL,
+  expires_at DATETIME NOT NULL,
+  sent_at DATETIME NULL,
+  failed_at DATETIME NULL,
+  last_error_code VARCHAR(40) NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  KEY ix_email_outbox_ready (sent_at,failed_at,available_at,locked_until,expires_at,created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS sessions (
   id CHAR(36) CHARACTER SET ascii COLLATE ascii_bin NOT NULL PRIMARY KEY,
   user_id CHAR(36) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
