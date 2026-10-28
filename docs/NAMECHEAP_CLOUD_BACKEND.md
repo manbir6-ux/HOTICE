@@ -15,9 +15,11 @@
 ## Backend ZIP contents (also committed in backend/ in this PR)
 `backend/public/index.php`, `backend/public/.htaccess`, `backend/src/App.php`, `backend/src/Support.php`, `backend/schema.sql`, `backend/config.example.php`, CLI installer/create-user/grant-trial/cleanup, smoke and MySQL HTTP integration tests, cPanel README, and independent `.github/workflows/backend_ci.yml`.
 
-Endpoints: GET /health; POST /v1/auth/login, /register (disabled by default), /logout; GET /v1/auth/sessions; DELETE /v1/auth/sessions/{UUID}; GET /v1/me; GET /v1/projects; GET/PUT/DELETE /v1/projects/{UUID}; PUT /v1/projects/{UUID}/files/{UUID}; GET/DELETE /v1/files/{UUID}.
+Endpoints: GET /health; POST /v1/auth/login, /register (disabled by default), /logout, /password; GET /v1/auth/sessions; DELETE /v1/auth/sessions/{UUID}; GET /v1/me; GET /v1/projects; GET/PUT/DELETE /v1/projects/{UUID}; PUT /v1/projects/{UUID}/files/{UUID}; GET/DELETE /v1/files/{UUID}.
 
 Authenticated users can inspect their active sessions and revoke a session belonging to their own account. Login returns a non-secret session ID for identifying the current session. Session inventory returns only ID, creation/expiry times and a current-session flag; IP addresses and user-agent strings are not retained. A session belonging to another account, already revoked, or expired returns 404.
+
+Password changes require the current password and atomically revoke all old sessions. The response includes the replacement bearer token, which the client must save immediately. This is not password recovery; enable public registration only after verified email delivery and recovery are implemented and verified.
 
 Implementation principles: password_hash and verification; random bearer tokens stored only as SHA-256 digests; per-IP/email throttled login; prepared PDO queries, owner-scoped authorization; server-side cloud entitlement; transactional quotas; optimistic project revision conflict 409; MIME inspection; 20MiB upload guard; random filenames; private media outside web root; sanitised errors; no permissive CORS.
 

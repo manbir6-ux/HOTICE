@@ -34,6 +34,7 @@ This is a **working PHP 8.2+ and MySQL/MariaDB service implementation**, intende
 | `POST /v1/auth/logout` | Revoke active session |
 | `GET /v1/auth/sessions` | List up to 100 active sessions belonging to the authenticated user; identifies the current session |
 | `DELETE /v1/auth/sessions/{uuid}` | Revoke one of the authenticated user's active sessions; other users' and expired sessions return 404 |
+| `POST /v1/auth/password` | Verify current password, change password, revoke every existing session and return a replacement bearer token |
 | `GET /v1/me` | User identity and **server-calculated** cloud status/quota |
 | `GET /v1/models` | Authenticated server-authoritative availability manifest; currently dry-run only |
 | `GET /v1/projects` | Cloud project metadata list (active or 30-day read-only grace) |
@@ -45,6 +46,10 @@ This is a **working PHP 8.2+ and MySQL/MariaDB service implementation**, intende
 | `DELETE /v1/files/{uuid}` | Remove own media and reclaim quota |
 
 **Security rules:** HTTPS required by default, JSON body size limits, `password_hash`, per-email+IP login attempt throttle, sessions store token hashes only, session inventory and revocation are scoped to the authenticated account, constant-type errors avoid sensitive SQL leakage, PDO prepared statements, real owner ID in every query, UUIDv4 IDs, revision conflict checks, per-user transactional cloud quotas, media type inspection using `finfo`, random file names, files outside web root, no permissive CORS and no hardcoded provider keys. The app must store access tokens using OS secure storage when integration starts.
+
+Password changes require the current password and a new 12–256-byte password. A successful change atomically updates the password hash, revokes all existing bearer sessions, and returns a new token/session ID. Clients must replace the saved token immediately; retries using any pre-change token will fail. Password recovery by email is not implemented, so public registration remains disabled by default.
+
+New password hashes pre-hash the complete UTF-8 byte string before applying PHP `PASSWORD_DEFAULT`, so long passphrases are fully covered even on cPanel PHP builds where the default algorithm is bcrypt. Older hashes continue to verify and migrate after successful login where migration preserves their historical behavior; longer legacy bcrypt passwords are migrated only after the user explicitly changes the password.
 
 The `/v1/models` response is authenticated and server-authoritative. The current release only advertises `hotice.mock.video.v1` when the private server setting allows mock jobs and the owner-controlled feature flag is enabled. It reports no output media and always states that live provider generation is disabled. Stored API keys and research catalogs never enable a model by themselves. The owner override cannot bypass the server master gate; pausing blocks quotes, submissions and the CLI worker while preserving authenticated job inspection and cancellation/refunds for queued dry runs.
 

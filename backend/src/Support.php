@@ -13,6 +13,34 @@ final class ApiError extends \RuntimeException
 
 final class Support
 {
+    private const PASSWORD_HASH_PREFIX = 'hotice-sha256-v1:';
+
+    /**
+     * Pre-hash the complete password before PASSWORD_DEFAULT. The current
+     * cPanel PHP default may be bcrypt, which accepts only 72 input bytes.
+     * The marker permits successful legacy hashes to be migrated on login.
+     */
+    public static function passwordHash(string $password): string
+    {
+        return self::PASSWORD_HASH_PREFIX . password_hash(hash('sha256', $password), PASSWORD_DEFAULT);
+    }
+
+    public static function passwordVerify(string $password, string $storedHash): bool
+    {
+        if (str_starts_with($storedHash, self::PASSWORD_HASH_PREFIX)) {
+            return password_verify(hash('sha256', $password), substr($storedHash, strlen(self::PASSWORD_HASH_PREFIX)));
+        }
+        // Existing PASSWORD_DEFAULT hashes are verified as originally stored.
+        if (str_contains($password, "\0")) return false;
+        return password_verify($password, $storedHash);
+    }
+
+    public static function passwordNeedsRehash(string $storedHash): bool
+    {
+        if (!str_starts_with($storedHash, self::PASSWORD_HASH_PREFIX)) return true;
+        return password_needs_rehash(substr($storedHash, strlen(self::PASSWORD_HASH_PREFIX)), PASSWORD_DEFAULT);
+    }
+
     public static function uuid(): string
     {
         $b = random_bytes(16);

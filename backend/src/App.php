@@ -71,6 +71,9 @@ final class App
             if ($route === '/v1/auth/sessions' && $method === 'GET') {
                 $this->listSessions($user); return;
             }
+            if ($route === '/v1/auth/password' && $method === 'POST') {
+                $this->changePassword($user); return;
+            }
             if (preg_match('~^/v1/auth/sessions/([a-f0-9-]{36})$~D', $route, $m)
                 && Support::isUuid($m[1]) && $method === 'DELETE') {
                 $this->revokeSession($user['id'], $m[1]); return;
@@ -392,7 +395,7 @@ final class App
         // Use a generic response: do not disclose whether email is registered.
         $q = $this->db->prepare('INSERT INTO users (id,email,password_hash) VALUES (?,?,?)');
         try {
-            $q->execute([Support::uuid(), $email, password_hash($password, PASSWORD_DEFAULT)]);
+            $q->execute([Support::uuid(), $email, Support::passwordHash($password)]);
         } catch (\PDOException $e) {
             if ($e->getCode() !== '23000') throw $e;
             $this->recordFailedLogin($f);
@@ -419,7 +422,7 @@ final class App
                 $check->execute([$user['id']]);
                 $state = $check->fetch();
             }
-            if (!$user || !password_verify($password, $user['password_hash']) ||
+            if (!$user || !Support::passwordVerify($password, $user['password_hash']) ||
                 ($state && $state['disabled_at'] !== null)) {
                 $this->db->rollBack();
                 $this->recordFailedLogin($fingerprint);
@@ -428,9 +431,11 @@ final class App
             // Never clear the IP budget on a successful login: a single valid
             // account must not let attackers reset their IP-wide spray limit.
             $this->db->prepare('DELETE FROM login_attempts WHERE fingerprint=?')->execute([$fingerprint['email']]);
-            if (password_needs_rehash($user['password_hash'], PASSWORD_DEFAULT)) {
+            // Do not silently choose a new suffix for a legacy bcrypt password
+            // longer than its historical 72-byte effective input.
+            if (Support::passwordNeedsRehash($user['password_hash']) && strlen($password) <= 72) {
                 $this->db->prepare('UPDATE users SET password_hash=? WHERE id=?')
-                    ->execute([password_hash($password, PASSWORD_DEFAULT), $user['id']]);
+                    ->execute([Support::passwordHash($password), $user['id']]);
             }
             $token = bin2hex(random_bytes(32));
             $hours = max(1, min(168, (int) ($this->config['token_ttl_hours'] ?? 24)));
@@ -471,6 +476,50 @@ final class App
             ];
         }, $q->fetchAll());
         $this->send(200, ['sessions' => $sessions]);
+    }
+
+    private function changePassword(array $user): void
+    {
+        $b = Support::jsonInput(8192);
+        $currentPassword = (string) ($b['currentPassword'] ?? '');
+        $newPassword = (string) ($b['newPassword'] ?? '');
+        if (strlen($newPassword) < 12 || strlen($newPassword) > 256) {
+            throw new ApiError(422, 'New password must be 12–256 bytes.');
+        }
+
+        $this->db->beginTransaction();
+        try {
+            $q = $this->db->prepare('SELECT password_hash FROM users WHERE id=? LIMIT 1 FOR UPDATE');
+            $q->execute([$user['id']]);
+            $passwordHash = $q->fetchColumn();
+            if (!is_string($passwordHash) || !Support::passwordVerify($currentPassword, $passwordHash)) {
+                throw new ApiError(401, 'Current password is incorrect.');
+            }
+            if (Support::passwordVerify($newPassword, $passwordHash)) {
+                throw new ApiError(422, 'New password must differ from the current password.');
+            }
+
+            $this->db->prepare('UPDATE users SET password_hash=? WHERE id=?')
+                ->execute([Support::passwordHash($newPassword), $user['id']]);
+            // Rotate every bearer token, including the request's session.
+            // The caller must replace its credential with the new one returned below.
+            $this->db->prepare('UPDATE sessions SET revoked_at=UTC_TIMESTAMP() WHERE user_id=? AND revoked_at IS NULL')
+                ->execute([$user['id']]);
+            $token = bin2hex(random_bytes(32));
+            $sessionId = Support::uuid();
+            $hours = max(1, min(168, (int) ($this->config['token_ttl_hours'] ?? 24)));
+            $expires = gmdate('Y-m-d H:i:s', time() + $hours * 3600);
+            $this->db->prepare('INSERT INTO sessions (id,user_id,token_sha256,expires_at) VALUES (?,?,?,?)')
+                ->execute([$sessionId, $user['id'], hash('sha256', $token), $expires]);
+            $this->db->commit();
+        } catch (Throwable $e) {
+            if ($this->db->inTransaction()) $this->db->rollBack();
+            throw $e;
+        }
+
+        $this->send(200, ['passwordChanged' => true, 'accessToken' => $token,
+            'tokenType' => 'Bearer', 'sessionId' => $sessionId,
+            'expiresAt' => str_replace(' ', 'T', $expires) . 'Z']);
     }
 
     private function revokeSession(string $userId, string $sessionId): void
