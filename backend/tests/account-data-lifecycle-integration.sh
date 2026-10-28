@@ -59,6 +59,7 @@ printf 'keep' > "$storage_path/$storage_name/blocked"
 delete_json=$(curl -fsS -X DELETE -H "$AUTH" -H 'Content-Type: application/json' \
   -d '{"confirmation":"DELETE","password":"AccountDeletePass123!"}' "$BASE/v1/me")
 echo "$delete_json" | jq -e '.deleted == true and .queuedMediaFiles == 1 and .accountDataRemoved == true' >/dev/null
+echo '[account-lifecycle-test] account deletion and queued-media response passed'
 test "$(curl -sS -o /dev/null -w '%{http_code}' -H "$AUTH" "$BASE/v1/me")" = '401'
 test "$(curl -sS -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $other_token" "$BASE/v1/projects/$project")" = '404'
 php -r '
@@ -69,8 +70,11 @@ foreach (["sessions","cloud_projects","cloud_files","generation_jobs","job_quote
 $q=$db->prepare("SELECT COUNT(*) FROM users WHERE id=?"); $q->execute([$user]); if ((int)$q->fetchColumn()!==0) exit(1);
 $q=$db->prepare("SELECT COUNT(*) FROM email_outbox WHERE recipient=?"); $q->execute([$argv[2]]); if ((int)$q->fetchColumn()!==0) exit(1);
 ' "$user_id" "$EMAIL"
+echo '[account-lifecycle-test] relational and outbox rows removed'
 php backend/bin/purge-private-media.php 10 | jq -e '.retryableFailures == 1 and .purged == 0' >/dev/null
+echo '[account-lifecycle-test] failed purge retained safely for retry'
 rm -r "$storage_path/$storage_name"
 php backend/bin/purge-private-media.php 10 | jq -e '.purged == 1 and .retryableFailures == 0' >/dev/null
+echo '[account-lifecycle-test] purge retry succeeded'
 test "$(php -r 'require_once "backend/src/App.php"; $c=require "backend/config.php"; $db=(new Hotice\App($c))->database(); echo $db->query("SELECT COUNT(*) FROM private_media_deletion_queue")->fetchColumn();')" = '0'
 echo '[account-lifecycle-test] export isolation, deletion safeguards, relational cleanup, revoked tokens, and retryable private-media purge passed'
