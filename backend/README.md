@@ -24,6 +24,8 @@ This is a **working PHP 8.2+ and MySQL/MariaDB service implementation**, intende
 9. Optionally run `php backend/bin/cleanup.php` via cPanel Cron no more often than **once per 5 minutes** (daily is sufficient for expired session cleanup). Background AI job rendering **must not run long GPU workloads on shared hosting**; use external async provider jobs and periodic polling with budget limits in later phases.
 10. Set cPanel/database backups and recovery plan before allowing real user uploads, plus TLS renewal, monitoring, user deletion/export policies, email verification, privacy notices and quota/cost controls. This is an MVP, not a certified GDPR or payment deployment.
 
+Before any staging sign-off, run the read-only HTTPS isolation/header smoke check in [CPANEL_RELEASE_CHECK.md](CPANEL_RELEASE_CHECK.md). A pass supplements the hosting-account review; it does not replace checking aliases, symlinks, backups, or restore procedures.
+
 ### Browser client and mock generation
 
 Set `web_allowed_origins` to exact HTTPS studio origins in the private server config. Wildcards, credentials and paths are rejected. HTTP is accepted only for loopback development. The browser uses bearer authorization without cookies, keeps its token in memory, stores projects locally in IndexedDB and sends a selected project only after unchecked-by-default consent. Imported media and Actor photos are not synced by the browser client.
