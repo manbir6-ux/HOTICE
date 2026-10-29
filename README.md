@@ -1,75 +1,41 @@
 # HOTICE
 
-> **Continue development here:** [HOTICE — Next Model Handoff](docs/CONTINUE_HERE.md). This file records the last verified GitHub state, user decisions, current CI/build limitations, and exact next development steps. Recheck the latest `main` branch and Actions results before continuing.
+HOTICE is a Flutter application for planning cinematic AI video projects. This repository contains the client, a PHP/MySQL API for account services, and deployment and verification tools. It is an active MVP, not a production video-generation or payment service.
 
-**Cinematic AI Video Studio — Flutter UI foundation**
+## Current capabilities
 
-HOTICE is a premium multi-AI video creation workspace. This repository contains the **first-stage, functional UI prototype**: navigation, forms, local project drafts, account profile switching, avatar presets, pricing selections and theme controls. The app does **not** yet generate video, accept payments, or authenticate users with a server.
+- Normal Video and Music Video Studio planning flows, with local project and storyboard editing.
+- Encrypted, device-private project metadata snapshots with recovery handling. Generated media bytes are not included in this archive.
+- Guest workspaces and optional API-backed sign-in. Signed-in appearance preferences sync through the API.
+- Server account export and password-confirmed deletion, with secure token storage in the client.
+- PHP/MySQL account API, authentication protections, cloud metadata endpoints, and deployment tooling.
+- Music file selection and local audio preview where supported by the device. Song transcription, timed lyrics, AI scene planning, and video rendering are not connected.
 
-**Brand / product credit:** HOTICE  
-**Repository:** parmtech/HOTICE  
-**App name:** HOTICE (no space or hyphen).
+## Build and run
 
-## UI improvements — Android test preview (26 Oct 2026)
-This development branch adds:
-- **One-tap guest demo**, no fake password requirement, plus optional demo email for isolated workspaces.
-- **Two generator modes**: Normal Video and a separate offline Music Video Studio with eight visual directions.
-- **Editable offline storyboard outlines** (no song analysis, real lyrics, or AI scene planning yet).
-- **Avatar Studio** with named character profiles, edit/delete, reusable identity notes, multi-angle face-capture preparation, and text-only identity guidance passed to each demo video model.
-- Improved small-screen navigation, typography options and visible demo/payment limitations.
-- An Android debug APK build workflow with a generated HOTICE-branded preview launcher icon.
+Install Flutter and the platform toolchains, then run:
 
-See [Avatar 3D capture and identity design contract](docs/AVATAR_IDENTITY_AND_SCAN.md) for the planned real capture pipeline, model adapter requirements, and privacy gates.
-
-## Screens included
-- Welcome / onboarding.
-- Sign in and register UI (explicitly demo-only; never enter a real password).
-- Projects grid and create-project dialog.
-- Project editor / generation composer (prompt, workflow presets, aspect ratio, duration and avatar picker).
-- Avatar Lab (local character presets).
-- HOTICE Credits purchase preview: Stripe, PayPal and credit/debit card.
-- Settings: light, dark, system + five colour themes.
-- Accounts: add a demo profile, switch profile and sign out.
-
-## Credit pricing — locked for this phase
-**1 HOTICE Credit = USD 0.01 = 1 US cent.**  
-**Minimum purchase = USD 10 = 1,000 Credits.**  
-USD 20 = 2,000 Credits; USD 50 = 5,000 Credits.  
-Amounts are illustrative purchase choices, not an active payment service.
-
-## Run locally
-Install the Flutter SDK, then in this repository:
-
-~~~sh
-flutter create . --project-name hotice --platforms=android,ios
+```sh
 flutter pub get
+flutter analyze
+flutter test
 flutter run
-~~~
+```
 
-The platform scaffolds (Android/iOS) are intentionally not committed at this UI-first phase; the command creates them. The GitHub Actions workflow also prepares them before analysis and tests.
+To enable server sign-in in a staging build, configure an HTTPS API origin:
 
-## Architecture
-- lib/main.dart — entry point, responsive studio shell and navigation
-- lib/src/state.dart — demo state, project and credit rules
-- lib/src/design.dart — premium design system and reusable cards
-- lib/src/welcome.dart — welcome and demo sign-in/register
-- lib/src/projects_generation.dart — projects and generation UI
-- lib/src/account_credits.dart — avatars, credits, themes and accounts
-- lib/src/video_models.dart — demo-only model capability rules, dynamic duration/aspect controls and attachment/quote validation
-- docs/BLUEPRINT.md — product phases and integration contracts
-- docs/PROGRESS.md — completion vs pending work
-- docs/CONTINUE_HERE.md — durable next-model handoff and verified limitations
-- docs/CREDITS.md — branding and attribution
+```sh
+flutter build apk --dart-define=HOTICE_API_BASE_URL=https://api.example.com
+```
 
-**Important:** Current interactions are session-only. A production release requires server-side authentication, database persistence, payment security, actual provider integrations, and verified builds.
+See [Backend authentication and client setup](docs/BACKEND_AUTH_CLIENT.md) for server provisioning and session details. Keep database credentials and any provider secrets on the server; do not put them in the Flutter app or commit them.
 
-See docs/BLUEPRINT.md and docs/PROGRESS.md.
+## Important limits
 
-## Current verification (26 Oct 2026)
-- Flutter static analysis and widget tests passed on the development branch. See [verified CI run 40201075329](https://github.com/parmtech/HOTICE/actions/runs/40201075329).
-- An **Android debug APK** was successfully compiled and uploaded as the GitHub Actions artifact `HOTICE-Android-Preview-APK` in that run. It is a testing build, not a signed Play Store release.
-- Additional avatar editing changes landed after that first build; consult [Actions](https://github.com/parmtech/HOTICE/actions) for the latest complete validation and APK artifact.
-- No on-device usability test has been reported yet. No real camera/depth scan, face matching, AI generation, audio sync, checkout, live authentication, or cloud persistence is connected.
-- The Android and iOS native scaffolds are generated in CI/on demand; they are not committed to this repository.
+- AI model entries and generation costs are not live provider catalog data. No video generation jobs, transcription pipeline, or export renderer is connected.
+- Credits and payment methods are previews. There is no checkout, subscription webhook, or production credit ledger.
+- API-backed accounts do not imply that project files or prompts are uploaded. Project data remains in the encrypted device archive; cloud synchronization is not implemented.
+- Account export covers server-held account metadata. Device-local projects and media need a separate device backup.
+- Before public release, complete verified payments, email verification and recovery, privacy and abuse controls, backup/restore drills, Android/iOS device QA, and production deployment checks.
 
-For continuation, see [docs/CONTINUE_HERE.md](docs/CONTINUE_HERE.md).
+Read [Development progress](docs/PROGRESS.md), [Security and UX audit](docs/AUDIT_SECURITY_UX_2026-10-28.md), and [Next-model handoff](docs/CONTINUE_HERE.md) before making release claims. A source change is not evidence of a passing build or deployed service; check the latest CI and staging results.
