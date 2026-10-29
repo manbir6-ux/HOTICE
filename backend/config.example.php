@@ -24,6 +24,10 @@ return [
     'max_project_bytes' => 128 * 1024,
     'max_cloud_projects' => 100, // server-owned per-account metadata limit
     'max_files_per_project' => 200, // avoid shared-host inode/database abuse
+    // Absolute ClamAV clamdscan executable path. Until configured and the
+    // scheduled CLI scanner is running, uploads remain quarantined and cannot
+    // be downloaded. Never set this to a no-op scanner outside isolated tests.
+    'clamdscan_path' => '/usr/bin/clamdscan',
     // Opt-in only for staging dry runs. This never enables real provider calls.
     'mock_jobs_enabled' => false,
     'mock_job_cost_credits' => 5,
@@ -35,5 +39,6 @@ return [
         'runway' => ['api_key' => ''],
     ],
 ];
+
 
 
