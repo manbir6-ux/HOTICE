@@ -13,7 +13,10 @@ try {
     $db = $app->database();
     $storage = (string)($config['storage_path'] ?? '');
     if ($storage === '' || !is_dir($storage)) throw new RuntimeException('Private storage unavailable.');
-    \Hotice\Support::assertPrivateStorage($storage, [dirname(__DIR__) . '/public', (string)($config['public_webroot_path'] ?? '')]);
+    $roots = [dirname(__DIR__) . '/public'];
+    $webroot = trim((string)($config['public_webroot_path'] ?? ''));
+    if ($webroot !== '') $roots[] = $webroot;
+    \Hotice\Support::assertPrivateStorage($storage, $roots);
     $limit = isset($argv[1]) && ctype_digit($argv[1]) ? max(1, min(100, (int)$argv[1])) : 20;
     $q = $db->prepare("SELECT id,storage_name FROM cloud_files WHERE scan_status='pending' ORDER BY created_at,id LIMIT ?");
     $q->bindValue(1, $limit, PDO::PARAM_INT);
