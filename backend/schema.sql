@@ -261,6 +261,7 @@ CREATE TABLE IF NOT EXISTS cloud_files (
   mime VARCHAR(80) NOT NULL,
   byte_size BIGINT UNSIGNED NOT NULL,
   sha256 CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  scan_status ENUM('pending','clean','blocked') NOT NULL DEFAULT 'pending',
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
   KEY ix_files_project (project_id, user_id),
@@ -280,4 +281,5 @@ CREATE TABLE IF NOT EXISTS private_media_deletion_queue (
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   KEY ix_private_media_deletion_ready (locked_at, created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 
