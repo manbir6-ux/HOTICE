@@ -62,6 +62,14 @@ jobs:
         run: npx --prefix web playwright install --with-deps chromium
       - name: Write CI-only settings (NOT deployment secrets)
         run: |
+          cat > /tmp/hotice-ci-clamdscan <<'SCAN'
+          #!/usr/bin/env bash
+          file="${!#}"
+          if grep -a -q 'HOTICE_TEST_SCANNER_ERROR' "$file"; then exit 2; fi
+          if grep -a -q 'HOTICE_TEST_INFECTED' "$file"; then exit 1; fi
+          exit 0
+          SCAN
+          chmod +x /tmp/hotice-ci-clamdscan
           cat > backend/config.php <<'PHP'
           <?php
           return [
@@ -84,7 +92,7 @@ jobs:
             },
             'token_ttl_hours' => 1,
             'max_file_bytes' => 1048576,
-            'clamdscan_path' => '/bin/true', // isolated CI fixture: every synthetic file is treated as clean
+            'clamdscan_path' => '/tmp/hotice-ci-clamdscan', // isolated CI fixture supports clean, infected and scanner-error results
             'max_project_bytes' => 131072,
             'max_cloud_projects' => 1,
             'max_files_per_project' => 1,
