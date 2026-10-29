@@ -64,7 +64,11 @@ curl -fsS -H "$AUTH" "$BASE/v1/projects/$id" | jq -e '.project.revision == 1 and
 curl -fsS -H "$AUTH" "$BASE/v1/projects" | jq -e '.projects | length == 1' >/dev/null
 printf '%s' 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/9WkAAAAASUVORK5CYII=' | base64 -d >/tmp/hotice-ci-test.png
 uploaded=$(curl -fsS -X PUT -H "$AUTH" -H 'Content-Type: application/octet-stream' --data-binary @/tmp/hotice-ci-test.png "$BASE/v1/projects/$id/files/$file")
-echo "$uploaded" | jq -e '.mime == "image/png" and .byteSize > 0' >/dev/null
+echo "$uploaded" | jq -e '.mime == "image/png" and .byteSize > 0 and .scanStatus == "pending"' >/dev/null
+status=$(curl -sS -o /dev/null -w '%{http_code}' -H "$AUTH" "$BASE/v1/files/$file")
+test "$status" = '423'
+php backend/bin/scan-media.php 20 | jq -e '.scannedClean == 1 and .blocked == 0' >/dev/null
+curl -fsS -H "$AUTH" "$BASE/v1/projects/$id" | jq -e '.files[0].scan_status == "clean"' >/dev/null
 other_file='44444444-4444-4444-8444-444444444444'
 status=$(curl -sS -o /dev/null -w '%{http_code}' -X PUT -H "$AUTH" -H 'Content-Type: application/octet-stream' --data-binary @/tmp/hotice-ci-test.png "$BASE/v1/projects/$id/files/$other_file")
 test "$status" = '413'
@@ -123,4 +127,5 @@ status=$(curl -sS -o /dev/null -w '%{http_code}' -H 'Content-Type: application/j
 test "$status" = '429'
 
 echo 'HOTICE MySQL + HTTP API integration: passed (auth, entitlement, project conflict, media, delete, logout).'
+
 
