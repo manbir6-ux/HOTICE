@@ -84,6 +84,7 @@ jobs:
             },
             'token_ttl_hours' => 1,
             'max_file_bytes' => 1048576,
+            'clamdscan_path' => '/bin/true', // isolated CI fixture: every synthetic file is treated as clean
             'max_project_bytes' => 131072,
             'max_cloud_projects' => 1,
             'max_files_per_project' => 1,
@@ -129,3 +130,4 @@ jobs:
           trap 'kill "$api_pid" 2>/dev/null || true' EXIT
           for _ in $(seq 1 40); do if curl -fsS "$HOTICE_TEST_API_ORIGIN/health" >/dev/null; then break; fi; sleep 0.25; done
           HOTICE_E2E_WEB_PORT=4173 node tools/e2e_web_real_api.cjs
+
