@@ -94,6 +94,36 @@ async function main() {
     await page.locator('#accountPassword').fill(password);
     await page.locator('#accountSignIn').click();
     await page.getByText('Signed in and verified with the HOTICE server.').waitFor();
+    await page.getByText('Synced with your HOTICE account. Changes apply to compatible clients.').waitFor();
+    const preferencesRead = apiRequests.find((request) =>
+      request.path === '/v1/me/preferences' && request.method === 'GET');
+    assert(preferencesRead && preferencesRead.headers.authorization?.startsWith('Bearer '),
+      'Browser must load appearance settings through the authenticated account API.');
+    let preferenceWriteResponse = page.waitForResponse((response) =>
+      new URL(response.url()).pathname === '/v1/me/preferences' &&
+      response.request().method() === 'PUT' && response.status() === 200);
+    await page.locator('#accountThemeMode').selectOption('light');
+    await preferenceWriteResponse;
+    preferenceWriteResponse = page.waitForResponse((response) =>
+      new URL(response.url()).pathname === '/v1/me/preferences' &&
+      response.request().method() === 'PUT' && response.status() === 200);
+    await page.locator('#accountAccent').selectOption('ocean');
+    await preferenceWriteResponse;
+    preferenceWriteResponse = page.waitForResponse((response) =>
+      new URL(response.url()).pathname === '/v1/me/preferences' &&
+      response.request().method() === 'PUT' && response.status() === 200);
+    await page.locator('#accountFont').selectOption('editorial');
+    await preferenceWriteResponse;
+    await page.waitForFunction(() => document.documentElement.dataset.themeMode === 'light' &&
+      document.documentElement.dataset.accent === 'ocean' &&
+      document.documentElement.dataset.font === 'editorial');
+    await page.getByText('Synced with your HOTICE account. Changes apply to compatible clients.').waitFor();
+    const preferencesWrite = apiRequests.filter((request) =>
+      request.path === '/v1/me/preferences' && request.method === 'PUT').at(-1);
+    assert.deepEqual(preferencesWrite?.body, {themeMode: 'light', accent: 'ocean', font: 'editorial'},
+      'Browser appearance changes must persist exact validated settings through the shared API.');
+    assert(preferencesWrite?.headers.authorization?.startsWith('Bearer '),
+      'Preference updates must require the authenticated server session.');
     assert.equal(await page.locator('#quoteMockJob').isDisabled(), false, 'server mock flag enables the authenticated workflow');
     await page.locator('#quoteMockJob').click();
     await page.getByText(/Mock dry run quote: .* simulated credits/).waitFor();
@@ -121,6 +151,10 @@ async function main() {
     // Exercise the public account lifecycle in the actual browser/API pair.
     await page.locator('#accountSignOut').click();
     await page.getByText('Signed out. The server session was revoked.').waitFor();
+    assert.equal(await page.locator('html').getAttribute('data-theme-mode'), 'dark',
+      'Signing out must reset account appearance in the browser document.');
+    assert.equal(await page.locator('html').getAttribute('data-accent'), 'electric');
+    assert.equal(await page.locator('html').getAttribute('data-font'), 'modern');
     await page.locator('#showRegister').click();
     await page.locator('#registerEmail').fill(registerEmail);
     await page.locator('#registerPassword').fill(registerPassword);
@@ -186,6 +220,45 @@ async function main() {
     await page.locator('#accountPassword').fill(rotatedPassword);
     await page.locator('#accountSignIn').click();
     await page.getByText('Signed in and verified with the HOTICE server.').waitFor();
+    const exportDownloadPromise = page.waitForEvent('download');
+    await page.locator('#accountExport').click();
+    const exportDownload = await exportDownloadPromise;
+    assert.equal(exportDownload.suggestedFilename(), 'hotice-account-export.json');
+    const exportPath = path.join(require('node:os').tmpdir(), `hotice-export-${process.pid}.json`);
+    await exportDownload.saveAs(exportPath);
+    const exportData = JSON.parse(fs.readFileSync(exportPath, 'utf8'));
+    fs.unlinkSync(exportPath);
+    assert.equal(exportData.format, 'hotice-account-export-v1');
+    assert.equal(exportData.account.email, registerEmail);
+    assert.equal(exportData.includedMediaBytes, false);
+    assert.equal(exportData.deviceLocalProjectsIncluded, false);
+    assert.equal(apiResponses.find((response) => response.path === '/v1/me/export')?.status, 200,
+      'Account export must download through the authenticated shared API.');
+    assert.equal(apiResponses.find((response) => response.path === '/v1/me/export')?.headers['access-control-allow-origin'],
+      `http://127.0.0.1:${port}`, 'Account export must use the exact configured browser origin.');
+    const deleteRequestsBeforeConfirmation = apiRequests.filter((request) => request.path === '/v1/me' && request.method === 'DELETE').length;
+    await page.locator('#accountDeletePassword').fill(rotatedPassword);
+    await page.locator('#accountDeleteConfirmation').fill('delete');
+    await page.locator('#accountDelete').click();
+    await page.getByText('Type DELETE exactly to confirm. Your account is unchanged.').waitFor();
+    assert.equal(apiRequests.filter((request) => request.path === '/v1/me' && request.method === 'DELETE').length,
+      deleteRequestsBeforeConfirmation, 'The browser must reject a non-exact deletion confirmation locally.');
+    await page.locator('#accountDeletePassword').fill(rotatedPassword);
+    await page.locator('#accountDeleteConfirmation').fill('DELETE');
+    await page.locator('#accountDeletePassword').fill('WrongPassword123!');
+    await page.locator('#accountDelete').click();
+    await page.getByText('The current password was not accepted. Your account is unchanged.').waitFor();
+    assert.equal(apiResponses.filter((response) => response.path === '/v1/me' && response.method === 'DELETE').at(-1)?.status, 403,
+      'The server must reject account deletion without the current password.');
+    await page.locator('#accountDeletePassword').fill(rotatedPassword);
+    await page.locator('#accountDelete').click();
+    await page.getByText('Your account and server-held data were deleted. Device-only projects remain on this device.').waitFor();
+    const deletionRequest = apiRequests.filter((request) => request.path === '/v1/me' && request.method === 'DELETE').at(-1);
+    assert.deepEqual(deletionRequest?.body, {confirmation: 'DELETE', password: rotatedPassword},
+      'Account deletion must send the exact confirmation and current password to the authenticated API.');
+    assert.equal(apiResponses.filter((response) => response.path === '/v1/me' && response.method === 'DELETE').at(-1)?.status, 200);
+    assert.equal(await page.locator('#accountSignedIn').isVisible(), false,
+      'The deleted account must be removed from the signed-in browser state.');
     assert.equal(await page.evaluate(() => localStorage.length + sessionStorage.length), 0,
       'Browser credentials must stay out of web storage after all account workflows.');
     assert.deepEqual(errors, []);
@@ -196,7 +269,10 @@ async function main() {
       'prompt-only request shape with no media, actor references or preview-model routing',
       'bearer token absent from browser storage',
       'browser registration, pending-account sign-in denial and email verification',
+      'authenticated cross-client appearance preferences load, live apply, persist and reset on sign-out',
       'browser password reset, session revocation and old-password rejection',
+      'authenticated account export download and privacy boundaries',
+      'password-confirmed account deletion and browser session cleanup',
     ], apiOrigin, realProviderCalls: 0}));
   } finally {
     await browser.close();

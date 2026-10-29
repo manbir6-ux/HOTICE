@@ -8,6 +8,18 @@ CREATE TABLE IF NOT EXISTS users (
   UNIQUE KEY uq_users_email (email)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- Account-scoped visual preferences shared by authenticated HOTICE clients.
+-- Preferences are intentionally limited to presentation settings. Local
+-- project content remains device-local unless the user explicitly syncs it.
+CREATE TABLE IF NOT EXISTS user_preferences (
+  user_id CHAR(36) CHARACTER SET ascii COLLATE ascii_bin NOT NULL PRIMARY KEY,
+  theme_mode VARCHAR(16) NOT NULL DEFAULT 'dark',
+  accent VARCHAR(16) NOT NULL DEFAULT 'electric',
+  font VARCHAR(16) NOT NULL DEFAULT 'modern',
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  CONSTRAINT fk_user_preferences_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS email_verification_tokens (
   id CHAR(36) CHARACTER SET ascii COLLATE ascii_bin NOT NULL PRIMARY KEY,
   user_id CHAR(36) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
@@ -249,6 +261,7 @@ CREATE TABLE IF NOT EXISTS cloud_files (
   mime VARCHAR(80) NOT NULL,
   byte_size BIGINT UNSIGNED NOT NULL,
   sha256 CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  scan_status ENUM('pending','clean','blocked') NOT NULL DEFAULT 'pending',
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
   KEY ix_files_project (project_id, user_id),
@@ -256,4 +269,17 @@ CREATE TABLE IF NOT EXISTS cloud_files (
   CONSTRAINT fk_files_project FOREIGN KEY (project_id) REFERENCES cloud_projects(id) ON DELETE CASCADE,
   CONSTRAINT fk_files_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Durable private-file deletion queue. Rows contain only unguessable storage
+-- names (no account ID/email) so account deletion can finish even if PHP stops
+-- after its database transaction and before unlinking all private bytes.
+CREATE TABLE IF NOT EXISTS private_media_deletion_queue (
+  storage_name CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL PRIMARY KEY,
+  attempts SMALLINT UNSIGNED NOT NULL DEFAULT 0,
+  locked_at DATETIME NULL,
+  last_error_code VARCHAR(40) CHARACTER SET ascii COLLATE ascii_bin NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  KEY ix_private_media_deletion_ready (locked_at, created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 

@@ -63,8 +63,38 @@ test "$status" = '409'
 curl -fsS -H "$AUTH" "$BASE/v1/projects/$id" | jq -e '.project.revision == 1 and .project.document.localFirst == true' >/dev/null
 curl -fsS -H "$AUTH" "$BASE/v1/projects" | jq -e '.projects | length == 1' >/dev/null
 printf '%s' 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/9WkAAAAASUVORK5CYII=' | base64 -d >/tmp/hotice-ci-test.png
+cp /tmp/hotice-ci-test.png /tmp/hotice-ci-infected.png
+printf '%s' 'HOTICE_TEST_INFECTED' >>/tmp/hotice-ci-infected.png
+cp /tmp/hotice-ci-test.png /tmp/hotice-ci-scanner-error.png
+printf '%s' 'HOTICE_TEST_SCANNER_ERROR' >>/tmp/hotice-ci-scanner-error.png
 uploaded=$(curl -fsS -X PUT -H "$AUTH" -H 'Content-Type: application/octet-stream' --data-binary @/tmp/hotice-ci-test.png "$BASE/v1/projects/$id/files/$file")
-echo "$uploaded" | jq -e '.mime == "image/png" and .byteSize > 0' >/dev/null
+echo "$uploaded" | jq -e '.mime == "image/png" and .byteSize > 0 and .scanStatus == "pending"' >/dev/null
+infected_file='55555555-5555-4555-8555-555555555555'
+infected_upload=$(curl -fsS -X PUT -H "$AUTH" -H 'Content-Type: application/octet-stream' --data-binary @/tmp/hotice-ci-infected.png "$BASE/v1/projects/$id/files/$infected_file")
+echo "$infected_upload" | jq -e '.scanStatus == "pending"' >/dev/null
+scanner_error_file='66666666-6666-4666-8666-666666666666'
+scanner_error_upload=$(curl -fsS -X PUT -H "$AUTH" -H 'Content-Type: application/octet-stream' --data-binary @/tmp/hotice-ci-scanner-error.png "$BASE/v1/projects/$id/files/$scanner_error_file")
+echo "$scanner_error_upload" | jq -e '.scanStatus == "pending"' >/dev/null
+for pending_file in "$file" "$infected_file" "$scanner_error_file"; do
+  status=$(curl -sS -o /dev/null -w '%{http_code}' -H "$AUTH" "$BASE/v1/files/$pending_file")
+  test "$status" = '423'
+done
+set +e
+scan_result=$(php backend/bin/scan-media.php 20)
+scan_status=$?
+set -e
+test "$scan_status" -eq 1
+echo "$scan_result" | jq -e '.scannedClean == 1 and .blocked == 1 and .retryableFailures == 1' >/dev/null
+curl -fsS -H "$AUTH" "$BASE/v1/projects/$id" | jq -e --arg clean "$file" --arg infected "$infected_file" --arg retry "$scanner_error_file" '
+  .files as $files |
+  ($files | any(.id == $clean and .scan_status == "clean")) and
+  ($files | any(.id == $infected and .scan_status == "blocked")) and
+  ($files | any(.id == $retry and .scan_status == "pending"))
+' >/dev/null
+status=$(curl -sS -o /dev/null -w '%{http_code}' -H "$AUTH" "$BASE/v1/files/$infected_file")
+test "$status" = '423'
+status=$(curl -sS -o /dev/null -w '%{http_code}' -H "$AUTH" "$BASE/v1/files/$scanner_error_file")
+test "$status" = '423'
 other_file='44444444-4444-4444-8444-444444444444'
 status=$(curl -sS -o /dev/null -w '%{http_code}' -X PUT -H "$AUTH" -H 'Content-Type: application/octet-stream' --data-binary @/tmp/hotice-ci-test.png "$BASE/v1/projects/$id/files/$other_file")
 test "$status" = '413'
@@ -123,4 +153,5 @@ status=$(curl -sS -o /dev/null -w '%{http_code}' -H 'Content-Type: application/j
 test "$status" = '429'
 
 echo 'HOTICE MySQL + HTTP API integration: passed (auth, entitlement, project conflict, media, delete, logout).'
+
 

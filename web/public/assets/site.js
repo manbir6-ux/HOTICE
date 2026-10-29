@@ -455,8 +455,17 @@
   const accountEntryActions = get('accountEntryActions');
   const accountSignIn = get('accountSignIn');
   const accountSignedIn = get('accountSignedIn');
+  const accountDeleteForm = get('accountDeleteForm');
+  const accountExportButton = get('accountExport');
+  const accountThemeMode = get('accountThemeMode');
+  const accountAccent = get('accountAccent');
+  const accountFont = get('accountFont');
+  const accountPreferencesStatus = get('accountPreferencesStatus');
   const apiOriginMeta = document.querySelector('meta[name="hotice-api-origin"]');
   let accountToken = null;
+  let accountPreferencesReady = false;
+  let accountPreferencesRevision = 0;
+  let accountPreferencesSaveQueue = Promise.resolve();
   let accountApiOrigin = null;
   let accountCanWriteCloud = false;
   let accountCanReadCloud = false;
@@ -512,6 +521,141 @@
       throw error;
     }
     return result;
+  }
+
+  const accountPreferenceOptions = {
+    themeMode: ['system', 'light', 'dark'],
+    accent: ['electric', 'ocean', 'ember', 'glacier', 'moss'],
+    font: ['modern', 'editorial', 'technical'],
+  };
+  const accountAccentColors = {
+    electric: ['#ac8bff', '#73ecec'],
+    ocean: ['#2cb9c7', '#78e5d9'],
+    ember: ['#f47a6c', '#ffc28e'],
+    glacier: ['#589cf7', '#92e4ff'],
+    moss: ['#65b986', '#b7e9a5'],
+  };
+  const defaultAccountPreferences = {themeMode: 'dark', accent: 'electric', font: 'modern'};
+
+  function validateAccountPreferences(value) {
+    if (!value || typeof value !== 'object' || Array.isArray(value) ||
+        !accountPreferenceOptions.themeMode.includes(value.themeMode) ||
+        !accountPreferenceOptions.accent.includes(value.accent) ||
+        !accountPreferenceOptions.font.includes(value.font) ||
+        (value.updatedAt !== undefined && typeof value.updatedAt !== 'string')) {
+      throw new Error('Invalid HOTICE appearance preferences.');
+    }
+    return {themeMode: value.themeMode, accent: value.accent, font: value.font};
+  }
+
+  function applyAccountPreferences(value) {
+    const preferences = validateAccountPreferences(value);
+    if (accountThemeMode) accountThemeMode.value = preferences.themeMode;
+    if (accountAccent) accountAccent.value = preferences.accent;
+    if (accountFont) accountFont.value = preferences.font;
+    const root = document.documentElement;
+    root.dataset.themeMode = preferences.themeMode;
+    root.dataset.accent = preferences.accent;
+    root.dataset.font = preferences.font;
+    const [violet, cyan] = accountAccentColors[preferences.accent];
+    root.style.setProperty('--violet', violet);
+    root.style.setProperty('--cyan', cyan);
+    root.style.setProperty('--hotice-font-family', preferences.font === 'editorial'
+      ? 'Georgia, "Times New Roman", serif'
+      : preferences.font === 'technical'
+        ? 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace'
+        : 'Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif');
+    return preferences;
+  }
+
+  function setAccountPreferenceControlsDisabled(disabled) {
+    for (const control of [accountThemeMode, accountAccent, accountFont]) {
+      if (control) control.disabled = disabled;
+    }
+  }
+
+  function resetAccountPreferences() {
+    accountPreferencesReady = false;
+    accountPreferencesRevision++;
+    setAccountPreferenceControlsDisabled(true);
+    applyAccountPreferences(defaultAccountPreferences);
+    if (accountPreferencesStatus) accountPreferencesStatus.textContent =
+      'Sign in to load and sync your account appearance settings.';
+  }
+
+  async function loadAccountPreferences(token) {
+    accountPreferencesReady = false;
+    setAccountPreferenceControlsDisabled(true);
+    if (accountPreferencesStatus) accountPreferencesStatus.textContent =
+      'Loading your account appearance settings…';
+    try {
+      const response = await accountApi('/v1/me/preferences', {token});
+      if (accountToken !== token) return;
+      const preferences = validateAccountPreferences(response.preferences);
+      applyAccountPreferences(preferences);
+      accountPreferencesReady = true;
+      setAccountPreferenceControlsDisabled(false);
+      if (accountPreferencesStatus) accountPreferencesStatus.textContent =
+        'Synced with your HOTICE account. Changes apply to compatible clients.';
+    } catch (error) {
+      if (accountToken !== token) return;
+      if (error.status === 401) {
+        showAccountForm('Your HOTICE session expired. Sign in again to continue.');
+        return;
+      }
+      if (accountPreferencesStatus) accountPreferencesStatus.textContent =
+        'Account appearance sync is unavailable on this server. Your other account features remain available.';
+    }
+  }
+
+  function saveAccountPreferences() {
+    if (!accountToken || !accountPreferencesReady) return;
+    const token = accountToken;
+    const revision = ++accountPreferencesRevision;
+    const preferences = {
+      themeMode: accountThemeMode.value,
+      accent: accountAccent.value,
+      font: accountFont.value,
+    };
+    try {
+      applyAccountPreferences(preferences);
+    } catch (_) {
+      return;
+    }
+    if (accountPreferencesStatus) accountPreferencesStatus.textContent =
+      'Saving your account appearance settings…';
+    accountPreferencesSaveQueue = accountPreferencesSaveQueue.catch(() => {}).then(async () => {
+      if (accountToken !== token) return;
+      try {
+        const response = await accountApi('/v1/me/preferences', {
+          method: 'PUT', token, body: preferences,
+        });
+        const confirmed = validateAccountPreferences(response.preferences);
+        if (confirmed.themeMode !== preferences.themeMode ||
+            confirmed.accent !== preferences.accent || confirmed.font !== preferences.font) {
+          throw new Error('Preference response did not confirm the saved values.');
+        }
+        if (accountToken === token && revision === accountPreferencesRevision) {
+          applyAccountPreferences(confirmed);
+          if (accountPreferencesStatus) accountPreferencesStatus.textContent =
+            'Synced with your HOTICE account. Changes apply to compatible clients.';
+        }
+      } catch (error) {
+        if (accountToken !== token) return;
+        if (error.status === 401) {
+          showAccountForm('Your HOTICE session expired. Sign in again to continue.');
+          return;
+        }
+        if (revision === accountPreferencesRevision && accountPreferencesStatus) {
+          accountPreferencesStatus.textContent =
+            'Could not confirm the latest preference sync. The server may have saved the change; check again before switching devices.';
+        }
+      }
+    });
+  }
+
+  for (const control of [accountThemeMode, accountAccent, accountFont]) {
+    control?.addEventListener('change', saveAccountPreferences);
   }
 
   function selectAccountForm(mode) {
@@ -1085,6 +1229,7 @@
 
   function showAccountForm(message) {
     accountToken = null;
+    resetAccountPreferences();
     mockGenerationEnabled = false;
     currentMockQuote = null;
     accountSignedIn.hidden = true;
@@ -1130,6 +1275,9 @@
           : 'Cloud access is inactive. Device-only projects remain available.';
       accountForm.hidden = true;
       accountSignedIn.hidden = false;
+      accountDeleteForm.hidden = false;
+      await loadAccountPreferences(issuedToken);
+      if (accountToken !== issuedToken) return;
       status('accountStatus', 'Signed in and verified with the HOTICE server.');
       refreshCloudControls();
       refreshMockControls();
@@ -1153,6 +1301,7 @@
   get('accountSignOut')?.addEventListener('click', async () => {
     const token = accountToken;
     accountToken = null;
+    resetAccountPreferences();
     mockGenerationEnabled = false;
     currentMockQuote = null;
     accountCanWriteCloud = false;
@@ -1173,6 +1322,94 @@
     } catch (_) {
       status('accountStatus',
         'Signed out in this browser, but server revocation could not be confirmed. The session may remain valid until it expires.');
+    }
+  });
+
+  accountExportButton?.addEventListener('click', async () => {
+    if (!accountToken || !accountApiOrigin || accountExportButton.disabled) return;
+    accountExportButton.disabled = true;
+    status('accountStatus', 'Preparing your HOTICE account export…');
+    try {
+      const response = await fetch(accountApiOrigin + '/v1/me/export', {
+        method: 'GET', mode: 'cors', credentials: 'omit', cache: 'no-store', redirect: 'error',
+        headers: {Accept: 'application/json', Authorization: 'Bearer ' + accountToken},
+      });
+      if (!response.ok) {
+        const error = new Error('HOTICE account export failed.');
+        error.status = response.status;
+        throw error;
+      }
+      const blob = await response.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = objectUrl;
+      link.download = 'hotice-account-export.json';
+      link.hidden = true;
+      document.body.append(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+      status('accountStatus', 'Account export downloaded. Device-only projects and media bytes are not part of this export.');
+    } catch (error) {
+      status('accountStatus', error.status === 413
+        ? 'Your account export exceeds the safe size limit. Contact HOTICE support before deleting your account.'
+        : error.status === 401
+          ? 'Your session expired. Sign in again to export your account data.'
+          : 'Could not download the account export. Your account was not changed.');
+    } finally {
+      accountExportButton.disabled = false;
+    }
+  });
+
+  accountDeleteForm?.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const button = get('accountDelete');
+    const confirmation = get('accountDeleteConfirmation');
+    const password = get('accountDeletePassword');
+    if (!accountToken || !accountApiOrigin || button.disabled) return;
+    if (confirmation.value !== 'DELETE') {
+      status('accountDeleteStatus', 'Type DELETE exactly to confirm. Your account is unchanged.');
+      return;
+    }
+    button.disabled = true;
+    status('accountDeleteStatus', 'Verifying your password and deleting server-held account data…');
+    try {
+      const result = await accountApi('/v1/me', {
+        method: 'DELETE', token: accountToken,
+        body: {confirmation: confirmation.value, password: password.value},
+      });
+      if (result.deleted !== true || result.accountDataRemoved !== true) {
+        throw new Error('Invalid HOTICE account deletion response.');
+      }
+      accountToken = null;
+      resetAccountPreferences();
+      mockGenerationEnabled = false;
+      currentMockQuote = null;
+      accountCanWriteCloud = false;
+      accountCanReadCloud = false;
+      accountSignedIn.hidden = true;
+      accountDeleteForm.reset();
+      accountDeleteForm.hidden = true;
+      selectAccountForm('login');
+      if (projectConsent) projectConsent.checked = false;
+      cloudProjectCache = [];
+      get('cloudProjects')?.replaceChildren();
+      get('mockJobs')?.replaceChildren();
+      refreshCloudControls();
+      refreshMockControls();
+      refreshLocalProjects();
+      status('accountStatus', result.queuedMediaFiles > 0
+        ? 'Your account was deleted. Some private media is queued for secure server cleanup. Device-only projects remain on this device.'
+        : 'Your account and server-held data were deleted. Device-only projects remain on this device.');
+    } catch (error) {
+      status('accountDeleteStatus', error.status === 403
+        ? 'The current password was not accepted. Your account is unchanged.'
+        : error.status === 422
+          ? 'Type DELETE exactly and provide your current password. Your account is unchanged.'
+          : 'Could not confirm whether deletion finished. Sign in again to check; device-only projects remain on this device.');
+    } finally {
+      button.disabled = false;
+      password.value = '';
     }
   });
 

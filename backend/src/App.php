@@ -150,6 +150,18 @@ final class App
                         'credits' => $credits, 'unit' => 'simulated_credits', 'moneyValue' => 0],
                 ]); return;
             }
+            if ($route === '/v1/me/export' && $method === 'GET') {
+                $this->exportAccount($user['id']); return;
+            }
+            if ($route === '/v1/me/preferences' && $method === 'GET') {
+                $this->getPreferences($user['id']); return;
+            }
+            if ($route === '/v1/me/preferences' && $method === 'PUT') {
+                $this->putPreferences($user['id']); return;
+            }
+            if ($route === '/v1/me' && $method === 'DELETE') {
+                $this->deleteAccount($user); return;
+            }
             if ($route === '/v1/jobs/quote' && $method === 'POST') { $this->quoteMockJob($user['id']); return; }
             if ($route === '/v1/jobs' && $method === 'POST') { $this->createMockJob($user['id']); return; }
             if ($route === '/v1/jobs' && $method === 'GET') { $this->listJobs($user['id']); return; }
@@ -697,6 +709,172 @@ final class App
         return $user;
     }
 
+    /** Export a complete bounded server-side snapshot; device-local files are not uploaded or included. */
+    private function exportAccount(string $user): void
+    {
+        $maxBytes = max(1048576, min(25 * 1024 * 1024, (int)($this->config['max_account_export_bytes'] ?? 8 * 1024 * 1024)));
+        $this->db->beginTransaction(); // Keep a consistent account snapshot if deletion races this export.
+        $projectBytes = $this->db->prepare('SELECT COALESCE(SUM(OCTET_LENGTH(document_json)),0) FROM cloud_projects WHERE user_id=?');
+        $projectBytes->execute([$user]);
+        $jobBytes = $this->db->prepare('SELECT COALESCE(SUM(OCTET_LENGTH(request_json)+COALESCE(OCTET_LENGTH(result_json),0)),0) FROM generation_jobs WHERE user_id=?');
+        $jobBytes->execute([$user]);
+        $fileCount = $this->db->prepare('SELECT COUNT(*) FROM cloud_files WHERE user_id=?');
+        $fileCount->execute([$user]);
+        if ((int)$projectBytes->fetchColumn() + (int)$jobBytes->fetchColumn() > $maxBytes || (int)$fileCount->fetchColumn() > 5000) {
+            throw new ApiError(413, 'Account export exceeds the configured size limit. Contact HOTICE support before deletion.');
+        }
+        $profile = $this->db->prepare('SELECT id,email,email_verified_at,created_at FROM users WHERE id=?');
+        $profile->execute([$user]);
+        $account = $profile->fetch();
+        if (!$account) throw new ApiError(404, 'Account not found.');
+
+        $projects = $this->db->prepare('SELECT id,title,document_json,revision,updated_at,created_at FROM cloud_projects WHERE user_id=? ORDER BY created_at,id LIMIT 201');
+        $projects->execute([$user]);
+        $projectRows = $projects->fetchAll();
+        if (count($projectRows) > 200) throw new ApiError(413, 'Account export exceeds the project limit. Contact HOTICE support before deletion.');
+        $projectIds = array_column($projectRows, 'id');
+        $files = [];
+        if ($projectIds !== []) {
+            $placeholders = implode(',', array_fill(0, count($projectIds), '?'));
+            $fileQuery = $this->db->prepare("SELECT id,project_id,mime,byte_size,sha256,created_at FROM cloud_files WHERE user_id=? AND project_id IN ($placeholders) ORDER BY created_at,id");
+            $fileQuery->execute(array_merge([$user], $projectIds));
+            $files = $fileQuery->fetchAll();
+        }
+        $jobs = $this->db->prepare('SELECT id,quote_id,model_id,request_json,status,attempt_count,reserved_credits,actual_credits,result_json,error_code,created_at,updated_at,finished_at FROM generation_jobs WHERE user_id=? ORDER BY created_at,id LIMIT 501');
+        $jobs->execute([$user]);
+        $jobRows = $jobs->fetchAll();
+        if (count($jobRows) > 500) throw new ApiError(413, 'Account export exceeds the job history limit. Contact HOTICE support before deletion.');
+        $ledger = $this->db->prepare('SELECT event_key,event_type,delta,balance_after,created_at FROM credit_ledger WHERE user_id=? ORDER BY created_at,id LIMIT 2001');
+        $ledger->execute([$user]);
+        $ledgerRows = $ledger->fetchAll();
+        if (count($ledgerRows) > 2000) throw new ApiError(413, 'Account export exceeds the credit history limit. Contact HOTICE support before deletion.');
+
+        foreach ($projectRows as &$project) {
+            $project['revision'] = (int)$project['revision'];
+            $project['document'] = json_decode((string)$project['document_json'], false, 32, JSON_THROW_ON_ERROR);
+        }
+        unset($project);
+        foreach ($jobRows as &$job) {
+            $job['attempt_count'] = (int)$job['attempt_count'];
+            $job['reserved_credits'] = (int)$job['reserved_credits'];
+            $job['actual_credits'] = (int)$job['actual_credits'];
+            $job['request'] = json_decode((string)$job['request_json'], false, 32, JSON_THROW_ON_ERROR);
+            $job['result'] = $job['result_json'] === null ? null : json_decode((string)$job['result_json'], false, 32, JSON_THROW_ON_ERROR);
+            unset($job['request_json'], $job['result_json']);
+        }
+        unset($job);
+        foreach ($projectRows as &$project) unset($project['document_json']);
+        unset($project);
+        foreach ($files as &$file) $file['byte_size'] = (int)$file['byte_size'];
+        unset($file);
+        foreach ($ledgerRows as &$entry) {
+            $entry['delta'] = (int)$entry['delta'];
+            $entry['balance_after'] = (int)$entry['balance_after'];
+        }
+        unset($entry);
+        $entitlement = $this->db->prepare('SELECT source,plan_code,quota_bytes,used_bytes,expires_at FROM cloud_entitlements WHERE user_id=?');
+        $entitlement->execute([$user]);
+        $entitlementData = $entitlement->fetch() ?: null;
+        if ($entitlementData) {
+            $entitlementData['quota_bytes'] = (int)$entitlementData['quota_bytes'];
+            $entitlementData['used_bytes'] = (int)$entitlementData['used_bytes'];
+        }
+        $preferences = $this->accountPreferences($user);
+        $balance = $this->db->prepare('SELECT balance FROM credit_accounts WHERE user_id=?');
+        $balance->execute([$user]);
+        $payload = ['format' => 'hotice-account-export-v1', 'exportedAt' => gmdate('Y-m-d\TH:i:s\Z'),
+            'account' => $account, 'preferences' => $preferences, 'cloudEntitlement' => $entitlementData,
+            'simulatedCreditBalance' => ($value = $balance->fetchColumn()) === false ? null : (int)$value,
+            'cloudProjects' => $projectRows, 'cloudMediaMetadata' => $files,
+            'generationJobs' => $jobRows, 'simulatedCreditLedger' => $ledgerRows,
+            'includedMediaBytes' => false, 'deviceLocalProjectsIncluded' => false];
+        $json = json_encode($payload, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        if (strlen($json) > $maxBytes) throw new ApiError(413, 'Account export exceeds the configured size limit. Contact HOTICE support before deletion.');
+        $this->db->commit();
+        header('Content-Type: application/json; charset=utf-8');
+        header('Content-Disposition: attachment; filename="hotice-account-export.json"');
+        http_response_code(200);
+        echo $json;
+    }
+
+    /** Return the current account's supported cross-client presentation settings. */
+    private function accountPreferences(string $user): array
+    {
+        $query = $this->db->prepare('SELECT theme_mode,accent,font,updated_at FROM user_preferences WHERE user_id=?');
+        $query->execute([$user]);
+        $row = $query->fetch();
+        if (!$row) return ['themeMode' => 'dark', 'accent' => 'electric', 'font' => 'modern'];
+        return ['themeMode' => $row['theme_mode'], 'accent' => $row['accent'],
+            'font' => $row['font'], 'updatedAt' => $row['updated_at']];
+    }
+
+    private function getPreferences(string $user): void
+    {
+        $this->send(200, ['preferences' => $this->accountPreferences($user)]);
+    }
+
+    private function putPreferences(string $user): void
+    {
+        $body = Support::jsonInput(4096);
+        $allowed = ['themeMode', 'accent', 'font'];
+        if (array_diff(array_keys($body), $allowed) !== [] || array_diff($allowed, array_keys($body)) !== []) {
+            throw new ApiError(422, 'Provide exactly themeMode, accent and font preferences.');
+        }
+        $allowedValues = [
+            'themeMode' => ['system', 'light', 'dark'],
+            'accent' => ['electric', 'ocean', 'ember', 'glacier', 'moss'],
+            'font' => ['modern', 'editorial', 'technical'],
+        ];
+        foreach ($allowedValues as $field => $values) {
+            if (!is_string($body[$field]) || !in_array($body[$field], $values, true)) {
+                throw new ApiError(422, 'One or more account preferences are unsupported.');
+            }
+        }
+        $this->db->prepare('INSERT INTO user_preferences(user_id,theme_mode,accent,font) VALUES(?,?,?,?) ON DUPLICATE KEY UPDATE theme_mode=VALUES(theme_mode),accent=VALUES(accent),font=VALUES(font)')
+            ->execute([$user, $body['themeMode'], $body['accent'], $body['font']]);
+        $this->send(200, ['preferences' => $this->accountPreferences($user)]);
+    }
+
+    /** Permanently remove a user's account and queue private bytes for retryable purge. */
+    private function deleteAccount(array $sessionUser): void
+    {
+        $body = Support::jsonInput(8192);
+        if (($body['confirmation'] ?? null) !== 'DELETE' || !is_string($body['password'] ?? null)) {
+            throw new ApiError(422, 'Enter DELETE and your current password to confirm account deletion.');
+        }
+        $fingerprints = $this->throttle((string)$sessionUser['email']);
+        $this->db->beginTransaction();
+        try {
+            $q = $this->db->prepare('SELECT email,password_hash FROM users WHERE id=? FOR UPDATE');
+            $q->execute([$sessionUser['id']]);
+            $account = $q->fetch();
+            if (!$account || !Support::passwordVerify($body['password'], (string)$account['password_hash'])) {
+                $this->db->rollBack();
+                $this->recordFailedLogin($fingerprints);
+                throw new ApiError(403, 'Current password is incorrect.');
+            }
+            $storage = $this->privateDir(); // Verify before destructive DB changes; queue covers later unlink failures.
+            $fileQuery = $this->db->prepare('SELECT storage_name FROM cloud_files WHERE user_id=? FOR UPDATE');
+            $fileQuery->execute([$sessionUser['id']]);
+            $names = array_column($fileQuery->fetchAll(), 'storage_name');
+            $this->queuePrivateFiles($names);
+            $emailHash = hash_hmac('sha256', 'email:' . strtolower((string)$account['email']), (string)$this->config['app_key']);
+            $this->db->prepare('DELETE FROM login_attempts WHERE fingerprint=?')->execute([$emailHash]);
+            $this->db->prepare('DELETE FROM email_outbox WHERE recipient=?')->execute([$account['email']]);
+            // generation_jobs.quote_id is RESTRICT, so jobs must go before quotes.
+            $this->db->prepare('DELETE FROM generation_jobs WHERE user_id=?')->execute([$sessionUser['id']]);
+            $this->db->prepare('DELETE FROM job_quotes WHERE user_id=?')->execute([$sessionUser['id']]);
+            $this->db->prepare('DELETE FROM users WHERE id=?')->execute([$sessionUser['id']]);
+            $this->db->commit();
+        } catch (Throwable $e) {
+            if ($this->db->inTransaction()) $this->db->rollBack();
+            throw $e;
+        }
+        $purged = $this->purgePrivateFilesNow($names, $storage);
+        $this->send(200, ['deleted' => true, 'queuedMediaFiles' => max(0, count($names) - $purged),
+            'accountDataRemoved' => true]);
+    }
+
     private function entitlement(string $user): ?array
     {
         $q = $this->db->prepare('SELECT source,plan_code,quota_bytes,used_bytes,expires_at FROM cloud_entitlements WHERE user_id=?');
@@ -734,7 +912,7 @@ final class App
         $p['document'] = json_decode($p['document_json'], false, 32, JSON_THROW_ON_ERROR);
         unset($p['document_json']);
         $p['revision'] = (int) $p['revision'];
-        $files = $this->db->prepare('SELECT id,mime,byte_size,sha256,created_at FROM cloud_files WHERE project_id=? AND user_id=? ORDER BY created_at DESC LIMIT 200');
+        $files = $this->db->prepare('SELECT id,mime,byte_size,sha256,scan_status,created_at FROM cloud_files WHERE project_id=? AND user_id=? ORDER BY created_at DESC LIMIT 200');
         $files->execute([$id, $user]);
         $this->send(200, ['project' => $p, 'files' => $files->fetchAll()]);
     }
@@ -787,6 +965,7 @@ final class App
 
     private function deleteProject(string $user, string $id): void
     {
+        $storage = $this->privateDir();
         $this->db->beginTransaction();
         // Deleting one's data stays available even after subscription expiration.
         $ent = $this->db->prepare('SELECT used_bytes FROM cloud_entitlements WHERE user_id=? FOR UPDATE');
@@ -799,12 +978,14 @@ final class App
         $files->execute([$id, $user]);
         $owned = $files->fetchAll();
         $bytes = array_sum(array_column($owned, 'byte_size'));
+        $names = array_column($owned, 'storage_name');
+        $this->queuePrivateFiles($names);
         $this->db->prepare('DELETE FROM cloud_projects WHERE id=? AND user_id=?')->execute([$id, $user]);
         $this->db->prepare('UPDATE cloud_entitlements SET used_bytes=IF(used_bytes >= ?, used_bytes - ?, 0) WHERE user_id=?')
             ->execute([$bytes, $bytes, $user]);
         $this->db->commit();
-        foreach ($owned as $file) $this->removePrivateFile((string) $file['storage_name']);
-        $this->send(200, ['deleted' => true]);
+        $purged = $this->purgePrivateFilesNow($names, $storage);
+        $this->send(200, ['deleted' => true, 'queuedMediaFiles' => count($names) - $purged]);
     }
 
     private function uploadFile(string $user, string $project, string $fileId): void
@@ -871,7 +1052,7 @@ final class App
                 @unlink($dir . '/' . $name);
                 throw $e;
             }
-            $this->send(201, ['id' => $fileId, 'byteSize' => $bytes, 'sha256' => $hash, 'mime' => $mime]);
+            $this->send(201, ['id' => $fileId, 'byteSize' => $bytes, 'sha256' => $hash, 'mime' => $mime, 'scanStatus' => 'pending']);
         } finally {
             if ($temp !== '' && is_file($temp)) @unlink($temp);
         }
@@ -880,10 +1061,15 @@ final class App
     private function downloadFile(string $user, string $id): void
     {
         $this->requireCloud($user, false);
-        $q = $this->db->prepare('SELECT storage_name,mime,byte_size FROM cloud_files WHERE id=? AND user_id=?');
+        $q = $this->db->prepare('SELECT storage_name,mime,byte_size,scan_status FROM cloud_files WHERE id=? AND user_id=?');
         $q->execute([$id, $user]);
         $file = $q->fetch();
         if (!$file) throw new ApiError(404, 'Media not found.');
+        if ($file['scan_status'] !== 'clean') {
+            throw new ApiError(423, $file['scan_status'] === 'blocked'
+                ? 'Media was rejected by the security scanner.'
+                : 'Media is unavailable until its security scan is complete.');
+        }
         $name = $file['storage_name'];
         if (!Support::secureFileName($name)) throw new \RuntimeException('Invalid stored file path.');
         $path = $this->privateDir() . '/' . $name;
@@ -896,6 +1082,7 @@ final class App
 
     private function deleteFile(string $user, string $id): void
     {
+        $storage = $this->privateDir();
         $this->db->beginTransaction();
         $e = $this->db->prepare('SELECT used_bytes FROM cloud_entitlements WHERE user_id=? FOR UPDATE');
         $e->execute([$user]);
@@ -904,17 +1091,40 @@ final class App
         $q->execute([$id, $user]);
         $file = $q->fetch();
         if (!$file) throw new ApiError(404, 'Media not found.');
+        $names = [(string)$file['storage_name']];
+        $this->queuePrivateFiles($names);
         $this->db->prepare('DELETE FROM cloud_files WHERE id=? AND user_id=?')->execute([$id, $user]);
         $this->db->prepare('UPDATE cloud_entitlements SET used_bytes=IF(used_bytes >= ?, used_bytes - ?, 0) WHERE user_id=?')
             ->execute([(int) $file['byte_size'], (int) $file['byte_size'], $user]);
         $this->db->commit();
-        $this->removePrivateFile((string) $file['storage_name']);
-        $this->send(200, ['deleted' => true]);
+        $purged = $this->purgePrivateFilesNow($names, $storage);
+        $this->send(200, ['deleted' => true, 'queuedMediaFiles' => count($names) - $purged]);
     }
 
-    private function removePrivateFile(string $name): void
+    /** @param list<string> $names */
+    private function queuePrivateFiles(array $names): void
     {
-        if (Support::secureFileName($name)) @unlink($this->privateDir() . '/' . $name);
+        $q = $this->db->prepare('INSERT IGNORE INTO private_media_deletion_queue (storage_name) VALUES (?)');
+        foreach ($names as $name) {
+            if (!Support::secureFileName($name)) throw new \RuntimeException('Invalid stored file path.');
+            $q->execute([$name]);
+        }
+    }
+
+    /** @param list<string> $names */
+    private function purgePrivateFilesNow(array $names, string $storage): int
+    {
+        $purged = 0;
+        foreach ($names as $name) {
+            $path = $storage . '/' . $name;
+            $removed = !file_exists($path) && !is_link($path);
+            if (!$removed && (is_file($path) || is_link($path))) $removed = @unlink($path);
+            if ($removed) {
+                $this->db->prepare('DELETE FROM private_media_deletion_queue WHERE storage_name=?')->execute([$name]);
+                $purged++;
+            }
+        }
+        return $purged;
     }
 
     private function privateDir(): string

@@ -62,6 +62,14 @@ jobs:
         run: npx --prefix web playwright install --with-deps chromium
       - name: Write CI-only settings (NOT deployment secrets)
         run: |
+          cat > /tmp/hotice-ci-clamdscan <<'SCAN'
+          #!/usr/bin/env bash
+          file="${!#}"
+          if grep -a -q 'HOTICE_TEST_SCANNER_ERROR' "$file"; then exit 2; fi
+          if grep -a -q 'HOTICE_TEST_INFECTED' "$file"; then exit 1; fi
+          exit 0
+          SCAN
+          chmod +x /tmp/hotice-ci-clamdscan
           cat > backend/config.php <<'PHP'
           <?php
           return [
@@ -84,9 +92,10 @@ jobs:
             },
             'token_ttl_hours' => 1,
             'max_file_bytes' => 1048576,
+            'clamdscan_path' => '/tmp/hotice-ci-clamdscan', // isolated CI fixture supports clean, infected and scanner-error results
             'max_project_bytes' => 131072,
             'max_cloud_projects' => 1,
-            'max_files_per_project' => 1,
+            'max_files_per_project' => 3,
             'mock_jobs_enabled' => true,
             'mock_job_cost_credits' => 5,
             'mock_job_quote_ttl_seconds' => 300,
@@ -106,6 +115,8 @@ jobs:
         run: bash backend/tests/admin-integration.sh
       - name: Mock generation quotes, idempotency, retries and refunds
         run: bash backend/tests/jobs-integration.sh
+      - name: Account export, deletion and durable private-media cleanup
+        run: bash backend/tests/account-data-lifecycle-integration.sh
       - name: Real browser to PHP/MySQL authenticated mock-job dry run
         env:
           HOTICE_E2E_EMAIL: browser-api-dry-run@example.test
@@ -127,3 +138,4 @@ jobs:
           trap 'kill "$api_pid" 2>/dev/null || true' EXIT
           for _ in $(seq 1 40); do if curl -fsS "$HOTICE_TEST_API_ORIGIN/health" >/dev/null; then break; fi; sleep 0.25; done
           HOTICE_E2E_WEB_PORT=4173 node tools/e2e_web_real_api.cjs
+
