@@ -1,3 +1,6 @@
+Warning: truncated output (original token count: 16542)
+Total output lines: 1145
+
 <?php
 declare(strict_types=1);
 
@@ -424,315 +427,7 @@ final class App
         $row = $q->fetch();
         if (!$row) return null;
         return ['id' => $row['id'], 'modelId' => $row['model_id'], 'status' => $row['status'],
-            'attempts' => (int)$row['attempt_count'], 'maxAttempts' => (int)$row['max_attempts'],
-            'reservedCredits' => (int)$row['reserved_credits'], 'chargedCredits' => (int)$row['actual_credits'],
-            'result' => $row['result_json'] === null ? null : json_decode($row['result_json'], true),
-            'errorCode' => $row['error_code'], 'createdAt' => $row['created_at'],
-            'updatedAt' => $row['updated_at'], 'finishedAt' => $row['finished_at']];
-    }
-
-    private function cancelJob(string $user, string $id): void
-    {
-        $this->requireMockJobs();
-        $this->db->beginTransaction();
-        $this->db->prepare('INSERT INTO credit_accounts(user_id,balance) VALUES(?,0) ON DUPLICATE KEY UPDATE user_id=VALUES(user_id)')
-            ->execute([$user]);
-        $account = $this->db->prepare('SELECT balance FROM credit_accounts WHERE user_id=? FOR UPDATE');
-        $account->execute([$user]);
-        $balance = (int)$account->fetchColumn();
-        $q = $this->db->prepare('SELECT status,reserved_credits FROM generation_jobs WHERE id=? AND user_id=? FOR UPDATE');
-        $q->execute([$id, $user]);
-        $job = $q->fetch();
-        if (!$job) throw new ApiError(404, 'Job not found.');
-        if ($job['status'] === 'cancelled') {
-            $this->db->commit(); $this->send(200, ['job' => $this->jobForUser($user, $id), 'alreadyCancelled' => true]); return;
-        }
-        if ($job['status'] !== 'queued') throw new ApiError(409, 'Only queued jobs can be cancelled.');
-        $refund = (int)$job['reserved_credits'];
-        $nextBalance = $balance + $refund;
-        $this->db->prepare('UPDATE credit_accounts SET balance=? WHERE user_id=?')->execute([$nextBalance, $user]);
-        $this->db->prepare("INSERT INTO credit_ledger(user_id,job_id,event_key,event_type,delta,balance_after) VALUES(?,?,?,'refund',?,?)")
-            ->execute([$user, $id, hash('sha256', 'refund:' . $id), $refund, $nextBalance]);
-        $this->db->prepare("UPDATE generation_jobs SET status='cancelled',actual_credits=0,error_code='cancelled_by_user',finished_at=UTC_TIMESTAMP(),lease_token=NULL,lease_until=NULL WHERE id=? AND user_id=?")
-            ->execute([$id, $user]);
-        $this->db->commit();
-        $this->send(200, ['job' => $this->jobForUser($user, $id), 'alreadyCancelled' => false]);
-    }
-
-    /**
-     * Separate per-email and per-client-IP limits prevent two common bypasses:
-     * distributing guesses for one account over many IPs, and spraying many
-     * email addresses from one IP. All identifiers are keyed HMAC digests.
-     * Clean expired rows using bin/cleanup.php (cron).
-     */
-    private function throttle(string $email): array
-    {
-        $ip = (string) ($_SERVER['REMOTE_ADDR'] ?? 'unknown');
-        $key = (string) $this->config['app_key'];
-        $identities = [
-            'email' => hash_hmac('sha256', 'email:' . $email, $key),
-            'ip' => hash_hmac('sha256', 'ip:' . $ip, $key),
-        ];
-        $q = $this->db->prepare('SELECT COUNT(*) FROM login_attempts WHERE fingerprint=? AND occurred_at > DATE_SUB(UTC_TIMESTAMP(), INTERVAL 15 MINUTE)');
-        foreach (['email' => 12, 'ip' => 50] as $type => $maxAttempts) {
-            $q->execute([$identities[$type]]);
-            if ((int) $q->fetchColumn() >= $maxAttempts) {
-                throw new ApiError(429, 'Too many attempts. Try later.');
-            }
-        }
-        return $identities;
-    }
-
-    private function recordFailedLogin(array $fingerprints): void
-    {
-        $q = $this->db->prepare('INSERT INTO login_attempts (fingerprint,occurred_at) VALUES (?,UTC_TIMESTAMP())');
-        foreach ($fingerprints as $fingerprint) $q->execute([$fingerprint]);
-    }
-
-    private function register(): void
-    {
-        if (!$this->config['allow_registration']) throw new ApiError(403, 'Public registration disabled.');
-        $b = Support::jsonInput(8192);
-        $email = Support::email((string) ($b['email'] ?? ''));
-        $password = (string) ($b['password'] ?? '');
-        if (strlen($password) < 12 || strlen($password) > 256) throw new ApiError(422, 'Password must be 12–256 bytes.');
-        $f = $this->throttle($email);
-        $this->recordFailedLogin($f); // shared bounded signup and login-attempt budget
-        // Registration never creates a usable account until the mailbox owner
-        // proves control using the one-time, short-lived verification token.
-        $this->db->beginTransaction();
-        try {
-            $userId = Support::uuid();
-            $this->db->prepare('INSERT INTO users (id,email,password_hash) VALUES (?,?,?)')
-                ->execute([$userId, $email, Support::passwordHash($password)]);
-            $this->issueVerification($userId, $email);
-            $this->db->commit();
-        } catch (\PDOException $e) {
-            if ($this->db->inTransaction()) $this->db->rollBack();
-            if ($e->getCode() !== '23000') throw $e;
-            $this->send(202, ['registered' => true, 'verificationRequired' => true]);
-            return;
-        } catch (Throwable $e) {
-            if ($this->db->inTransaction()) $this->db->rollBack();
-            throw $e;
-        }
-        $this->send(202, ['registered' => true, 'verificationRequired' => true]);
-    }
-
-    private function issueVerification(string $userId, string $email): void
-    {
-        $token = bin2hex(random_bytes(32));
-        $expires = gmdate('Y-m-d H:i:s', time() + 30 * 60);
-        $this->db->prepare('INSERT INTO email_verification_tokens (id,user_id,token_sha256,expires_at) VALUES (?,?,?,?)')
-            ->execute([Support::uuid(), $userId, hash('sha256', $token), $expires]);
-        $base = (string) ($this->config['verification_url'] ?? '');
-        $parts = parse_url($base);
-        if (!is_array($parts) || ($parts['scheme'] ?? '') !== 'https' || empty($parts['host']) ||
-            isset($parts['user']) || isset($parts['pass']) || isset($parts['query']) || isset($parts['fragment'])) {
-            throw new \RuntimeException('A public HTTPS verification_url is required before registration can be enabled.');
-        }
-        // Keep the credential in the URL fragment so static hosts, access
-        // logs, and HTTP Referer headers never receive it.
-        $url = rtrim($base, '/') . '#token=' . rawurlencode($token);
-        $subject = 'Verify your HOTICE account';
-        $body = "Verify your email address within 30 minutes by opening this link:\n\n$url\n\nIf you did not create this account, ignore this message.";
-        EmailOutbox::enqueue($this->db, $this->config, $email, $subject, $body, $expires);
-    }
-
-    private function resendVerification(): void
-    {
-        $b = Support::jsonInput(2048);
-        $email = Support::email((string) ($b['email'] ?? ''));
-        $f = $this->throttle($email);
-        $this->recordFailedLogin($f);
-        $this->db->beginTransaction();
-        try {
-            $q = $this->db->prepare('SELECT id,email_verified_at FROM users WHERE email=? LIMIT 1 FOR UPDATE');
-            $q->execute([$email]);
-            $user = $q->fetch();
-            if ($user && $user['email_verified_at'] === null) {
-                $this->db->prepare('UPDATE email_verification_tokens SET used_at=UTC_TIMESTAMP() WHERE user_id=? AND used_at IS NULL')
-                    ->execute([$user['id']]);
-                $this->issueVerification((string) $user['id'], $email);
-            }
-            $this->db->commit();
-        } catch (Throwable $e) {
-            if ($this->db->inTransaction()) $this->db->rollBack();
-            throw $e;
-        }
-        $this->send(202, ['accepted' => true]);
-    }
-
-    private function verifyEmail(): void
-    {
-        $b = Support::jsonInput(2048);
-        $token = (string) ($b['token'] ?? '');
-        if (!preg_match('/^[a-f0-9]{64}$/D', $token)) throw new ApiError(400, 'Verification link is invalid or expired.');
-        $this->db->beginTransaction();
-        try {
-            $q = $this->db->prepare('SELECT id,user_id FROM email_verification_tokens WHERE token_sha256=? AND used_at IS NULL AND expires_at>UTC_TIMESTAMP() LIMIT 1 FOR UPDATE');
-            $q->execute([hash('sha256', $token)]);
-            $row = $q->fetch();
-            if (!$row) throw new ApiError(400, 'Verification link is invalid or expired.');
-            $this->db->prepare('UPDATE users SET email_verified_at=UTC_TIMESTAMP() WHERE id=? AND email_verified_at IS NULL')
-                ->execute([$row['user_id']]);
-            $this->db->prepare('UPDATE email_verification_tokens SET used_at=UTC_TIMESTAMP() WHERE user_id=? AND used_at IS NULL')
-                ->execute([$row['user_id']]);
-            $this->db->commit();
-        } catch (Throwable $e) {
-            if ($this->db->inTransaction()) $this->db->rollBack();
-            throw $e;
-        }
-        $this->send(200, ['verified' => true]);
-    }
-
-    private function requestPasswordReset(): void
-    {
-        $b = Support::jsonInput(2048);
-        $email = Support::email((string)($b['email'] ?? ''));
-        $fingerprints = $this->throttle($email);
-        $this->recordFailedLogin($fingerprints);
-        $this->db->beginTransaction();
-        try {
-            $q = $this->db->prepare('SELECT id FROM users WHERE email=? AND email_verified_at IS NOT NULL LIMIT 1 FOR UPDATE');
-            $q->execute([$email]);
-            $userId = $q->fetchColumn();
-            if ($userId) {
-                $recent = $this->db->prepare('SELECT id FROM password_reset_tokens WHERE user_id=? AND created_at>DATE_SUB(UTC_TIMESTAMP(), INTERVAL 1 MINUTE) LIMIT 1');
-                $recent->execute([$userId]);
-                if (!$recent->fetch()) {
-                    $this->db->prepare('UPDATE password_reset_tokens SET used_at=UTC_TIMESTAMP() WHERE user_id=? AND used_at IS NULL')
-                        ->execute([$userId]);
-                    $token = bin2hex(random_bytes(32));
-                    $expires = gmdate('Y-m-d H:i:s', time() + 30 * 60);
-                    $this->db->prepare('INSERT INTO password_reset_tokens (id,user_id,token_sha256,expires_at) VALUES (?,?,?,?)')
-                        ->execute([Support::uuid(), $userId, hash('sha256', $token), $expires]);
-                    $url = rtrim((string)$this->config['verification_url'], '/') . '#reset=' . rawurlencode($token);
-                    EmailOutbox::enqueue($this->db, $this->config, $email, 'Reset your HOTICE password',
-                        "Reset your password within 30 minutes by opening this link:\n\n$url\n\nIf you did not request this, ignore this message.", $expires);
-                }
-            }
-            $this->db->commit();
-        } catch (Throwable $e) {
-            if ($this->db->inTransaction()) $this->db->rollBack();
-            throw $e;
-        }
-        // Same status and response for existing, unknown, and unverified users.
-        $this->send(202, ['accepted' => true]);
-    }
-
-    private function completePasswordReset(): void
-    {
-        $b = Support::jsonInput(4096);
-        $token = (string)($b['token'] ?? '');
-        $password = (string)($b['password'] ?? '');
-        if (!preg_match('/^[a-f0-9]{64}$/D', $token)) throw new ApiError(400, 'Password reset link is invalid or expired.');
-        if (strlen($password) < 12 || strlen($password) > 256) throw new ApiError(422, 'Password must be 12–256 bytes.');
-        $this->db->beginTransaction();
-        try {
-            $q = $this->db->prepare('SELECT id,user_id FROM password_reset_tokens WHERE token_sha256=? AND used_at IS NULL AND expires_at>UTC_TIMESTAMP() LIMIT 1 FOR UPDATE');
-            $q->execute([hash('sha256', $token)]);
-            $row = $q->fetch();
-            if (!$row) throw new ApiError(400, 'Password reset link is invalid or expired.');
-            $this->db->prepare('UPDATE users SET password_hash=? WHERE id=?')
-                ->execute([Support::passwordHash($password), $row['user_id']]);
-            $this->db->prepare('UPDATE sessions SET revoked_at=UTC_TIMESTAMP() WHERE user_id=? AND revoked_at IS NULL')
-                ->execute([$row['user_id']]);
-            $this->db->prepare('UPDATE password_reset_tokens SET used_at=UTC_TIMESTAMP() WHERE user_id=? AND used_at IS NULL')
-                ->execute([$row['user_id']]);
-            $this->db->commit();
-        } catch (Throwable $e) {
-            if ($this->db->inTransaction()) $this->db->rollBack();
-            throw $e;
-        }
-        $this->send(200, ['passwordReset' => true, 'sessionsRevoked' => true]);
-    }
-
-    private function login(): void
-    {
-        $b = Support::jsonInput(8192);
-        $email = Support::email((string) ($b['email'] ?? ''));
-        $password = (string) ($b['password'] ?? '');
-        $fingerprint = $this->throttle($email);
-        $this->db->beginTransaction();
-        try {
-            // Lock the user row so an owner suspension cannot race a new session.
-            $q = $this->db->prepare('SELECT id,email,password_hash,email_verified_at FROM users WHERE email=? LIMIT 1 FOR UPDATE');
-            $q->execute([$email]);
-            $user = $q->fetch();
-            $state = null;
-            if ($user) {
-                $check = $this->db->prepare('SELECT disabled_at FROM user_admin_state WHERE user_id=?');
-                $check->execute([$user['id']]);
-                $state = $check->fetch();
-            }
-            if (!$user || !Support::passwordVerify($password, $user['password_hash']) ||
-                ($state && $state['disabled_at'] !== null)) {
-                $this->db->rollBack();
-                $this->recordFailedLogin($fingerprint);
-                throw new ApiError(401, 'Invalid email or password.');
-            }
-            if ($user['email_verified_at'] === null) {
-                $this->db->rollBack();
-                throw new ApiError(403, 'Verify your email before signing in.');
-            }
-            // Never clear the IP budget on a successful login: a single valid
-            // account must not let attackers reset their IP-wide spray limit.
-            $this->db->prepare('DELETE FROM login_attempts WHERE fingerprint=?')->execute([$fingerprint['email']]);
-            // Preserve long legacy bcrypt password semantics on cPanel builds.
-            if (Support::passwordNeedsRehash($user['password_hash']) && strlen($password) <= 72) {
-                $this->db->prepare('UPDATE users SET password_hash=? WHERE id=?')
-                    ->execute([Support::passwordHash($password), $user['id']]);
-            }
-            $token = bin2hex(random_bytes(32));
-            $hours = max(1, min(168, (int) ($this->config['token_ttl_hours'] ?? 24)));
-            $expires = gmdate('Y-m-d H:i:s', time() + $hours * 3600);
-            $this->db->prepare('INSERT INTO sessions (id,user_id,token_sha256,expires_at) VALUES (?,?,?,?)')
-                ->execute([Support::uuid(), $user['id'], hash('sha256', $token), $expires]);
-            $this->db->commit();
-        } catch (Throwable $e) {
-            if ($this->db->inTransaction()) $this->db->rollBack();
-            throw $e;
-        }
-        $this->send(200, ['accessToken' => $token, 'tokenType' => 'Bearer',
-            'expiresAt' => str_replace(' ', 'T', $expires) . 'Z']);
-    }
-
-    private function authenticate(): array
-    {
-        $auth = (string) ($_SERVER['HTTP_AUTHORIZATION'] ?? $_SERVER['REDIRECT_HTTP_AUTHORIZATION'] ?? '');
-        if (!preg_match('/^Bearer ([a-fA-F0-9]{64})$/D', $auth, $m)) throw new ApiError(401, 'Authentication required.');
-        $q = $this->db->prepare('SELECT s.id AS session_id,u.id,u.email FROM sessions s JOIN users u ON u.id=s.user_id LEFT JOIN user_admin_state uas ON uas.user_id=u.id WHERE s.token_sha256=? AND s.revoked_at IS NULL AND s.expires_at > UTC_TIMESTAMP() AND uas.disabled_at IS NULL LIMIT 1');
-        $q->execute([hash('sha256', strtolower($m[1]))]);
-        $user = $q->fetch();
-        if (!$user) throw new ApiError(401, 'Session expired or revoked.');
-        return $user;
-    }
-
-    /** Export a complete bounded server-side snapshot; device-local files are not uploaded or included. */
-    private function exportAccount(string $user): void
-    {
-        $maxBytes = max(1048576, min(25 * 1024 * 1024, (int)($this->config['max_account_export_bytes'] ?? 8 * 1024 * 1024)));
-        $this->db->beginTransaction(); // Keep a consistent account snapshot if deletion races this export.
-        $projectBytes = $this->db->prepare('SELECT COALESCE(SUM(OCTET_LENGTH(document_json)),0) FROM cloud_projects WHERE user_id=?');
-        $projectBytes->execute([$user]);
-        $jobBytes = $this->db->prepare('SELECT COALESCE(SUM(OCTET_LENGTH(request_json)+COALESCE(OCTET_LENGTH(result_json),0)),0) FROM generation_jobs WHERE user_id=?');
-        $jobBytes->execute([$user]);
-        $fileCount = $this->db->prepare('SELECT COUNT(*) FROM cloud_files WHERE user_id=?');
-        $fileCount->execute([$user]);
-        if ((int)$projectBytes->fetchColumn() + (int)$jobBytes->fetchColumn() > $maxBytes || (int)$fileCount->fetchColumn() > 5000) {
-            throw new ApiError(413, 'Account export exceeds the configured size limit. Contact HOTICE support before deletion.');
-        }
-        $profile = $this->db->prepare('SELECT id,email,email_verified_at,created_at FROM users WHERE id=?');
-        $profile->execute([$user]);
-        $account = $profile->fetch();
-        if (!$account) throw new ApiError(404, 'Account not found.');
-
-        $projects = $this->db->prepare('SELECT id,title,document_json,revision,updated_at,created_at FROM cloud_projects WHERE user_id=? ORDER BY created_at,id LIMIT 201');
-        $projects->execute([$user]);
-        $projectRows = $projects->fetchAll();
-        if (count($projectRows) > 200) throw new ApiError(413, 'Account export exceeds the project limit. Contact HOTICE support before deletion.');
-        $projectIds = array_column($projectRows, 'id');
+            'attempts'…4542 tokens truncated…rojectRows, 'id');
         $files = [];
         if ($projectIds !== []) {
             $placeholders = implode(',', array_fill(0, count($projectIds), '?'));
@@ -912,7 +607,7 @@ final class App
         $p['document'] = json_decode($p['document_json'], false, 32, JSON_THROW_ON_ERROR);
         unset($p['document_json']);
         $p['revision'] = (int) $p['revision'];
-        $files = $this->db->prepare('SELECT id,mime,byte_size,sha256,created_at FROM cloud_files WHERE project_id=? AND user_id=? ORDER BY created_at DESC LIMIT 200');
+        $files = $this->db->prepare('SELECT id,mime,byte_size,sha256,scan_status,created_at FROM cloud_files WHERE project_id=? AND user_id=? ORDER BY created_at DESC LIMIT 200');
         $files->execute([$id, $user]);
         $this->send(200, ['project' => $p, 'files' => $files->fetchAll()]);
     }
@@ -1052,7 +747,7 @@ final class App
                 @unlink($dir . '/' . $name);
                 throw $e;
             }
-            $this->send(201, ['id' => $fileId, 'byteSize' => $bytes, 'sha256' => $hash, 'mime' => $mime]);
+            $this->send(201, ['id' => $fileId, 'byteSize' => $bytes, 'sha256' => $hash, 'mime' => $mime, 'scanStatus' => 'pending']);
         } finally {
             if ($temp !== '' && is_file($temp)) @unlink($temp);
         }
@@ -1061,10 +756,15 @@ final class App
     private function downloadFile(string $user, string $id): void
     {
         $this->requireCloud($user, false);
-        $q = $this->db->prepare('SELECT storage_name,mime,byte_size FROM cloud_files WHERE id=? AND user_id=?');
+        $q = $this->db->prepare('SELECT storage_name,mime,byte_size,scan_status FROM cloud_files WHERE id=? AND user_id=?');
         $q->execute([$id, $user]);
         $file = $q->fetch();
         if (!$file) throw new ApiError(404, 'Media not found.');
+        if ($file['scan_status'] !== 'clean') {
+            throw new ApiError(423, $file['scan_status'] === 'blocked'
+                ? 'Media was rejected by the security scanner.'
+                : 'Media is unavailable until its security scan is complete.');
+        }
         $name = $file['storage_name'];
         if (!Support::secureFileName($name)) throw new \RuntimeException('Invalid stored file path.');
         $path = $this->privateDir() . '/' . $name;
@@ -1136,4 +836,5 @@ final class App
         return Support::assertPrivateStorage($path, $roots);
     }
 }
+
 
