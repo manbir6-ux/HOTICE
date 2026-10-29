@@ -122,6 +122,47 @@ class _HotIceAppState extends State<HotIceApp> {
     return warning;
   }
 
+  Future<Map<String, dynamic>> _exportBackendAccount() {
+    final auth = widget.authClient;
+    if (auth == null || !store.backendAuthenticated) {
+      throw const BackendAuthException('Sign in to export your HOTICE account.');
+    }
+    return auth.exportAccountData();
+  }
+
+  Future<Map<String, dynamic>> _loadBackendAccountPreferences() {
+    final auth = widget.authClient;
+    if (auth == null || !store.backendAuthenticated) {
+      throw const BackendAuthException('Sign in to sync your account preferences.');
+    }
+    return auth.loadAccountPreferences();
+  }
+
+  Future<Map<String, dynamic>> _saveBackendAccountPreferences({
+    required String themeMode,
+    required String accent,
+    required String font,
+  }) {
+    final auth = widget.authClient;
+    if (auth == null || !store.backendAuthenticated) {
+      throw const BackendAuthException('Sign in to sync your account preferences.');
+    }
+    return auth.saveAccountPreferences(
+      themeMode: themeMode,
+      accent: accent,
+      font: font,
+    );
+  }
+
+  Future<Map<String, dynamic>> _deleteBackendAccount(
+      String password, String confirmation) {
+    final auth = widget.authClient;
+    if (auth == null || !store.backendAuthenticated) {
+      throw const BackendAuthException('Sign in before deleting your HOTICE account.');
+    }
+    return auth.deleteAccount(password: password, confirmation: confirmation);
+  }
+
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
@@ -143,6 +184,10 @@ class _HotIceAppState extends State<HotIceApp> {
                 key: ValueKey(store.selectedAccount),
                 store: store,
                 onSignOut: _signOut,
+                onExportAccount: _exportBackendAccount,
+                onDeleteAccount: _deleteBackendAccount,
+                onLoadAccountPreferences: _loadBackendAccountPreferences,
+                onSaveAccountPreferences: _saveBackendAccountPreferences,
               )
             : showLogin
                 ? LoginPage(
@@ -167,7 +212,23 @@ class _HotIceAppState extends State<HotIceApp> {
 class StudioShell extends StatefulWidget {
   final HotIceStore store;
   final Future<String?> Function()? onSignOut;
-  const StudioShell({super.key, required this.store, this.onSignOut});
+  final Future<Map<String, dynamic>> Function()? onExportAccount;
+  final Future<Map<String, dynamic>> Function(String password, String confirmation)? onDeleteAccount;
+  final Future<Map<String, dynamic>> Function()? onLoadAccountPreferences;
+  final Future<Map<String, dynamic>> Function({
+    required String themeMode,
+    required String accent,
+    required String font,
+  })? onSaveAccountPreferences;
+  const StudioShell({
+    super.key,
+    required this.store,
+    this.onSignOut,
+    this.onExportAccount,
+    this.onDeleteAccount,
+    this.onLoadAccountPreferences,
+    this.onSaveAccountPreferences,
+  });
 
   @override
   State<StudioShell> createState() => _StudioShellState();
@@ -314,8 +375,17 @@ class _StudioShellState extends State<StudioShell> {
                         ),
                         AvatarsPage(store: store),
                         CreditsPage(store: store),
-                        SettingsPage(store: store),
-                        AccountsPage(store: store, onSignOut: widget.onSignOut),
+                        SettingsPage(
+                          store: store,
+                          onLoadAccountPreferences: widget.onLoadAccountPreferences,
+                          onSaveAccountPreferences: widget.onSaveAccountPreferences,
+                        ),
+                        AccountsPage(
+                          store: store,
+                          onSignOut: widget.onSignOut,
+                          onExportAccount: widget.onExportAccount,
+                          onDeleteAccount: widget.onDeleteAccount,
+                        ),
                       ],
                     ),
                   ),

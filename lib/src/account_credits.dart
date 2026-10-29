@@ -1,4 +1,9 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'backend_auth.dart';
 import 'state.dart';
 import 'design.dart';
 
@@ -146,9 +151,86 @@ class _CreditsPageState extends State<CreditsPage> {
   }
 }
 
-class SettingsPage extends StatelessWidget {
+class SettingsPage extends StatefulWidget {
   final HotIceStore store;
-  const SettingsPage({super.key, required this.store});
+  final Future<Map<String, dynamic>> Function()? onLoadAccountPreferences;
+  final Future<Map<String, dynamic>> Function({
+    required String themeMode,
+    required String accent,
+    required String font,
+  })? onSaveAccountPreferences;
+  const SettingsPage({
+    super.key,
+    required this.store,
+    this.onLoadAccountPreferences,
+    this.onSaveAccountPreferences,
+  });
+
+  @override
+  State<SettingsPage> createState() => _SettingsPageState();
+}
+
+class _SettingsPageState extends State<SettingsPage> {
+  bool _userChangedPreferences = false;
+  String? _syncStatus;
+  Future<void> _saveQueue = Future<void>.value();
+
+  @override
+  void initState() {
+    super.initState();
+    _loadAccountPreferences();
+  }
+
+  Future<void> _loadAccountPreferences() async {
+    final loader = widget.onLoadAccountPreferences;
+    if (!widget.store.backendAuthenticated || loader == null) return;
+    setState(() => _syncStatus = 'Loading account preferences…');
+    try {
+      final preferences = await loader();
+      if (!mounted || _userChangedPreferences) return;
+      widget.store
+        ..updateTheme(ThemeMode.values.byName(preferences['themeMode'] as String))
+        ..updateAccent(StudioAccent.values.byName(preferences['accent'] as String))
+        ..updateFont(StudioFont.values.byName(preferences['font'] as String));
+      setState(() => _syncStatus = 'Synced with your HOTICE account.');
+    } catch (failure) {
+      if (mounted) {
+        if (failure is BackendAuthException && failure.statusCode == 401) {
+          widget.store.signOut();
+        }
+        setState(() => _syncStatus =
+            'Account preference sync is unavailable. Your current choices remain active.');
+      }
+    }
+  }
+
+  void _preferenceChanged() {
+    _userChangedPreferences = true;
+    final saver = widget.onSaveAccountPreferences;
+    if (!widget.store.backendAuthenticated || saver == null) return;
+    setState(() => _syncStatus = 'Saving account preferences…');
+    _saveQueue = _saveQueue.then((_) async {
+      if (!mounted) return;
+      try {
+        await saver(
+          themeMode: widget.store.themeMode.name,
+          accent: widget.store.accent.name,
+          font: widget.store.font.name,
+        );
+        if (mounted) {
+          setState(() => _syncStatus = 'Synced with your HOTICE account.');
+        }
+      } catch (failure) {
+        if (mounted) {
+          if (failure is BackendAuthException && failure.statusCode == 401) {
+            widget.store.signOut();
+          }
+          setState(() => _syncStatus =
+              'Could not sync preferences. Your current choices remain active.');
+        }
+      }
+    });
+  }
 
   @override
   Widget build(BuildContext context) => PageFrame(
@@ -173,8 +255,11 @@ class SettingsPage extends StatelessWidget {
                   for (final mode in ThemeMode.values)
                     ChoiceChip(
                       label: Text(mode.name.toUpperCase()),
-                      selected: store.themeMode == mode,
-                      onSelected: (_) => store.updateTheme(mode),
+                      selected: widget.store.themeMode == mode,
+                      onSelected: (_) {
+                        widget.store.updateTheme(mode);
+                        _preferenceChanged();
+                      },
                     ),
                 ],
               ),
@@ -193,8 +278,11 @@ class SettingsPage extends StatelessWidget {
                         backgroundColor: option.color,
                       ),
                       label: Text(option.label),
-                      selected: store.accent == option,
-                      onSelected: (_) => store.updateAccent(option),
+                      selected: widget.store.accent == option,
+                      onSelected: (_) {
+                        widget.store.updateAccent(option);
+                        _preferenceChanged();
+                      },
                     ),
                 ],
               ),
@@ -208,15 +296,24 @@ class SettingsPage extends StatelessWidget {
                   for (final option in StudioFont.values)
                     ChoiceChip(
                       label: Text(option.label),
-                      selected: store.font == option,
-                      onSelected: (_) => store.updateFont(option),
+                      selected: widget.store.font == option,
+                      onSelected: (_) {
+                        widget.store.updateFont(option);
+                        _preferenceChanged();
+                      },
                     ),
                 ],
               ),
               const SizedBox(height: 21),
-              const DemoNotice(
-                'Theme preferences are held in memory. Persistence and cloud synchronisation come later.',
-              ),
+              if (_syncStatus != null)
+                Semantics(
+                  liveRegion: true,
+                  child: Text(_syncStatus!),
+                )
+              else if (!widget.store.backendAuthenticated)
+                const DemoNotice(
+                  'Guest appearance choices apply to this in-memory workspace. Sign in to sync appearance settings across your HOTICE clients.',
+                ),
             ],
           ),
         ),
@@ -237,13 +334,22 @@ class SettingsPage extends StatelessWidget {
 class AccountsPage extends StatefulWidget {
   final HotIceStore store;
   final Future<String?> Function()? onSignOut;
-  const AccountsPage({super.key, required this.store, this.onSignOut});
+  final Future<Map<String, dynamic>> Function()? onExportAccount;
+  final Future<Map<String, dynamic>> Function(String password, String confirmation)? onDeleteAccount;
+  const AccountsPage({
+    super.key,
+    required this.store,
+    this.onSignOut,
+    this.onExportAccount,
+    this.onDeleteAccount,
+  });
   @override
   State<AccountsPage> createState() => _AccountsPageState();
 }
 
 class _AccountsPageState extends State<AccountsPage> {
   final email = TextEditingController();
+  bool _accountActionBusy = false;
 
   @override
   void dispose() {
@@ -284,6 +390,56 @@ class _AccountsPageState extends State<AccountsPage> {
     }
   }
 
+  Future<void> exportAccount() async {
+    if (_accountActionBusy || widget.onExportAccount == null) return;
+    setState(() => _accountActionBusy = true);
+    try {
+      final data = await widget.onExportAccount!();
+      final bytes = Uint8List.fromList(
+        utf8.encode(const JsonEncoder.withIndent('  ').convert(data)),
+      );
+      final saved = await FilePicker.saveFile(
+        fileName: 'hotice-account-export.json',
+        bytes: bytes,
+        mimeType: 'application/json',
+        dialogTitle: 'Save your HOTICE account export',
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(saved == null
+              ? 'Export canceled. Your account was not changed.'
+              : 'Account export saved. Device-only projects and media bytes are not included.'),
+        ));
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Could not export account data. Your account was not changed.'),
+        ));
+      }
+    } finally {
+      if (mounted) setState(() => _accountActionBusy = false);
+    }
+  }
+
+  Future<void> deleteAccount() async {
+    if (_accountActionBusy || widget.onDeleteAccount == null) return;
+    final removed = await showDialog<bool>(
+      context: context,
+      builder: (_) => _AccountDeletionDialog(
+        onDeleteAccount: widget.onDeleteAccount!,
+      ),
+    );
+    if (removed == true) {
+      widget.store.signOut();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Your HOTICE account was deleted. Device-only projects remain on this device.'),
+        ));
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) => PageFrame(
     child: Column(
@@ -318,6 +474,30 @@ class _AccountsPageState extends State<AccountsPage> {
                   title: Text(widget.store.selectedAccount),
                   subtitle: const Text('Authenticated by the HOTICE API'),
                 ),
+              if (widget.store.backendAuthenticated && widget.onExportAccount != null) ...[
+                const Divider(height: 24),
+                Text('Your server-held data', style: Theme.of(context).textTheme.titleMedium),
+                const SizedBox(height: 6),
+                const Text('Device-only projects and media bytes are excluded. Keep a separate backup of local work.'),
+                const SizedBox(height: 12),
+                Wrap(
+                  spacing: 10,
+                  runSpacing: 8,
+                  children: [
+                    OutlinedButton.icon(
+                      onPressed: _accountActionBusy ? null : exportAccount,
+                      icon: const Icon(Icons.download_outlined),
+                      label: Text(_accountActionBusy ? 'Working…' : 'Export account data'),
+                    ),
+                    if (widget.onDeleteAccount != null)
+                      TextButton.icon(
+                        onPressed: _accountActionBusy ? null : deleteAccount,
+                        icon: const Icon(Icons.delete_outline),
+                        label: const Text('Delete account'),
+                      ),
+                  ],
+                ),
+              ],
               if (!widget.store.backendAuthenticated)
                 for (final profile in widget.store.accounts)
                 ListTile(
@@ -363,4 +543,97 @@ class _AccountsPageState extends State<AccountsPage> {
       ],
     ),
   );
+}
+
+class _AccountDeletionDialog extends StatefulWidget {
+  const _AccountDeletionDialog({required this.onDeleteAccount});
+
+  final Future<Map<String, dynamic>> Function(String password, String confirmation)
+      onDeleteAccount;
+
+  @override
+  State<_AccountDeletionDialog> createState() => _AccountDeletionDialogState();
+}
+
+class _AccountDeletionDialogState extends State<_AccountDeletionDialog> {
+  final _password = TextEditingController();
+  final _confirmation = TextEditingController();
+  bool _deleting = false;
+  String? _error;
+
+  @override
+  void dispose() {
+    _password.dispose();
+    _confirmation.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    if (_deleting) return;
+    if (_confirmation.text != 'DELETE' || _password.text.isEmpty) {
+      setState(() => _error = 'Type DELETE exactly and enter your current password.');
+      return;
+    }
+    setState(() { _deleting = true; _error = null; });
+    try {
+      await widget.onDeleteAccount(_password.text, _confirmation.text);
+      if (mounted) Navigator.pop(context, true);
+    } catch (failure) {
+      if (mounted) {
+        setState(() {
+          _error = failure is BackendAuthException
+              ? failure.message
+              : 'Could not confirm whether deletion finished. Sign in again to check; device-only projects remain on this device.';
+          _deleting = false;
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+        title: const Text('Delete HOTICE account?'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('This permanently deletes your server account, cloud projects, uploaded media records and job history. Device-local projects remain on this device.'),
+              const SizedBox(height: 16),
+              TextField(
+                controller: _password,
+                obscureText: true,
+                autofillHints: const [AutofillHints.password],
+                decoration: const InputDecoration(labelText: 'Current password'),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _confirmation,
+                textCapitalization: TextCapitalization.characters,
+                decoration: const InputDecoration(labelText: 'Type DELETE to confirm'),
+              ),
+              if (_error != null) ...[
+                const SizedBox(height: 12),
+                Semantics(
+                  liveRegion: true,
+                  child: Text(
+                    _error!,
+                    style: TextStyle(color: Theme.of(context).colorScheme.error),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: _deleting ? null : () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: _deleting ? null : _submit,
+            child: Text(_deleting ? 'Deleting…' : 'Permanently delete'),
+          ),
+        ],
+      );
 }

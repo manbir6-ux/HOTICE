@@ -1,3 +1,24 @@
+# HOTICE — CURRENT STATUS (30 OCTOBER 2026)
+
+This status block supersedes the historical 26 October handoff below. Use [GitHub release issue #33](https://github.com/parmtech/HOTICE/issues/33) as the authoritative production-readiness checklist; its current decision is **NOT READY TO PUBLISH**.
+
+- Canonical repository: https://github.com/parmtech/HOTICE
+- Current client work: [PR #58](https://github.com/parmtech/HOTICE/pull/58), branch `feat/native-account-lifecycle`. It contains API-backed Flutter sign-in, encrypted local project metadata storage, server-synced appearance preferences, account export, and confirmed account deletion. These client changes do not upload projects or media to the server.
+- README update commit: [11a99af](https://github.com/parmtech/HOTICE/commit/11a99af3c0992aa76c9a9b91beca88362cd719de). Flutter analysis and unit/widget tests both passed on Actions run [40965159359](https://github.com/parmtech/HOTICE/actions/runs/40965159359). This workflow did not build an APK; check for separate Android build evidence before claiming one. The later handoff-only documentation commit has not itself triggered another run.
+- The native account preferences endpoint depends on backend PR #57. Preserve that dependency and the established PR stack; do not merge PR #58 alone or merge any draft automatically.
+- Broader repository work includes a web studio, verified account lifecycle, owner-only operations tools, authenticated **mock-only** generation jobs, model catalog scaffolding, and encrypted device-local projects. These are separate stacked PRs; inspect their current heads and dependencies before integrating.
+- There is no real AI video rendering or transcription, no provider key has been exercised, and there is no production payment/credit ledger. Mock jobs and simulated credits are not live generation or billing.
+- Remaining release gates include cPanel staging deployment and backup/restore rehearsal, real provider entitlement/usage checks with later supplied credentials, verified payments, media scanning/retention lifecycle, production monitoring/rollback, physical-device and iOS acceptance, accessibility, and legal/privacy/support review. Do not claim publish readiness until issue #33 has evidence for every applicable gate.
+
+## Working rules
+
+1. Inspect current main, the exact PR head, dependency stack, issue #33, and Actions before changing release status.
+2. Continue the existing implementation; do not recreate it. Follow current decisions in the historical contract below, especially the single free-form creative prompt, HOTICE branding, and fail-closed model/pricing behavior.
+3. Keep provider credentials server-side. Do not make paid provider or payment calls without configured staging accounts and explicit authorization.
+4. Verify changes on the exact pushed commit. Distinguish source implementation, CI success, staging evidence, physical-device acceptance, and production readiness.
+
+---
+
 # HOTICE — LATEST DEVELOPMENT HANDOFF (26 OCTOBER 2026)
 
 **Canonical repository:** https://github.com/parmtech/HOTICE  
