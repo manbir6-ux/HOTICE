@@ -95,7 +95,7 @@ jobs:
             'clamdscan_path' => '/tmp/hotice-ci-clamdscan', // isolated CI fixture supports clean, infected and scanner-error results
             'max_project_bytes' => 131072,
             'max_cloud_projects' => 1,
-            'max_files_per_project' => 1,
+            'max_files_per_project' => 3,
             'mock_jobs_enabled' => true,
             'mock_job_cost_credits' => 5,
             'mock_job_quote_ttl_seconds' => 300,
